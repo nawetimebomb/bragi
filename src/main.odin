@@ -1,59 +1,55 @@
 package main
 
-import "core:fmt"
-import "core:strings"
-import "core:unicode/utf8"
-import rl "vendor:raylib"
+import    "base:runtime"
+import    "core:fmt"
+import    "core:strings"
+import    "core:unicode/utf8"
+import    "vendor:glfw"
+import gl "vendor:OpenGL"
 
 TITLE   :: "Bragi"
 VERSION :: 0
 
 DEFAULT_LOAD_FONT_DATA :: #load("../res/font/firacode.ttf")
 DEFAULT_LOAD_FONT_SIZE :: 48
-DEFAULT_WINDOW_WIDTH  :: 1024
-DEFAULT_WINDOW_HEIGHT :: 768
+DEFAULT_WINDOW_WIDTH   :: 1024
+DEFAULT_WINDOW_HEIGHT  :: 768
+
+GL_MAJOR_VERSION :: 3
+GL_MINOR_VERSION :: 3
+GL_VSYNC_ENABLED :: 1
 
 Vector2 :: distinct [2]int
 
 Line :: string
 
 Cursor :: struct {
-    position: Vector2,
+    position:       Vector2,
     region_enabled: bool,
-    region_start: Vector2,
+    region_start:   Vector2,
 }
 
 Buffer :: struct {
-    name: string,
+    name:     string,
     filepath: string,
     modified: bool,
-    lines: [dynamic]Line,
-    cursor: Cursor,
+    lines:    [dynamic]Line,
+    cursor:   Cursor,
 }
 
 Settings :: struct {
     default_font: bool,
-    font: rl.Font,
-    font_size: int,
+    font_size:    int,
 
     cursor_blink_delay_in_seconds: f32,
 }
 
-Window :: struct {
-    width: i32,
-    height: i32,
-    fullscreen: bool,
-    maximized: bool,
-    hidpi: bool,
-}
-
 Bragi :: struct {
-    current_buffer: int,
-    buffers: [dynamic]Buffer,
+    cbuffer:  ^Buffer,
+    buffers:  [dynamic]Buffer,
 
-    render_texture: rl.RenderTexture,
     settings: Settings,
-    window: Window,
+    window:   glfw.WindowHandle,
 }
 
 bragi: Bragi
@@ -62,40 +58,18 @@ load_settings :: proc() {
     // TODO: Settings should be coming from a file or smth
     bragi.settings.default_font = true
     bragi.settings.font_size    = 18
-    bragi.settings.font         =
-        rl.LoadFontFromMemory(".ttf", raw_data(DEFAULT_LOAD_FONT_DATA),
-                              i32(len(DEFAULT_LOAD_FONT_DATA)),
-                              DEFAULT_LOAD_FONT_SIZE, nil, 0)
+    //    bragi.settings.font         =
 }
 
 configure_window :: proc() {
-    bragi.window = {
-        width = rl.GetScreenWidth(),
-        height = rl.GetScreenHeight(),
-        fullscreen = rl.IsWindowFullscreen(),
-        maximized = rl.IsWindowMaximized(),
-    }
+    bragi.window = {}
 }
 
-create_render_texture :: proc() {
-    if rl.IsRenderTextureValid(bragi.render_texture) {
-        rl.UnloadRenderTexture(bragi.render_texture)
-    }
-
-    bragi.render_texture = rl.LoadRenderTexture(bragi.window.width, bragi.window.height)
-    rl.SetTextureFilter(bragi.render_texture.texture, .BILINEAR)
-    rl.SetTextureWrap(bragi.render_texture.texture, .CLAMP)
-}
-
-create_buffer :: proc(name: string) -> ^Buffer {
-    b := Buffer{ name = name }
-    b.lines = make([dynamic]Line, 1, 10)
-    append(&bragi.buffers, b)
+create_buffer :: proc(buf_name: string) -> ^Buffer {
+    buf := Buffer{ name = buf_name }
+    buf.lines = make([dynamic]Line, 1, 10)
+    append(&bragi.buffers, buf)
     return &bragi.buffers[len(bragi.buffers) - 1]
-}
-
-get_current_buffer :: proc() -> ^Buffer {
-    return &bragi.buffers[bragi.current_buffer]
 }
 
 insert_char_at_point :: proc(buf: ^Buffer, char: rune) {
@@ -129,83 +103,81 @@ delete_char_at_point :: proc(buf: ^Buffer) {
     buf.lines[row] = strings.clone(strings.to_string(builder))
 }
 
-check_for_key :: proc(key: rl.KeyboardKey) -> bool {
-    return rl.IsKeyPressed(key) || rl.IsKeyPressedRepeat(key)
+// handle_input :: proc() {
+//     if check_for_key(.ENTER) {
+//         buf := bragi.cbuffer
+//         buf.cursor.position.y += 1
+//         buf.cursor.position.x = 0
+
+//         if buf.cursor.position.y >= len(buf.lines) {
+//             append(&buf.lines, "")
+//         }
+//     }
+
+//     if check_for_key(.BACKSPACE) {
+//         buf := bragi.cbuffer
+//         delete_char_at_point(buf)
+//     }
+
+//     char := rl.GetCharPressed()
+
+//     for char != 0 {
+//         insert_char_at_point(bragi.cbuffer, char)
+//         char = rl.GetCharPressed()
+//     }
+// }
+
+handle_key_input :: proc "c" (w: glfw.WindowHandle, key, scancode, action, mods: i32) {
+    if action == glfw.PRESS && key == glfw.KEY_ESCAPE {
+        glfw.SetWindowShouldClose(w, true)
+    }
+}
+
+handle_char_input:: proc "c" (w: glfw.WindowHandle, char: rune) {
+    context = runtime.default_context()
+    fmt.println(char)
+}
+
+handle_window_refresh :: proc "c" (w: glfw.WindowHandle) {
+    context = runtime.default_context()
+    w, h := glfw.GetFramebufferSize(bragi.window)
+    gl.Viewport(0, 0, w, h)
+    // TODO: re-render the screen
 }
 
 main :: proc() {
-    rl.SetConfigFlags({ .VSYNC_HINT, .WINDOW_RESIZABLE, .WINDOW_HIGHDPI })
-    rl.SetTraceLogLevel(.WARNING)
-
-    // TODO: This should actually be configured by the user.
-    rl.InitWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, TITLE)
-
     load_settings()
-    configure_window()
-    create_render_texture()
+    bragi.cbuffer = create_buffer("*notebook*")
 
-    create_buffer("*notebook*")
+    glfw.Init()
 
-    for !rl.WindowShouldClose() {
-        if rl.IsWindowResized() {
-            configure_window()
-            create_render_texture()
-        }
+    glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_MAJOR_VERSION)
+    glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_MINOR_VERSION)
+    glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
 
-        if check_for_key(.ENTER) {
-            buf := get_current_buffer()
-            buf.cursor.position.y += 1
-            buf.cursor.position.x = 0
+    bragi.window = glfw.CreateWindow(DEFAULT_WINDOW_WIDTH,
+                                     DEFAULT_WINDOW_HEIGHT,
+                                     TITLE, nil, nil)
+    assert(bragi.window != nil)
 
-            if buf.cursor.position.y >= len(buf.lines) {
-                append(&buf.lines, "")
-            }
-        }
+    glfw.MakeContextCurrent(bragi.window)
+    glfw.SwapInterval(GL_VSYNC_ENABLED)
+    gl.load_up_to(GL_MAJOR_VERSION, GL_MINOR_VERSION, glfw.gl_set_proc_address)
 
-        if check_for_key(.BACKSPACE) {
-            buf := get_current_buffer()
-            delete_char_at_point(buf)
-        }
+    w, h := glfw.GetFramebufferSize(bragi.window)
+    gl.Viewport(0, 0, w, h)
 
-        char := rl.GetCharPressed()
+    glfw.SetCharCallback(bragi.window, handle_char_input)
+    glfw.SetWindowRefreshCallback(bragi.window, handle_window_refresh)
 
-        for char != 0 {
-            insert_char_at_point(get_current_buffer(), char)
-            char = rl.GetCharPressed()
-        }
-
-        rl.BeginTextureMode(bragi.render_texture)
-        {
-            rl.ClearBackground(rl.RAYWHITE)
-            buf := get_current_buffer()
-            font_size := f32(bragi.settings.font_size)
-
-            for line, index in buf.lines {
-                rl.DrawTextEx(bragi.settings.font, strings.clone_to_cstring(line),
-                              {0, f32(index) * font_size}, font_size, 0, rl.BLACK)
-            }
-
-            line_text := strings.clone_to_cstring(buf.lines[buf.cursor.position.y])
-            cursor_x := rl.MeasureText(line_text, i32(font_size)) - 1
-            cursor_y := i32(buf.cursor.position.y) * i32(font_size)
-            rl.DrawRectangle(cursor_x, cursor_y, 2,
-                             i32(bragi.settings.font_size), rl.BLACK)
-        }
-        rl.EndTextureMode()
-
-        rl.BeginDrawing()
-        {
-            fbw := f32(bragi.render_texture.texture.width)
-            fbh := f32(bragi.render_texture.texture.height)
-            dest_rect := rl.Rectangle{0, 0, fbw, fbh}
-            src_rect := rl.Rectangle{0, 0, fbw, -fbh}
-            rl.DrawTexturePro(bragi.render_texture.texture,
-                              src_rect, dest_rect, {}, 0, rl.WHITE)
-        }
-        rl.EndDrawing()
-
+    for !glfw.WindowShouldClose(bragi.window) {
+        gl.ClearColor(0.0, 0.13, 0.15, 1.0)
+        gl.Clear(gl.COLOR_BUFFER_BIT)
+        glfw.SwapBuffers(bragi.window)
+        glfw.PollEvents()
         free_all(context.temp_allocator)
     }
 
-    rl.CloseWindow()
+    glfw.DestroyWindow(bragi.window)
+    glfw.Terminate()
 }

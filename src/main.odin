@@ -8,16 +8,19 @@ import rl "vendor:raylib"
 TITLE   :: "Bragi"
 VERSION :: 0
 
-DEFAULT_FONT_DATA :: #load("../res/font/firacode.ttf")
+DEFAULT_LOAD_FONT_DATA :: #load("../res/font/firacode.ttf")
+DEFAULT_LOAD_FONT_SIZE :: 48
 DEFAULT_WINDOW_WIDTH  :: 1024
 DEFAULT_WINDOW_HEIGHT :: 768
+
+Vector2 :: distinct [2]int
 
 Line :: string
 
 Cursor :: struct {
-    position: rl.Vector2,
+    position: Vector2,
     region_enabled: bool,
-    region_start: rl.Vector2,
+    region_start: Vector2,
 }
 
 Buffer :: struct {
@@ -25,12 +28,13 @@ Buffer :: struct {
     filepath: string,
     modified: bool,
     lines: [dynamic]Line,
+    cursor: Cursor,
 }
 
 Settings :: struct {
     default_font: bool,
     font: rl.Font,
-    font_size: uint,
+    font_size: int,
 
     cursor_blink_delay_in_seconds: f32,
 }
@@ -44,7 +48,6 @@ Window :: struct {
 }
 
 Bragi :: struct {
-    cursor: Cursor,
     current_buffer: int,
     buffers: [dynamic]Buffer,
 
@@ -58,11 +61,11 @@ bragi: Bragi
 load_settings :: proc() {
     // TODO: Settings should be coming from a file or smth
     bragi.settings.default_font = true
-    bragi.settings.font_size    = 16
+    bragi.settings.font_size    = 18
     bragi.settings.font         =
-        rl.LoadFontFromMemory(".ttf", raw_data(DEFAULT_FONT_DATA),
-                              i32(len(DEFAULT_FONT_DATA)),
-                              i32(bragi.settings.font_size), nil, 0)
+        rl.LoadFontFromMemory(".ttf", raw_data(DEFAULT_LOAD_FONT_DATA),
+                              i32(len(DEFAULT_LOAD_FONT_DATA)),
+                              DEFAULT_LOAD_FONT_SIZE, nil, 0)
 }
 
 configure_window :: proc() {
@@ -84,14 +87,50 @@ create_render_texture :: proc() {
     rl.SetTextureWrap(bragi.render_texture.texture, .CLAMP)
 }
 
-create_buffer :: proc(name: string) {
+create_buffer :: proc(name: string) -> ^Buffer {
     b := Buffer{ name = name }
     b.lines = make([dynamic]Line, 1, 10)
     append(&bragi.buffers, b)
+    return &bragi.buffers[len(bragi.buffers) - 1]
 }
 
 get_current_buffer :: proc() -> ^Buffer {
     return &bragi.buffers[bragi.current_buffer]
+}
+
+insert_char_at_point :: proc(buf: ^Buffer, char: rune) {
+    builder := strings.builder_make(context.temp_allocator)
+    row := buf.cursor.position.y
+    strings.write_string(&builder, buf.lines[row])
+    strings.write_rune(&builder, char)
+    buf.lines[row] = strings.clone(strings.to_string(builder))
+    buf.cursor.position.x += 1
+}
+
+delete_char_at_point :: proc(buf: ^Buffer) {
+    buf.cursor.position.x -= 1
+
+    if buf.cursor.position.x < 0 {
+        buf.cursor.position.y -= 1
+
+        if buf.cursor.position.y < 0 {
+            buf.cursor.position.y = 0
+        }
+
+        buf.cursor.position.x = len(buf.lines[buf.cursor.position.y])
+
+        return
+    }
+
+    builder := strings.builder_make(context.temp_allocator)
+    row := buf.cursor.position.y
+    strings.write_string(&builder, buf.lines[row])
+    strings.pop_rune(&builder)
+    buf.lines[row] = strings.clone(strings.to_string(builder))
+}
+
+check_for_key :: proc(key: rl.KeyboardKey) -> bool {
+    return rl.IsKeyPressed(key) || rl.IsKeyPressedRepeat(key)
 }
 
 main :: proc() {
@@ -113,30 +152,44 @@ main :: proc() {
             create_render_texture()
         }
 
-        key_pressed := rl.GetCharPressed()
+        if check_for_key(.ENTER) {
+            buf := get_current_buffer()
+            buf.cursor.position.y += 1
+            buf.cursor.position.x = 0
 
-        for key_pressed != 0 {
-            b := get_current_buffer()
-            current_line := b.lines[0]
-            new_value := utf8.runes_to_string([]rune{key_pressed})
-            b.lines[0] = new_value
+            if buf.cursor.position.y >= len(buf.lines) {
+                append(&buf.lines, "")
+            }
+        }
 
-            fmt.println(key_pressed, b.lines)
+        if check_for_key(.BACKSPACE) {
+            buf := get_current_buffer()
+            delete_char_at_point(buf)
+        }
 
-            key_pressed = rl.GetCharPressed()
+        char := rl.GetCharPressed()
+
+        for char != 0 {
+            insert_char_at_point(get_current_buffer(), char)
+            char = rl.GetCharPressed()
         }
 
         rl.BeginTextureMode(bragi.render_texture)
         {
             rl.ClearBackground(rl.RAYWHITE)
-            b := get_current_buffer()
+            buf := get_current_buffer()
             font_size := f32(bragi.settings.font_size)
 
-            for line, index in b.lines {
-                rl.DrawTextEx(bragi.settings.font,
-                              strings.clone_to_cstring(line),
+            for line, index in buf.lines {
+                rl.DrawTextEx(bragi.settings.font, strings.clone_to_cstring(line),
                               {0, f32(index) * font_size}, font_size, 0, rl.BLACK)
             }
+
+            line_text := strings.clone_to_cstring(buf.lines[buf.cursor.position.y])
+            cursor_x := rl.MeasureText(line_text, i32(font_size)) - 1
+            cursor_y := i32(buf.cursor.position.y) * i32(font_size)
+            rl.DrawRectangle(cursor_x, cursor_y, 2,
+                             i32(bragi.settings.font_size), rl.BLACK)
         }
         rl.EndTextureMode()
 
@@ -150,6 +203,8 @@ main :: proc() {
                               src_rect, dest_rect, {}, 0, rl.WHITE)
         }
         rl.EndDrawing()
+
+        free_all(context.temp_allocator)
     }
 
     rl.CloseWindow()

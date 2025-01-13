@@ -72,70 +72,87 @@ create_buffer :: proc(buf_name: string) -> ^Buffer {
     return &bragi.buffers[len(bragi.buffers) - 1]
 }
 
-insert_char_at_point :: proc(buf: ^Buffer, char: rune) {
+get_current_buffer :: #force_inline proc() -> ^Buffer {
+    // TODO: This should return the buffer from the current opened pane
+    return bragi.cbuffer
+}
+
+get_current_cursor :: #force_inline proc() -> ^Cursor {
+    return &bragi.cbuffer.cursor
+}
+
+insert_char_at_point :: proc(char: rune) {
+    buf := get_current_buffer()
+    cursor := get_current_cursor()
+
     builder := strings.builder_make(context.temp_allocator)
-    row := buf.cursor.position.y
+    row := cursor.position.y
     strings.write_string(&builder, buf.lines[row])
     strings.write_rune(&builder, char)
     buf.lines[row] = strings.clone(strings.to_string(builder))
-    buf.cursor.position.x += 1
+    cursor.position.x += 1
+
+    fmt.println(cursor.position.x, cursor.position.y, buf.lines[row])
 }
 
-delete_char_at_point :: proc(buf: ^Buffer) {
-    buf.cursor.position.x -= 1
+insert_new_line_and_indent :: proc() {
+    buf := get_current_buffer()
+    cursor := get_current_cursor()
 
-    if buf.cursor.position.x < 0 {
-        buf.cursor.position.y -= 1
+    cursor.position.y += 1
+    cursor.position.x = 0
 
-        if buf.cursor.position.y < 0 {
-            buf.cursor.position.y = 0
+    if cursor.position.y >= len(buf.lines) {
+        // TODO: Add indentantion in the string below
+        append(&bragi.cbuffer.lines, "")
+    }
+}
+
+delete_char_at_point :: proc() {
+    buf := get_current_buffer()
+    cursor := get_current_cursor()
+
+    cursor.position.x -= 1
+
+    if cursor.position.x < 0 {
+        cursor.position.y -= 1
+
+        if cursor.position.y < 0 {
+            cursor.position.y = 0
         }
 
-        buf.cursor.position.x = len(buf.lines[buf.cursor.position.y])
+        cursor.position.x = len(buf.lines[buf.cursor.position.y])
+
+        fmt.println(cursor.position.x, cursor.position.y, buf.lines[cursor.position.y])
 
         return
     }
 
     builder := strings.builder_make(context.temp_allocator)
-    row := buf.cursor.position.y
+    row := cursor.position.y
     strings.write_string(&builder, buf.lines[row])
     strings.pop_rune(&builder)
     buf.lines[row] = strings.clone(strings.to_string(builder))
+
+        fmt.println(cursor.position.x, cursor.position.y, buf.lines[cursor.position.y])
 }
 
-// handle_input :: proc() {
-//     if check_for_key(.ENTER) {
-//         buf := bragi.cbuffer
-//         buf.cursor.position.y += 1
-//         buf.cursor.position.x = 0
-
-//         if buf.cursor.position.y >= len(buf.lines) {
-//             append(&buf.lines, "")
-//         }
-//     }
-
-//     if check_for_key(.BACKSPACE) {
-//         buf := bragi.cbuffer
-//         delete_char_at_point(buf)
-//     }
-
-//     char := rl.GetCharPressed()
-
-//     for char != 0 {
-//         insert_char_at_point(bragi.cbuffer, char)
-//         char = rl.GetCharPressed()
-//     }
-// }
-
 handle_key_input :: proc "c" (w: glfw.WindowHandle, key, scancode, action, mods: i32) {
-    if action == glfw.PRESS && key == glfw.KEY_ESCAPE {
-        glfw.SetWindowShouldClose(w, true)
+    context = runtime.default_context()
+    cursor := get_current_cursor()
+
+    if action == glfw.PRESS || action == glfw.REPEAT {
+        switch key {
+        case glfw.KEY_ENTER: insert_new_line_and_indent()
+        case glfw.KEY_ESCAPE: glfw.SetWindowShouldClose(w, true)
+        case glfw.KEY_BACKSPACE: delete_char_at_point()
+        }
     }
 }
 
 handle_char_input:: proc "c" (w: glfw.WindowHandle, char: rune) {
     context = runtime.default_context()
-    fmt.println(char)
+    insert_char_at_point(char)
 }
 
 handle_window_refresh :: proc "c" (w: glfw.WindowHandle) {
@@ -168,6 +185,7 @@ main :: proc() {
     gl.Viewport(0, 0, w, h)
 
     glfw.SetCharCallback(bragi.window, handle_char_input)
+    glfw.SetKeyCallback(bragi.window, handle_key_input)
     glfw.SetWindowRefreshCallback(bragi.window, handle_window_refresh)
 
     for !glfw.WindowShouldClose(bragi.window) {

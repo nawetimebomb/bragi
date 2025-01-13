@@ -6,6 +6,8 @@ import    "core:strings"
 import    "core:unicode/utf8"
 import    "vendor:glfw"
 import gl "vendor:OpenGL"
+import tt "vendor:stb/truetype"
+
 
 TITLE   :: "Bragi"
 VERSION :: 0
@@ -58,7 +60,6 @@ load_settings :: proc() {
     // TODO: Settings should be coming from a file or smth
     bragi.settings.default_font = true
     bragi.settings.font_size    = 18
-    //    bragi.settings.font         =
 }
 
 configure_window :: proc() {
@@ -175,6 +176,7 @@ main :: proc() {
     bragi.window = glfw.CreateWindow(DEFAULT_WINDOW_WIDTH,
                                      DEFAULT_WINDOW_HEIGHT,
                                      TITLE, nil, nil)
+
     assert(bragi.window != nil)
 
     glfw.MakeContextCurrent(bragi.window)

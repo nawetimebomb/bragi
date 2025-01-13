@@ -1,6 +1,6 @@
 @echo off
 
-set ExecutableName="game.exe"
+set ExecutableName="bragi.exe"
 set DestinationFolder=".\dist"
 set Command="%1"
 

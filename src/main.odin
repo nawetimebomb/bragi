@@ -1,203 +1,223 @@
 package main
 
-import    "base:runtime"
-import    "core:fmt"
-import    "core:strings"
-import    "core:unicode/utf8"
-import    "vendor:glfw"
-import gl "vendor:OpenGL"
-import tt "vendor:stb/truetype"
-
+import     "base:runtime"
+import     "core:unicode/utf8"
+import     "core:fmt"
+import     "core:log"
+import     "core:mem"
+import     "core:os"
+import sdl "vendor:sdl2"
+import ttf "vendor:sdl2/ttf"
 
 TITLE   :: "Bragi"
 VERSION :: 0
 
-DEFAULT_LOAD_FONT_DATA :: #load("../res/font/firacode.ttf")
-DEFAULT_LOAD_FONT_SIZE :: 48
-DEFAULT_WINDOW_WIDTH   :: 1024
-DEFAULT_WINDOW_HEIGHT  :: 768
+FPS :: 60
 
-GL_MAJOR_VERSION :: 3
-GL_MINOR_VERSION :: 3
-GL_VSYNC_ENABLED :: 1
-
-Vector2 :: distinct [2]int
-
-Line :: string
-
-Cursor :: struct {
-    position:       Vector2,
-    region_enabled: bool,
-    region_start:   Vector2,
-}
-
-Buffer :: struct {
-    name:     string,
-    filepath: string,
-    modified: bool,
-    lines:    [dynamic]Line,
-    cursor:   Cursor,
-}
+DEFAULT_FONT_DATA     :: #load("../res/font/firacode.ttf")
+DEFAULT_FONT_SIZE     :: 18
+DEFAULT_WINDOW_WIDTH  :: 1024
+DEFAULT_WINDOW_HEIGHT :: 768
+DEFAULT_CURSOR_BLINK  :: 1.0
 
 Settings :: struct {
-    default_font: bool,
-    font_size:    int,
+    font_size: i32,
 
-    cursor_blink_delay_in_seconds: f32,
+    cursor_blink_delay_in_seconds : f32,
+    remove_trailing_whitespaces   : bool,
+    save_desktop_mode             : bool,
+}
+
+CharacterTexture :: struct {
+    texture : ^sdl.Texture,
+    dest    : sdl.Rect,
+}
+
+SDL_Context :: struct {
+    font         : ^ttf.Font,
+    characters   : map[rune]CharacterTexture,
+    running      : bool,
+    renderer     : ^sdl.Renderer,
+    window       : ^sdl.Window,
 }
 
 Bragi :: struct {
-    cbuffer:  ^Buffer,
-    buffers:  [dynamic]Buffer,
+    cbuffer  : ^Buffer,
+    buffers  : [dynamic]Buffer,
 
-    settings: Settings,
-    window:   glfw.WindowHandle,
+    settings : Settings,
+    ctx      : SDL_Context,
 }
 
 bragi: Bragi
 
-load_settings :: proc() {
-    // TODO: Settings should be coming from a file or smth
-    bragi.settings.default_font = true
-    bragi.settings.font_size    = 18
+initialize_sdl :: proc() {
+    assert(sdl.Init(sdl.INIT_VIDEO) == 0, sdl.GetErrorString())
+    assert(ttf.Init() == 0, sdl.GetErrorString())
+
+    bragi.ctx.window =
+        sdl.CreateWindow(TITLE, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
+                         DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
+                         {.SHOWN, .RESIZABLE, .ALLOW_HIGHDPI})
+    assert(bragi.ctx.window != nil, "Cannot open window")
+
+    bragi.ctx.renderer =
+        sdl.CreateRenderer(bragi.ctx.window, -1, {.ACCELERATED})
+    assert(bragi.ctx.renderer != nil, "Cannot create renderer")
+
+    bragi.ctx.font = ttf.OpenFont("../res/font/firacode.ttf", DEFAULT_FONT_SIZE)
+    assert(bragi.ctx.font != nil, sdl.GetErrorString())
+
+    bragi.ctx.running = true
 }
 
-configure_window :: proc() {
-    bragi.window = {}
-}
-
-create_buffer :: proc(buf_name: string) -> ^Buffer {
-    buf := Buffer{ name = buf_name }
-    buf.lines = make([dynamic]Line, 1, 10)
-    append(&bragi.buffers, buf)
-    return &bragi.buffers[len(bragi.buffers) - 1]
-}
-
-get_current_buffer :: #force_inline proc() -> ^Buffer {
-    // TODO: This should return the buffer from the current opened pane
-    return bragi.cbuffer
-}
-
-get_current_cursor :: #force_inline proc() -> ^Cursor {
-    return &bragi.cbuffer.cursor
-}
-
-insert_char_at_point :: proc(char: rune) {
-    buf := get_current_buffer()
-    cursor := get_current_cursor()
-
-    builder := strings.builder_make(context.temp_allocator)
-    row := cursor.position.y
-    strings.write_string(&builder, buf.lines[row])
-    strings.write_rune(&builder, char)
-    buf.lines[row] = strings.clone(strings.to_string(builder))
-    cursor.position.x += 1
-
-    fmt.println(cursor.position.x, cursor.position.y, buf.lines[row])
-}
-
-insert_new_line_and_indent :: proc() {
-    buf := get_current_buffer()
-    cursor := get_current_cursor()
-
-    cursor.position.y += 1
-    cursor.position.x = 0
-
-    if cursor.position.y >= len(buf.lines) {
-        // TODO: Add indentantion in the string below
-        append(&bragi.cbuffer.lines, "")
+destroy_sdl :: proc() {
+    for _, char in bragi.ctx.characters {
+        sdl.DestroyTexture(char.texture)
     }
+    delete(bragi.ctx.characters)
+
+    sdl.DestroyRenderer(bragi.ctx.renderer)
+    sdl.DestroyWindow(bragi.ctx.window)
+    ttf.CloseFont(bragi.ctx.font)
+    ttf.Quit()
+    sdl.Quit()
 }
 
-delete_char_at_point :: proc() {
-    buf := get_current_buffer()
-    cursor := get_current_cursor()
+// NOTE: This function should run every time the user changes the font
+create_textures_for_characters :: proc() {
+    COLOR_WHITE : sdl.Color : { 255, 255, 255, 255 }
+    ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
 
-    cursor.position.x -= 1
+    for c in ascii[:] {
+        ostr := utf8.runes_to_string([]rune{c})
+        cstr := cstring(raw_data(ostr))
+        surface := ttf.RenderGlyph32_Blended(bragi.ctx.font, c, COLOR_WHITE)
+        texture := sdl.CreateTextureFromSurface(bragi.ctx.renderer, surface)
+        sdl.SetTextureScaleMode(texture, .Best)
+        dest_rect := sdl.Rect{}
+        ttf.SizeUTF8(bragi.ctx.font, cstr, &dest_rect.w, &dest_rect.h)
 
-    if cursor.position.x < 0 {
-        cursor.position.y -= 1
-
-        if cursor.position.y < 0 {
-            cursor.position.y = 0
+        bragi.ctx.characters[c] = CharacterTexture{
+            texture = texture,
+            dest    = dest_rect,
         }
 
-        cursor.position.x = len(buf.lines[buf.cursor.position.y])
-
-        fmt.println(cursor.position.x, cursor.position.y, buf.lines[cursor.position.y])
-
-        return
+        sdl.FreeSurface(surface)
+        delete(ostr)
     }
-
-    builder := strings.builder_make(context.temp_allocator)
-    row := cursor.position.y
-    strings.write_string(&builder, buf.lines[row])
-    strings.pop_rune(&builder)
-    buf.lines[row] = strings.clone(strings.to_string(builder))
-
-        fmt.println(cursor.position.x, cursor.position.y, buf.lines[cursor.position.y])
-}
-
-handle_key_input :: proc "c" (w: glfw.WindowHandle, key, scancode, action, mods: i32) {
-    context = runtime.default_context()
-    cursor := get_current_cursor()
-
-    if action == glfw.PRESS || action == glfw.REPEAT {
-        switch key {
-        case glfw.KEY_ENTER: insert_new_line_and_indent()
-        case glfw.KEY_ESCAPE: glfw.SetWindowShouldClose(w, true)
-        case glfw.KEY_BACKSPACE: delete_char_at_point()
-        }
-    }
-}
-
-handle_char_input:: proc "c" (w: glfw.WindowHandle, char: rune) {
-    context = runtime.default_context()
-    insert_char_at_point(char)
-}
-
-handle_window_refresh :: proc "c" (w: glfw.WindowHandle) {
-    context = runtime.default_context()
-    w, h := glfw.GetFramebufferSize(bragi.window)
-    gl.Viewport(0, 0, w, h)
-    // TODO: re-render the screen
 }
 
 main :: proc() {
-    load_settings()
-    bragi.cbuffer = create_buffer("*notebook*")
+    context.logger = log.create_console_logger()
 
-    glfw.Init()
+    default_allocator := context.allocator
+    tracking_allocator: mem.Tracking_Allocator
+    mem.tracking_allocator_init(&tracking_allocator, default_allocator)
+    context.allocator = mem.tracking_allocator(&tracking_allocator)
 
-    glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_MAJOR_VERSION)
-    glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_MINOR_VERSION)
-    glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+    reset_tracking_allocator :: proc(a: ^mem.Tracking_Allocator) -> bool {
+        err := false
 
-    bragi.window = glfw.CreateWindow(DEFAULT_WINDOW_WIDTH,
-                                     DEFAULT_WINDOW_HEIGHT,
-                                     TITLE, nil, nil)
+        for _, value in a.allocation_map {
+            fmt.printfln("{0}: Leaked {1} bytes", value.location, value.size)
+            err = true
+        }
 
-    assert(bragi.window != nil)
-
-    glfw.MakeContextCurrent(bragi.window)
-    glfw.SwapInterval(GL_VSYNC_ENABLED)
-    gl.load_up_to(GL_MAJOR_VERSION, GL_MINOR_VERSION, glfw.gl_set_proc_address)
-
-    w, h := glfw.GetFramebufferSize(bragi.window)
-    gl.Viewport(0, 0, w, h)
-
-    glfw.SetCharCallback(bragi.window, handle_char_input)
-    glfw.SetKeyCallback(bragi.window, handle_key_input)
-    glfw.SetWindowRefreshCallback(bragi.window, handle_window_refresh)
-
-    for !glfw.WindowShouldClose(bragi.window) {
-        gl.ClearColor(0.0, 0.13, 0.15, 1.0)
-        gl.Clear(gl.COLOR_BUFFER_BIT)
-        glfw.SwapBuffers(bragi.window)
-        glfw.PollEvents()
-        free_all(context.temp_allocator)
+        mem.tracking_allocator_clear(a)
+        return err
     }
 
-    glfw.DestroyWindow(bragi.window)
-    glfw.Terminate()
+    editor_open()
+    initialize_sdl()
+
+    create_textures_for_characters()
+
+    for bragi.ctx.running {
+        duration, dt_ms, frame_start, frame_end: u32
+        dt_ms = 1000 / FPS
+        e: sdl.Event
+
+        frame_start = sdl.GetTicks()
+
+        for sdl.PollEvent(&e) {
+            #partial switch e.type {
+                case .QUIT: bragi.ctx.running = false
+                case .DROPFILE: {
+                    filepath := string(e.drop.file)
+                    bragi.cbuffer = editor_maybe_create_buffer_from_file(filepath)
+                    delete(e.drop.file)
+                }
+                case .KEYDOWN: {
+                    #partial switch e.key.keysym.sym {
+                        // TODO: Dev mode only
+                        case .ESCAPE    : bragi.ctx.running = false
+                        case .BACKSPACE : editor_delete_char_at_point()
+                        case .RETURN    : editor_insert_new_line_and_indent()
+                    }
+                }
+                case .TEXTINPUT: {
+                    editor_insert_at_point(cstring(raw_data(e.text.text[:])))
+                }
+            }
+        }
+
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
+        sdl.RenderClear(bragi.ctx.renderer)
+
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+
+
+        // TODO: Should be rendering the code that went through the parser/lexer
+        // instead of just the code from the lines, with exceptions (maybe)
+        for line, index in bragi.cbuffer.lines {
+            x: i32
+
+            for c in line {
+                char := bragi.ctx.characters[c]
+                char.dest.x = x
+                char.dest.y = i32(index) * char.dest.h
+                sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
+                x += char.dest.w
+            }
+        }
+
+        name_x: i32
+        for c in bragi.cbuffer.name {
+            char := bragi.ctx.characters[c]
+            char.dest.x = name_x
+            char.dest.y = DEFAULT_WINDOW_HEIGHT - char.dest.h
+            sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
+            name_x += char.dest.w
+        }
+
+        m_char_rect := bragi.ctx.characters['M'].dest
+        cursor_rect := sdl.Rect{
+            i32(bragi.cbuffer.cursor.position.x) * m_char_rect.w,
+            i32(bragi.cbuffer.cursor.position.y) * m_char_rect.h,
+            2,
+            m_char_rect.h,
+        }
+        sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
+
+        sdl.RenderPresent(bragi.ctx.renderer)
+
+        free_all(context.temp_allocator)
+
+        frame_end = sdl.GetTicks()
+        duration = frame_end - frame_start
+
+        if duration < dt_ms {
+            sdl.Delay(dt_ms - duration)
+        }
+    }
+
+    destroy_sdl()
+    editor_close()
+
+    if reset_tracking_allocator(&tracking_allocator) {
+        os.exit(1)
+    }
+
+    mem.tracking_allocator_destroy(&tracking_allocator)
 }

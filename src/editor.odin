@@ -6,9 +6,17 @@ import "core:os"
 Vector2 :: distinct [2]int
 Line    :: string
 
+CursorDirection :: enum {
+    Up, Down, Left, Right,
+    Begin_Line, Begin_File,
+    End_Line, End_File,
+    Page_Up, Page_Down,
+}
+
 Cursor :: struct {
     animated       : bool,
     position       : Vector2,
+    previous_x     : int,
     region_enabled : bool,
     region_start   : Vector2,
 }
@@ -20,6 +28,14 @@ Buffer :: struct {
     readonly : bool,
     lines    : [dynamic]Line,
     cursor   : Cursor,
+}
+
+eol :: proc() -> int {
+    return len(bragi.cbuffer.lines[bragi.cbuffer.cursor.position.y])
+}
+
+eof :: proc() -> int {
+    return len(bragi.cbuffer.lines)
 }
 
 editor_close :: proc() {
@@ -39,7 +55,8 @@ editor_open :: proc() {
     if bragi.settings.save_desktop_mode {
         // TODO: Load desktop configuration
     } else {
-        bragi.cbuffer = editor_create_buffer("*note*")
+        bragi.cbuffer = editor_maybe_create_buffer_from_file("C:/Code/bragi/src/main.odin")
+        //bragi.cbuffer = editor_create_buffer("*note*")
     }
 }
 
@@ -111,4 +128,82 @@ editor_delete_char_at_point :: proc() {
 
     row := cursor.position.y
     buf.lines[row] = buf.lines[row][:len(buf.lines[row]) - 1]
+}
+
+editor_move_cursor :: proc(d: CursorDirection) {
+    buf := bragi.cbuffer
+    cursor := &buf.cursor
+    pos := &cursor.position
+
+    switch d {
+    case .Up:
+        if pos.y > 0 {
+            pos.y -= 1
+
+            if pos.x != 0 {
+                cursor.previous_x = pos.x
+            }
+
+            if pos.x > eol() {
+                pos.x = 0
+            } else {
+                pos.x = cursor.previous_x
+            }
+        }
+    case .Down:
+        if pos.y < eof() {
+            pos.y += 1
+
+            if pos.x != 0 {
+                cursor.previous_x = pos.x
+            }
+
+            if pos.x > eol() {
+                pos.x = 0
+            } else {
+                pos.x = cursor.previous_x
+            }
+        }
+    case .Left:
+        if pos.x > 0 {
+            pos.x -= 1
+        } else {
+            if pos.y > 0 {
+                pos.y -= 1
+                pos.x = eol()
+            }
+        }
+    case .Right:
+        if pos.x < eol() {
+            pos.x += 1
+        } else {
+            if pos.y < eof() {
+                pos.x = 0
+                pos.y += 1
+            }
+        }
+    case .Begin_Line:
+        if pos.x == 0 {
+            for c, i in buf.lines[pos.y] {
+                if c != ' ' {
+                    pos.x = i
+                    return
+                }
+            }
+        } else {
+            pos.x = 0
+        }
+    case .Begin_File:
+        pos.x = 0
+        pos.y = 0
+    case .End_Line:
+        pos.x = eol()
+    case .End_File:
+        pos.x = eof()
+        pos.y = eol()
+    case .Page_Up:
+        // TODO: Implement
+    case .Page_Down:
+        // TODO: Implement
+    }
 }

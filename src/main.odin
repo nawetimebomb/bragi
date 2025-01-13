@@ -15,7 +15,7 @@ VERSION :: 0
 FPS :: 60
 
 DEFAULT_FONT_DATA     :: #load("../res/font/firacode.ttf")
-DEFAULT_FONT_SIZE     :: 18
+DEFAULT_FONT_SIZE     :: 22
 DEFAULT_WINDOW_WIDTH  :: 1024
 DEFAULT_WINDOW_HEIGHT :: 768
 DEFAULT_CURSOR_BLINK  :: 1.0
@@ -154,7 +154,46 @@ main :: proc() {
                         case .ESCAPE    : bragi.ctx.running = false
                         case .BACKSPACE : editor_delete_char_at_point()
                         case .RETURN    : editor_insert_new_line_and_indent()
-                    }
+                        case .UP:
+                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
+                                editor_move_cursor(.Page_Up)
+                            } else {
+                                editor_move_cursor(.Up)
+                            }
+                        case .DOWN: {
+                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
+                                editor_move_cursor(.Page_Down)
+                            } else {
+                                editor_move_cursor(.Down)
+                            }
+                        }
+                        case .LEFT: {
+                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
+                                editor_move_cursor(.Begin_Line)
+                            } else {
+                                editor_move_cursor(.Left)
+                            }
+                        }
+                        case .RIGHT: {
+                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
+                                editor_move_cursor(.End_Line)
+                            } else {
+                                editor_move_cursor(.Right)
+                            }
+                        }
+                        case .A, .E, .B, .F, .P, .N: {
+                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
+                                #partial switch e.key.keysym.sym {
+                                    case .A : editor_move_cursor(.Begin_Line)
+                                    case .E : editor_move_cursor(.End_Line)
+                                    case .P : editor_move_cursor(.Up)
+                                    case .N : editor_move_cursor(.Down)
+                                    case .B : editor_move_cursor(.Left)
+                                    case .F : editor_move_cursor(.Right)
+                                }
+                            }
+                        }
+                     }
                 }
                 case .TEXTINPUT: {
                     editor_insert_at_point(cstring(raw_data(e.text.text[:])))
@@ -166,7 +205,6 @@ main :: proc() {
         sdl.RenderClear(bragi.ctx.renderer)
 
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-
 
         // TODO: Should be rendering the code that went through the parser/lexer
         // instead of just the code from the lines, with exceptions (maybe)

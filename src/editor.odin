@@ -48,7 +48,7 @@ eof :: proc() -> int {
 get_page_size :: proc() -> Vector2 {
     window_size := bragi.ctx.window_size
     std_char_size := get_standard_character_size()
-    horizontal_page_size := (window_size.x / std_char_size.y)
+    horizontal_page_size := (window_size.x / std_char_size.x) - EDITOR_UI_VIEWPORT_OFFSET
     vertical_page_size := (window_size.y / std_char_size.y) - EDITOR_UI_VIEWPORT_OFFSET
 
     return Vector2{ horizontal_page_size, vertical_page_size }
@@ -71,7 +71,8 @@ editor_open :: proc() {
     if bragi.settings.save_desktop_mode {
         // TODO: Load desktop configuration
     } else {
-        bragi.cbuffer = editor_maybe_create_buffer_from_file("C:/Code/bragi/src/main.odin")
+        bragi.cbuffer =
+            editor_maybe_create_buffer_from_file("C:/Code/bragi/tests/hello.odin")
         //bragi.cbuffer = editor_create_buffer("*note*")
     }
 }
@@ -84,7 +85,12 @@ editor_create_buffer :: proc(buf_name: string, initial_length: int = 1) -> ^Buff
 }
 
 editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
-    // TODO: find buffer if file was already opened, if not, create a buffer for it
+    for &buf in bragi.buffers {
+        if buf.filepath == filepath {
+            return &buf
+        }
+    }
+
     name := filepath
     data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
     str_data := string(data)
@@ -101,51 +107,126 @@ editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
 
 editor_insert_at_point :: proc(text: cstring) {
     buf := bragi.cbuffer
-    cursor := &buf.cursor
-    row := cursor.position.y
+    pos := &buf.cursor.position
 
-    delete(buf.lines[row])
+    delete(buf.lines[pos.y])
 
     builder := strings.builder_make(context.temp_allocator)
-    strings.write_string(&builder, buf.lines[row])
+    strings.write_string(&builder, buf.lines[pos.y][:pos.x])
     strings.write_string(&builder, string(text))
-    buf.lines[row] = strings.clone(strings.to_string(builder))
-    cursor.position.x += 1
+    strings.write_string(&builder, buf.lines[pos.y][pos.x:])
+    buf.lines[pos.y] = strings.clone(strings.to_string(builder))
+    pos.x += 1
 }
 
 editor_insert_new_line_and_indent :: proc() {
     buf := bragi.cbuffer
-    cursor := &buf.cursor
+    pos := &buf.cursor.position
+    left_side_of_cursor := buf.lines[pos.y][:pos.x]
+    right_side_of_cursor := buf.lines[pos.y][pos.x:]
+    buf.lines[pos.y] = left_side_of_cursor
 
-    cursor.position.y += 1
-    cursor.position.x = 0
+    pos.y += 1
+    pos.x = 0
 
-    if cursor.position.y >= len(buf.lines) {
-        // TODO: Add indentantion in the string below
-        append(&bragi.cbuffer.lines, "")
+    inject_at(&buf.lines, pos.y, right_side_of_cursor)
+}
+
+editor_delete_char_at_point :: proc(d: CursorDirection) {
+    buf := bragi.cbuffer
+    pos := &buf.cursor.position
+    builder := strings.builder_make(context.temp_allocator)
+
+    if d == .Left {
+        pos.x -= 1
+    }
+
+    if pos.x < 0 {
+        original_string_in_previous_line := buf.lines[pos.y - 1][:]
+        rest_of_string_from_removed_line := buf.lines[pos.y][:]
+        pos.y -= 1
+
+        if pos.y < 0 {
+            pos.y = 0
+            pos.x = 0
+        } else {
+            pos.x = len(buf.lines[pos.y])
+        }
+
+        delete(buf.lines[pos.y])
+        delete(buf.lines[pos.y + 1])
+        ordered_remove(&buf.lines, pos.y + 1)
+
+        strings.write_string(&builder, original_string_in_previous_line)
+        strings.write_string(&builder, rest_of_string_from_removed_line)
+        buf.lines[pos.y] = strings.clone(strings.to_string(builder))
+    } else if pos.x >= eol() {
+        original_string_in_current_line := buf.lines[pos.y][:]
+        rest_of_string_from_next_line := buf.lines[pos.y + 1][:]
+
+        delete(buf.lines[pos.y])
+        delete(buf.lines[pos.y + 1])
+        ordered_remove(&buf.lines, pos.y + 1)
+
+        strings.write_string(&builder, original_string_in_current_line)
+        strings.write_string(&builder, rest_of_string_from_next_line)
+        buf.lines[pos.y] = strings.clone(strings.to_string(builder))
+    } else {
+        delete(buf.lines[pos.y])
+
+        strings.write_string(&builder, buf.lines[pos.y][:pos.x])
+        strings.write_string(&builder, buf.lines[pos.y][pos.x + 1:])
+        buf.lines[pos.y] = strings.clone(strings.to_string(builder))
     }
 }
 
-editor_delete_char_at_point :: proc() {
+editor_move_viewport :: proc(offset: int) {
     buf := bragi.cbuffer
-    cursor := &buf.cursor
+    pos := &buf.cursor.position
+    viewport := &buf.viewport
+    eof_with_offset := eof() - EDITOR_UI_VIEWPORT_OFFSET
+    std_char_size := get_standard_character_size()
+    page_size := get_page_size()
 
-    cursor.position.x -= 1
+    if page_size.y < eof() {
+        viewport.y += offset
 
-    if cursor.position.x < 0 {
-        cursor.position.y -= 1
-
-        if cursor.position.y < 0 {
-            cursor.position.y = 0
+        if viewport.y < 0 {
+            viewport.y = 0
+        } else if viewport.y > eof_with_offset {
+            viewport.y = eof_with_offset
         }
 
-        cursor.position.x = len(buf.lines[buf.cursor.position.y])
+        if pos.y > viewport.y + page_size.y {
+            pos.y = viewport.y + page_size.y
+        } else if pos.y < viewport.y {
+            pos.y = viewport.y
+        }
+    }
+}
 
-        return
+editor_position_cursor :: proc(p: Vector2) {
+    buf := bragi.cbuffer
+    pos := &buf.cursor.position
+    std_char_size := get_standard_character_size()
+    viewport := &buf.viewport
+
+    pos.x = viewport.x + p.x / std_char_size.x
+    pos.y = viewport.y + p.y / std_char_size.y
+
+    if pos.x > eol() {
+        pos.x = eol()
+    } else if pos.x < 0 {
+        pos.x = 0
     }
 
-    row := cursor.position.y
-    buf.lines[row] = buf.lines[row][:len(buf.lines[row]) - 1]
+    if pos.y > eof() {
+        pos.y = eof()
+    } else if pos.y < 0 {
+        pos.y = 0
+    }
+
+    editor_adjust_viewport()
 }
 
 editor_move_cursor :: proc(d: CursorDirection) {
@@ -250,6 +331,12 @@ editor_adjust_viewport :: proc() {
     pos := &bragi.cbuffer.cursor.position
     viewport := &bragi.cbuffer.viewport
     page_size := get_page_size()
+
+    if pos.x > viewport.x + page_size.x {
+        viewport.x = pos.x - page_size.x
+    } else if pos.x < viewport.x {
+        viewport.x = pos.x
+    }
 
     if pos.y > viewport.y + page_size.y {
         viewport.y = pos.y - page_size.y

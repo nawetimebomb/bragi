@@ -53,7 +53,7 @@ Bragi :: struct {
 bragi: Bragi
 
 initialize_sdl :: proc() {
-    assert(sdl.Init(sdl.INIT_VIDEO) == 0, sdl.GetErrorString())
+    assert(sdl.Init({.VIDEO, .EVENTS}) == 0, sdl.GetErrorString())
     assert(ttf.Init() == 0, sdl.GetErrorString())
 
     bragi.ctx.window =
@@ -166,11 +166,23 @@ main :: proc() {
                     bragi.cbuffer = editor_maybe_create_buffer_from_file(filepath)
                     delete(e.drop.file)
                 }
+                case .MOUSEBUTTONDOWN: {
+                    m := e.button
+
+                    if m.button == 1 &&  m.clicks == 1 {
+                        editor_position_cursor({ int(m.x), int(m.y) })
+                    }
+                }
+                case .MOUSEWHEEL: {
+                    m := e.wheel
+                    editor_move_viewport(int(m.y * -1))
+                }
                 case .KEYDOWN: {
                     #partial switch e.key.keysym.sym {
                         // TODO: Dev mode only
                         case .ESCAPE    : bragi.ctx.running = false
-                        case .BACKSPACE : editor_delete_char_at_point()
+                        case .BACKSPACE : editor_delete_char_at_point(.Left)
+                        case .DELETE    : editor_delete_char_at_point(.Right)
                         case .RETURN    : editor_insert_new_line_and_indent()
                         case .UP:
                             if e.key.keysym.mod == sdl.KMOD_LCTRL {
@@ -223,6 +235,8 @@ main :: proc() {
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
         sdl.RenderClear(bragi.ctx.renderer)
 
+        viewport := bragi.cbuffer.viewport
+
         // TODO: Should be rendering the code that went through the parser/lexer
         // instead of just the code from the lines, with exceptions (maybe)
         for line, index in bragi.cbuffer.lines {
@@ -230,8 +244,8 @@ main :: proc() {
 
             for c in line {
                 char := bragi.ctx.characters[c]
-                char.dest.x = x
-                char.dest.y = i32(index - bragi.cbuffer.viewport.y) * char.dest.h
+                char.dest.x = x - i32(viewport.x) * char.dest.w
+                char.dest.y = i32(index - viewport.y) * char.dest.h
                 sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
                 x += char.dest.w
             }
@@ -242,9 +256,8 @@ main :: proc() {
         { // Render cursor
             sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
             cursor_pos := bragi.cbuffer.cursor.position
-            viewport := bragi.cbuffer.viewport
             cursor_rect := sdl.Rect{
-                i32(cursor_pos.x * std_char_size.x),
+                i32(cursor_pos.x * std_char_size.x - viewport.x * std_char_size.x),
                 i32(cursor_pos.y * std_char_size.y - viewport.y * std_char_size.y),
                 2, i32(std_char_size.y),
             }
@@ -261,7 +274,7 @@ main :: proc() {
             sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
 
             sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-            name_x : i32 = 10
+            name_x: i32 = 10
             for c in bragi.cbuffer.name {
                 char := bragi.ctx.characters[c]
                 char.dest.x = name_x

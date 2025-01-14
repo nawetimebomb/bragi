@@ -42,7 +42,7 @@ eol :: proc() -> int {
 }
 
 eof :: proc() -> int {
-    return len(bragi.cbuffer.lines)
+    return len(bragi.cbuffer.lines) - 1
 }
 
 get_page_size :: proc() -> Vector2 {
@@ -93,6 +93,8 @@ editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
     for line in strings.split_lines_iterator(&str_data) {
         append(&buf.lines, strings.clone(line))
     }
+
+    append(&buf.lines, "")
 
     return buf
 }
@@ -154,32 +156,18 @@ editor_move_cursor :: proc(d: CursorDirection) {
     page_size := get_page_size()
 
     switch d {
-    case .Up:
-        if pos.y > 0 {
-            pos.y -= 1
+    case .Up, .Down:
+        if (d == .Up && pos.y > 0) || (d == .Down && pos.y < eof()) {
+            pos.y += d == .Up ? -1 : 1
 
-            if pos.x != 0 {
+            if pos.x != 0 && pos.x > cursor.previous_x {
                 cursor.previous_x = pos.x
             }
 
-            if pos.x > eol() {
-                pos.x = 0
-            } else {
+            if pos.x <= eol() && cursor.previous_x <= eol() {
                 pos.x = cursor.previous_x
-            }
-        }
-    case .Down:
-        if pos.y < eof() {
-            pos.y += 1
-
-            if pos.x != 0 {
-                cursor.previous_x = pos.x
-            }
-
-            if pos.x > eol() {
-                pos.x = 0
             } else {
-                pos.x = cursor.previous_x
+                pos.x = eol()
             }
         }
     case .Left:
@@ -217,8 +205,8 @@ editor_move_cursor :: proc(d: CursorDirection) {
     case .End_Line:
         pos.x = eol()
     case .End_File:
-        pos.x = eof() - 1
-        pos.y = eol()
+        pos.y = eof()
+        pos.x = eol()
     case .Page_Up:
         pos.y -= page_size.y
 
@@ -240,7 +228,7 @@ editor_move_cursor :: proc(d: CursorDirection) {
         pos.y += page_size.y
 
         if pos.y > eof() {
-            pos.y = eof() - 1
+            pos.y = eof()
             pos.x = eol()
         } else {
             if pos.x != 0 {

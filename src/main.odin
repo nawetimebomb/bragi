@@ -199,15 +199,16 @@ main :: proc() {
                                 editor_move_cursor(.Right)
                             }
                         }
-                        case .A, .E, .B, .F, .P, .N: {
+                        case .A, .E, .B, .F, .P, .N, .PERIOD: {
                             if e.key.keysym.mod == sdl.KMOD_LCTRL {
                                 #partial switch e.key.keysym.sym {
-                                    case .A : editor_move_cursor(.Begin_Line)
-                                    case .E : editor_move_cursor(.End_Line)
-                                    case .P : editor_move_cursor(.Up)
-                                    case .N : editor_move_cursor(.Down)
-                                    case .B : editor_move_cursor(.Left)
-                                    case .F : editor_move_cursor(.Right)
+                                    case .A       : editor_move_cursor(.Begin_Line)
+                                    case .E       : editor_move_cursor(.End_Line)
+                                    case .P       : editor_move_cursor(.Up)
+                                    case .N       : editor_move_cursor(.Down)
+                                    case .B       : editor_move_cursor(.Left)
+                                    case .F       : editor_move_cursor(.Right)
+                                    case .PERIOD : editor_move_cursor(.End_File)
                                 }
                             }
                         }
@@ -247,6 +248,7 @@ main :: proc() {
                 i32(cursor_pos.y * std_char_size.y - viewport.y * std_char_size.y),
                 2, i32(std_char_size.y),
             }
+
             sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
         }
 

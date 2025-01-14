@@ -220,7 +220,7 @@ main :: proc() {
                                     case .N       : editor_move_cursor(.Down)
                                     case .B       : editor_move_cursor(.Left)
                                     case .F       : editor_move_cursor(.Right)
-                                    case .PERIOD : editor_move_cursor(.End_File)
+                                    case .PERIOD  : editor_move_cursor(.End_File)
                                 }
                             }
                         }

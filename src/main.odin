@@ -28,14 +28,14 @@ Settings :: struct {
     save_desktop_mode             : bool,
 }
 
-CharacterTexture :: struct {
+Character_Texture :: struct {
     texture : ^sdl.Texture,
     dest    : sdl.Rect,
 }
 
 SDL_Context :: struct {
     font         : ^ttf.Font,
-    characters   : map[rune]CharacterTexture,
+    characters   : map[rune]Character_Texture,
     running      : bool,
     renderer     : ^sdl.Renderer,
     window       : ^sdl.Window,
@@ -53,7 +53,7 @@ Bragi :: struct {
 bragi: Bragi
 
 initialize_sdl :: proc() {
-    assert(sdl.Init({.VIDEO, .EVENTS}) == 0, sdl.GetErrorString())
+    assert(sdl.Init({.VIDEO}) == 0, sdl.GetErrorString())
     assert(ttf.Init() == 0, sdl.GetErrorString())
 
     bragi.ctx.window =
@@ -100,7 +100,7 @@ create_textures_for_characters :: proc() {
         dest_rect := sdl.Rect{}
         ttf.SizeUTF8(bragi.ctx.font, cstr, &dest_rect.w, &dest_rect.h)
 
-        bragi.ctx.characters[c] = CharacterTexture{
+        bragi.ctx.characters[c] = Character_Texture{
             texture = texture,
             dest    = dest_rect,
         }
@@ -158,7 +158,7 @@ main :: proc() {
                             int(e.window.data1),
                             int(e.window.data2),
                         }
-                        editor_adjust_viewport()
+                        //editor_adjust_viewport_to_cursor()
                     }
                 }
                 case .DROPFILE: {
@@ -179,11 +179,10 @@ main :: proc() {
                     editor_scroll(int(m.y * -1))
                 }
                 case .KEYDOWN: {
+                    handle_key_down(e.key.keysym)
+
                     #partial switch e.key.keysym.sym {
                         // TODO: Dev mode only
-                        case .ESCAPE    : bragi.ctx.running = false
-                        case .BACKSPACE : editor_delete_char_at_point(.Left)
-                        case .DELETE    : editor_delete_char_at_point(.Right)
                         case .RETURN    : editor_insert_new_line_and_indent()
                         case .UP:
                             if e.key.keysym.mod == sdl.KMOD_LCTRL {
@@ -233,7 +232,7 @@ main :: proc() {
             }
         }
 
-        editor_adjust_viewport()
+        editor_adjust_viewport_to_cursor()
 
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
         sdl.RenderClear(bragi.ctx.renderer)

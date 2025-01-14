@@ -12,7 +12,7 @@ EDITOR_UI_VIEWPORT_OFFSET :: 2
 Vector2 :: distinct [2]int
 Line    :: string
 
-CursorDirection :: enum {
+Cursor_Direction :: enum {
     Up, Down, Left, Right,
     Begin_Line, Begin_File,
     End_Line, End_File,
@@ -25,6 +25,7 @@ Cursor :: struct {
     previous_x     : int,
     region_enabled : bool,
     region_start   : Vector2,
+    selection_mode : bool,
 }
 
 Buffer :: struct {
@@ -130,35 +131,109 @@ editor_insert_new_line_and_indent :: proc() {
     buf.modified = true
 }
 
-editor_delete_char_at_point :: proc(d: CursorDirection) {
+is_char_a_word_delimiter :: proc(c: rune) -> bool {
+    delimiters := " _-.,()[]'\""
+    return strings.contains_rune(delimiters, c)
+}
+
+find_word_len_with_delimiter :: proc(s: string, p: int, d: Cursor_Direction) -> int {
+    delimiters := " _-.,()[]'\""
+    hard_delimiters := " _-."
+
+    splits := [?]string{"_", "-", ".", ",", "(", ")", "[", "]", "\"", "'"}
+    test_string: string
+
+    if d == .Left {
+        test_string := s[:p]
+        res := strings.split_multi(test_string, splits[:])
+        value := len(res[len(res) - 1]) + 1
+        delete(res)
+        return value
+    } else {
+        test_string := s[p:]
+        return strings.index_any(test_string, delimiters) + 1
+    }
+}
+
+calculate_line_indentation :: proc(s: string) -> int {
+    for char, index in s {
+        if char != ' ' && char != '\t' {
+            return index
+        }
+    }
+
+    return 0
+}
+
+editor_delete_word_at_point :: proc(d: Cursor_Direction) {
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
+    line := buf.lines[new_pos.y]
+    line_indentation := calculate_line_indentation(line)
     builder := strings.builder_make(context.temp_allocator)
+    left_part_of_the_string, rest_of_the_string: string
+
+    if d == .Left && new_pos.x == 0 {
+        editor_delete_char_at_point(.Left)
+        return
+    } else if d == .Right && new_pos.x == len(line) {
+        editor_delete_char_at_point(.Right)
+        return
+    }
+
+    delete(buf.lines[new_pos.y])
+
+    word_len := find_word_len_with_delimiter(line, new_pos.x, d)
+    crop_start := new_pos.x + word_len
+
+    if new_pos.x < line_indentation {
+        crop_start = line_indentation - new_pos.x
+    } else if crop_start > len(line) {
+        crop_start = len(line)
+    }
+
+    if d == .Left {
+        new_pos.x -= word_len
+
+        if new_pos.x < 0 {
+            new_pos.x = 0
+        }
+    }
+
+    strings.write_string(&builder, line[:new_pos.x])
+    strings.write_string(&builder, line[crop_start:])
+
+    buf.lines[new_pos.y] = strings.clone(strings.to_string(builder))
+    buf.cursor.position = new_pos
+    buf.modified = true
+}
+
+editor_delete_char_at_point :: proc(d: Cursor_Direction) {
+    buf := bragi.cbuffer
+    new_pos := buf.cursor.position
     last_line := len(buf.lines)
+    builder := strings.builder_make(context.temp_allocator)
 
     if d == .Left {
         new_pos.x -= 1
     }
 
     if new_pos.x < 0 {
-        original_string_in_previous_line := buf.lines[new_pos.y - 1][:]
-        rest_of_string_from_removed_line := buf.lines[new_pos.y][:]
         new_pos.y -= 1
 
         if new_pos.y < 0 {
             new_pos.y = 0
             new_pos.x = 0
+            return
         } else {
             new_pos.x = len(buf.lines[new_pos.y])
         }
 
         delete(buf.lines[new_pos.y])
         delete(buf.lines[new_pos.y + 1])
+        strings.write_string(&builder, buf.lines[new_pos.y][:])
+        strings.write_string(&builder, buf.lines[new_pos.y + 1][:])
         ordered_remove(&buf.lines, new_pos.y + 1)
-
-        strings.write_string(&builder, original_string_in_previous_line)
-        strings.write_string(&builder, rest_of_string_from_removed_line)
-        buf.lines[new_pos.y] = strings.clone(strings.to_string(builder))
     } else if new_pos.x >= len(buf.lines[new_pos.y]) {
         if new_pos.y + 1 < last_line {
             original_string_in_current_line := buf.lines[new_pos.y][:]
@@ -170,16 +245,15 @@ editor_delete_char_at_point :: proc(d: CursorDirection) {
 
             strings.write_string(&builder, original_string_in_current_line)
             strings.write_string(&builder, rest_of_string_from_next_line)
-            buf.lines[new_pos.y] = strings.clone(strings.to_string(builder))
         }
     } else {
         delete(buf.lines[new_pos.y])
 
         strings.write_string(&builder, buf.lines[new_pos.y][:new_pos.x])
         strings.write_string(&builder, buf.lines[new_pos.y][new_pos.x + 1:])
-        buf.lines[new_pos.y] = strings.clone(strings.to_string(builder))
     }
 
+    buf.lines[new_pos.y] = strings.clone(strings.to_string(builder))
     buf.cursor.position = new_pos
     buf.modified = true
 }
@@ -237,7 +311,7 @@ editor_position_cursor :: proc(p: Vector2) {
     buf.cursor.position = new_pos
 }
 
-editor_move_cursor :: proc(d: CursorDirection) {
+editor_move_cursor :: proc(d: Cursor_Direction) {
     buf := bragi.cbuffer
     page_size := get_page_size()
     last_line := len(buf.lines) - 1
@@ -339,7 +413,7 @@ editor_move_cursor :: proc(d: CursorDirection) {
     buf.cursor.position = new_pos
 }
 
-editor_adjust_viewport :: proc() {
+editor_adjust_viewport_to_cursor :: proc() {
     pos := bragi.cbuffer.cursor.position
     page_size := get_page_size()
     new_viewport := bragi.cbuffer.viewport

@@ -1,7 +1,13 @@
 package main
 
+import "core:fmt"
 import "core:strings"
 import "core:os"
+
+// NOTE: Because we have some UI content showing all the time in the editor,
+// we have to limit the page size to the space that's actually seen,
+// and make sure we scroll earlier.
+EDITOR_UI_VIEWPORT_OFFSET :: 2
 
 Vector2 :: distinct [2]int
 Line    :: string
@@ -28,6 +34,7 @@ Buffer :: struct {
     readonly : bool,
     lines    : [dynamic]Line,
     cursor   : Cursor,
+    viewport : Vector2,
 }
 
 eol :: proc() -> int {
@@ -36,6 +43,15 @@ eol :: proc() -> int {
 
 eof :: proc() -> int {
     return len(bragi.cbuffer.lines)
+}
+
+get_page_size :: proc() -> Vector2 {
+    window_size := bragi.ctx.window_size
+    std_char_size := get_standard_character_size()
+    horizontal_page_size := (window_size.x / std_char_size.y)
+    vertical_page_size := (window_size.y / std_char_size.y) - EDITOR_UI_VIEWPORT_OFFSET
+
+    return Vector2{ horizontal_page_size, vertical_page_size }
 }
 
 editor_close :: proc() {
@@ -134,6 +150,8 @@ editor_move_cursor :: proc(d: CursorDirection) {
     buf := bragi.cbuffer
     cursor := &buf.cursor
     pos := &cursor.position
+    viewport := &buf.viewport
+    page_size := get_page_size()
 
     switch d {
     case .Up:
@@ -202,9 +220,7 @@ editor_move_cursor :: proc(d: CursorDirection) {
         pos.x = eof() - 1
         pos.y = eol()
     case .Page_Up:
-        std_char_size := get_standard_character_size()
-        page_jump := bragi.ctx.window_size.y / std_char_size.y
-        pos.y -= page_jump
+        pos.y -= page_size.y
 
         if pos.y < 0 {
             pos.y = 0
@@ -221,9 +237,7 @@ editor_move_cursor :: proc(d: CursorDirection) {
             }
         }
     case .Page_Down:
-        std_char_size := get_standard_character_size()
-        page_jump := bragi.ctx.window_size.y / std_char_size.y
-        pos.y += page_jump
+        pos.y += page_size.y
 
         if pos.y > eof() {
             pos.y = eof() - 1
@@ -239,5 +253,19 @@ editor_move_cursor :: proc(d: CursorDirection) {
                 pos.x = cursor.previous_x
             }
         }
+    }
+
+    editor_adjust_viewport()
+}
+
+editor_adjust_viewport :: proc() {
+    pos := &bragi.cbuffer.cursor.position
+    viewport := &bragi.cbuffer.viewport
+    page_size := get_page_size()
+
+    if pos.y > viewport.y + page_size.y {
+        viewport.y = pos.y - page_size.y
+    } else if pos.y < viewport.y {
+        viewport.y = pos.y
     }
 }

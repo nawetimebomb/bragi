@@ -151,11 +151,14 @@ main :: proc() {
             #partial switch e.type {
                 case .QUIT: bragi.ctx.running = false
                 case .WINDOWEVENT: {
-                    if e.window.data1 != 0 && e.window.data2 != 0 {
+                    w := e.window
+
+                    if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
                         bragi.ctx.window_size = {
                             int(e.window.data1),
                             int(e.window.data2),
                         }
+                        editor_adjust_viewport()
                     }
                 }
                 case .DROPFILE: {
@@ -227,7 +230,7 @@ main :: proc() {
             for c in line {
                 char := bragi.ctx.characters[c]
                 char.dest.x = x
-                char.dest.y = i32(index) * char.dest.h
+                char.dest.y = i32(index - bragi.cbuffer.viewport.y) * char.dest.h
                 sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
                 x += char.dest.w
             }
@@ -237,9 +240,11 @@ main :: proc() {
 
         { // Render cursor
             sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+            cursor_pos := bragi.cbuffer.cursor.position
+            viewport := bragi.cbuffer.viewport
             cursor_rect := sdl.Rect{
-                i32(bragi.cbuffer.cursor.position.x * std_char_size.x),
-                i32(bragi.cbuffer.cursor.position.y * std_char_size.y),
+                i32(cursor_pos.x * std_char_size.x),
+                i32(cursor_pos.y * std_char_size.y - viewport.y * std_char_size.y),
                 2, i32(std_char_size.y),
             }
             sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)

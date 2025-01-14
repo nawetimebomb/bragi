@@ -164,6 +164,7 @@ main :: proc() {
                 case .DROPFILE: {
                     filepath := string(e.drop.file)
                     bragi.cbuffer = editor_maybe_create_buffer_from_file(filepath)
+                    sdl.RaiseWindow(bragi.ctx.window)
                     delete(e.drop.file)
                 }
                 case .MOUSEBUTTONDOWN: {
@@ -175,7 +176,7 @@ main :: proc() {
                 }
                 case .MOUSEWHEEL: {
                     m := e.wheel
-                    editor_move_viewport(int(m.y * -1))
+                    editor_scroll(int(m.y * -1))
                 }
                 case .KEYDOWN: {
                     #partial switch e.key.keysym.sym {
@@ -231,6 +232,8 @@ main :: proc() {
                 }
             }
         }
+
+        editor_adjust_viewport()
 
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
         sdl.RenderClear(bragi.ctx.renderer)

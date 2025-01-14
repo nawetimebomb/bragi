@@ -112,7 +112,6 @@ editor_insert_at_point :: proc(text: cstring) {
 
     buf.cursor.position = new_pos
     buf.modified = true
-    editor_adjust_viewport()
 }
 
 editor_insert_new_line_and_indent :: proc() {
@@ -129,7 +128,6 @@ editor_insert_new_line_and_indent :: proc() {
 
     buf.cursor.position = new_pos
     buf.modified = true
-    editor_adjust_viewport()
 }
 
 editor_delete_char_at_point :: proc(d: CursorDirection) {
@@ -184,46 +182,45 @@ editor_delete_char_at_point :: proc(d: CursorDirection) {
 
     buf.cursor.position = new_pos
     buf.modified = true
-    editor_adjust_viewport()
 }
 
-editor_move_viewport :: proc(offset: int) {
+editor_scroll :: proc(offset: int) {
     buf := bragi.cbuffer
-    viewport := &buf.viewport
     last_line := len(buf.lines) - 1
     eof_with_offset := last_line - EDITOR_UI_VIEWPORT_OFFSET
     std_char_size := get_standard_character_size()
     page_size := get_page_size()
     new_pos := buf.cursor.position
+    new_viewport := buf.viewport
 
     if page_size.y < last_line {
-        viewport.y += offset
+        new_viewport.y += offset
 
-        if viewport.y < 0 {
-            viewport.y = 0
-        } else if viewport.y > eof_with_offset {
-            viewport.y = eof_with_offset
+        if new_viewport.y < 0 {
+            new_viewport.y = 0
+        } else if new_viewport.y > eof_with_offset {
+            new_viewport.y = eof_with_offset
         }
 
-        if new_pos.y > viewport.y + page_size.y {
-            new_pos.y = viewport.y + page_size.y
-        } else if new_pos.y < viewport.y {
-            new_pos.y = viewport.y
+        if new_pos.y > new_viewport.y + page_size.y {
+            new_pos.y = new_viewport.y + page_size.y
+        } else if new_pos.y < new_viewport.y {
+            new_pos.y = new_viewport.y
         }
     }
 
     buf.cursor.position = new_pos
+    buf.viewport = new_viewport
 }
 
 editor_position_cursor :: proc(p: Vector2) {
     buf := bragi.cbuffer
     std_char_size := get_standard_character_size()
-    viewport := &buf.viewport
     new_pos := Vector2{}
     last_line := len(buf.lines) - 1
 
-    new_pos.x = viewport.x + p.x / std_char_size.x
-    new_pos.y = viewport.y + p.y / std_char_size.y
+    new_pos.x = buf.viewport.x + p.x / std_char_size.x
+    new_pos.y = buf.viewport.y + p.y / std_char_size.y
 
     if new_pos.y > last_line {
         new_pos.y = last_line
@@ -238,7 +235,6 @@ editor_position_cursor :: proc(p: Vector2) {
     }
 
     buf.cursor.position = new_pos
-    editor_adjust_viewport()
 }
 
 editor_move_cursor :: proc(d: CursorDirection) {
@@ -341,23 +337,24 @@ editor_move_cursor :: proc(d: CursorDirection) {
     }
 
     buf.cursor.position = new_pos
-    editor_adjust_viewport()
 }
 
 editor_adjust_viewport :: proc() {
-    pos := &bragi.cbuffer.cursor.position
-    viewport := &bragi.cbuffer.viewport
+    pos := bragi.cbuffer.cursor.position
     page_size := get_page_size()
+    new_viewport := bragi.cbuffer.viewport
 
-    if pos.x > viewport.x + page_size.x {
-        viewport.x = pos.x - page_size.x
-    } else if pos.x < viewport.x {
-        viewport.x = pos.x
+    if pos.x > new_viewport.x + page_size.x {
+        new_viewport.x = pos.x - page_size.x
+    } else if pos.x < new_viewport.x {
+        new_viewport.x = pos.x
     }
 
-    if pos.y > viewport.y + page_size.y {
-        viewport.y = pos.y - page_size.y
-    } else if pos.y < viewport.y {
-        viewport.y = pos.y
+    if pos.y > new_viewport.y + page_size.y {
+        new_viewport.y = pos.y - page_size.y
+    } else if pos.y < new_viewport.y {
+        new_viewport.y = pos.y
     }
+
+    bragi.cbuffer.viewport = new_viewport
 }

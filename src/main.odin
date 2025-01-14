@@ -39,6 +39,7 @@ SDL_Context :: struct {
     running      : bool,
     renderer     : ^sdl.Renderer,
     window       : ^sdl.Window,
+    window_size  : Vector2,
 }
 
 Bragi :: struct {
@@ -69,6 +70,7 @@ initialize_sdl :: proc() {
     assert(bragi.ctx.font != nil, sdl.GetErrorString())
 
     bragi.ctx.running = true
+    bragi.ctx.window_size = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
 }
 
 destroy_sdl :: proc() {
@@ -108,6 +110,12 @@ create_textures_for_characters :: proc() {
     }
 }
 
+get_standard_character_size :: proc() -> Vector2 {
+    M_char_rect := bragi.ctx.characters['M'].dest
+
+    return Vector2{ int(M_char_rect.w), int(M_char_rect.h) }
+}
+
 main :: proc() {
     context.logger = log.create_console_logger()
 
@@ -130,7 +138,6 @@ main :: proc() {
 
     editor_open()
     initialize_sdl()
-
     create_textures_for_characters()
 
     for bragi.ctx.running {
@@ -143,6 +150,14 @@ main :: proc() {
         for sdl.PollEvent(&e) {
             #partial switch e.type {
                 case .QUIT: bragi.ctx.running = false
+                case .WINDOWEVENT: {
+                    if e.window.data1 != 0 && e.window.data2 != 0 {
+                        bragi.ctx.window_size = {
+                            int(e.window.data1),
+                            int(e.window.data2),
+                        }
+                    }
+                }
                 case .DROPFILE: {
                     filepath := string(e.drop.file)
                     bragi.cbuffer = editor_maybe_create_buffer_from_file(filepath)
@@ -204,8 +219,6 @@ main :: proc() {
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
         sdl.RenderClear(bragi.ctx.renderer)
 
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-
         // TODO: Should be rendering the code that went through the parser/lexer
         // instead of just the code from the lines, with exceptions (maybe)
         for line, index in bragi.cbuffer.lines {
@@ -220,23 +233,36 @@ main :: proc() {
             }
         }
 
-        name_x: i32
-        for c in bragi.cbuffer.name {
-            char := bragi.ctx.characters[c]
-            char.dest.x = name_x
-            char.dest.y = DEFAULT_WINDOW_HEIGHT - char.dest.h
-            sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
-            name_x += char.dest.w
+        std_char_size := get_standard_character_size()
+
+        { // Render cursor
+            sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+            cursor_rect := sdl.Rect{
+                i32(bragi.cbuffer.cursor.position.x * std_char_size.x),
+                i32(bragi.cbuffer.cursor.position.y * std_char_size.y),
+                2, i32(std_char_size.y),
+            }
+            sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
         }
 
-        m_char_rect := bragi.ctx.characters['M'].dest
-        cursor_rect := sdl.Rect{
-            i32(bragi.cbuffer.cursor.position.x) * m_char_rect.w,
-            i32(bragi.cbuffer.cursor.position.y) * m_char_rect.h,
-            2,
-            m_char_rect.h,
+        { // Render modeline
+            sdl.SetRenderDrawColor(bragi.ctx.renderer, 0, 86, 98, 255)
+            background_rect := sdl.Rect{
+                0, i32(bragi.ctx.window_size.y - std_char_size.y),
+                i32(bragi.ctx.window_size.x), i32(std_char_size.y),
+            }
+            sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
+
+            sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+            name_x : i32 = 10
+            for c in bragi.cbuffer.name {
+                char := bragi.ctx.characters[c]
+                char.dest.x = name_x
+                char.dest.y = i32(bragi.ctx.window_size.y) - char.dest.h
+                sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
+                name_x += char.dest.w
+            }
         }
-        sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
 
         sdl.RenderPresent(bragi.ctx.renderer)
 

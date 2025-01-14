@@ -199,11 +199,45 @@ editor_move_cursor :: proc(d: CursorDirection) {
     case .End_Line:
         pos.x = eol()
     case .End_File:
-        pos.x = eof()
+        pos.x = eof() - 1
         pos.y = eol()
     case .Page_Up:
-        // TODO: Implement
+        std_char_size := get_standard_character_size()
+        page_jump := bragi.ctx.window_size.y / std_char_size.y
+        pos.y -= page_jump
+
+        if pos.y < 0 {
+            pos.y = 0
+            pos.x = 0
+        } else {
+            if pos.x != 0 {
+                cursor.previous_x = pos.x
+            }
+
+            if pos.x > eol() {
+                pos.x = eol()
+            } else {
+                pos.x = cursor.previous_x
+            }
+        }
     case .Page_Down:
-        // TODO: Implement
+        std_char_size := get_standard_character_size()
+        page_jump := bragi.ctx.window_size.y / std_char_size.y
+        pos.y += page_jump
+
+        if pos.y > eof() {
+            pos.y = eof() - 1
+            pos.x = eol()
+        } else {
+            if pos.x != 0 {
+                cursor.previous_x = pos.x
+            }
+
+            if pos.x > eol() {
+                pos.x = eol()
+            } else {
+                pos.x = cursor.previous_x
+            }
+        }
     }
 }

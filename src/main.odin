@@ -178,52 +178,9 @@ main :: proc() {
                 }
                 case .KEYDOWN: {
                     handle_key_down(e.key.keysym)
-
-                    #partial switch e.key.keysym.sym {
-                        case .UP:
-                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
-                                editor_move_cursor(.Page_Up)
-                            } else {
-                                editor_move_cursor(.Up)
-                            }
-                        case .DOWN: {
-                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
-                                editor_move_cursor(.Page_Down)
-                            } else {
-                                editor_move_cursor(.Down)
-                            }
-                        }
-                        case .LEFT: {
-                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
-                                editor_move_cursor(.Begin_Line)
-                            } else {
-                                editor_move_cursor(.Backward)
-                            }
-                        }
-                        case .RIGHT: {
-                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
-                                editor_move_cursor(.End_Line)
-                            } else {
-                                editor_move_cursor(.Forward)
-                            }
-                        }
-                        case .A, .E, .B, .F, .P, .N, .PERIOD: {
-                            if e.key.keysym.mod == sdl.KMOD_LCTRL {
-                                #partial switch e.key.keysym.sym {
-                                    case .A       : editor_move_cursor(.Begin_Line)
-                                    case .E       : editor_move_cursor(.End_Line)
-                                    case .P       : editor_move_cursor(.Up)
-                                    case .N       : editor_move_cursor(.Down)
-                                    case .B       : editor_move_cursor(.Backward)
-                                    case .F       : editor_move_cursor(.Forward)
-                                    case .PERIOD  : editor_move_cursor(.End_File)
-                                }
-                            }
-                        }
-                     }
                 }
                 case .TEXTINPUT: {
-                    editor_insert_at_point(cstring(raw_data(e.text.text[:])))
+                    buffer_insert_at_point(cstring(raw_data(e.text.text[:])))
                 }
             }
         }

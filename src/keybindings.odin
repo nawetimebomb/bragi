@@ -19,20 +19,48 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         }
         case .BACKSPACE: {
             if is_any_ctrl_pressed(key.mod) {
-                editor_delete_word_at_point(.Backward)
+                buffer_delete_word_backward()
             } else {
-                editor_delete_char_at_point(.Backward)
+                buffer_delete_char_backward()
             }
         }
         case .DELETE: {
             if is_any_ctrl_pressed(key.mod) {
-                editor_delete_word_at_point(.Forward)
+                buffer_delete_word_forward()
             } else {
-                editor_delete_char_at_point(.Forward)
+                buffer_delete_char_forward()
             }
         }
         case .RETURN: {
-            editor_insert_new_line_and_indent()
+            buffer_newline()
+        }
+        case .UP: {
+            if is_any_ctrl_pressed(key.mod) {
+                buffer_backward_paragraph()
+            } else {
+                buffer_previous_line()
+            }
+        }
+        case .DOWN: {
+            if is_any_ctrl_pressed(key.mod) {
+                buffer_forward_paragraph()
+            } else {
+                buffer_next_line()
+            }
+        }
+        case .LEFT: {
+            // if e.key.keysym.mod == sdl.KMOD_LCTRL {
+            //     editor_move_cursor(.Begin_Line)
+            // } else {
+                editor_move_cursor(.Backward)
+            // }
+        }
+        case .RIGHT: {
+            // if e.key.keysym.mod == sdl.KMOD_LCTRL {
+            //     editor_move_cursor(.End_Line)
+            // } else {
+                editor_move_cursor(.Forward)
+            // }
         }
     }
 }

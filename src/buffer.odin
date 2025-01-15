@@ -391,15 +391,15 @@ buffer_scroll :: proc(offset: int) {
     page_size := buffer_page_size()
     new_pos := buf.cursor.position
 
-    if page_size.y < last_line {
-        new_pos.y += offset
+    new_pos.y += offset
 
-        if new_pos.y < 0 {
-            new_pos.y = 0
-        } else if new_pos.y > last_line {
-            new_pos.y = last_line
-        }
-
+    if new_pos.y > last_line {
+        new_pos.y = last_line
+        new_pos.x = 0
+    } else if new_pos.y < 0 {
+        new_pos.y = 0
+        new_pos.x = 0
+    } else {
         new_pos.x = len(buf.lines[new_pos.y])
     }
 

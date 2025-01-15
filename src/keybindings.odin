@@ -1,7 +1,21 @@
 package main
 
 import     "core:fmt"
+import     "core:slice"
 import sdl "vendor:sdl2"
+
+Emacs_Keybinds :: struct {
+    Cx_pressed: bool,
+}
+
+Keybinds_Variant :: union {
+    Emacs_Keybinds,
+}
+
+Keybinds :: struct {
+    last_keystroke: u32,
+    variant: Keybinds_Variant,
+}
 
 KMod :: sdl.KeymodFlag
 
@@ -15,6 +29,21 @@ is_any_ctrl_pressed :: proc(mod: sdl.Keymod) -> bool {
 
 is_any_shift_pressed :: proc(mod: sdl.Keymod) -> bool {
     return KMod.LSHIFT in mod || KMod.RSHIFT in mod
+}
+
+is_only_alt_pressed :: proc(mod: sdl.Keymod) -> bool {
+    return is_any_alt_pressed(mod) &&
+        !is_any_ctrl_pressed(mod) && !is_any_shift_pressed(mod)
+}
+
+is_only_ctrl_pressed :: proc(mod: sdl.Keymod) -> bool {
+    return is_any_ctrl_pressed(mod) &&
+        !is_any_alt_pressed(mod) && !is_any_shift_pressed(mod)
+}
+
+load_keybinds :: proc() {
+    // TODO: Here we should load the configuration from the user
+    bragi.keybinds.variant = Emacs_Keybinds{}
 }
 
 // These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
@@ -90,76 +119,107 @@ handle_sublime_keybindings :: proc(key: sdl.Keysym) {
 }
 
 handle_emacs_keybindings :: proc(key: sdl.Keysym) {
-    alt_pressed := is_any_alt_pressed(key.mod)
-    ctrl_pressed := is_any_ctrl_pressed(key.mod)
-    shift_pressed := is_any_shift_pressed(key.mod)
+    vkb := &bragi.keybinds.variant.(Emacs_Keybinds)
+
+    A  := is_only_alt_pressed(key.mod)
+    C  := is_only_ctrl_pressed(key.mod)
+    CX := vkb.Cx_pressed
+    S  := is_any_shift_pressed(key.mod)
+
+    vkb.Cx_pressed = false
 
     #partial switch key.sym {
         case .A: {
-            if ctrl_pressed {
-                buffer_beginning_of_line()
+            switch {
+            case C: buffer_beginning_of_line()
             }
         }
         case .B: {
-            if alt_pressed {
-                buffer_backward_word()
-            } else if ctrl_pressed {
-                buffer_backward_char()
+            switch {
+            case A: buffer_backward_word()
+            case C: buffer_backward_char()
+            }
+        }
+        case .D: {
+            switch {
+            case A: buffer_delete_word_forward()
+            case C: buffer_delete_char_forward()
             }
         }
         case .E: {
-            if ctrl_pressed {
-                buffer_end_of_line()
+            switch {
+            case C: buffer_end_of_line()
             }
         }
         case .F: {
-            if alt_pressed {
-                buffer_forward_word()
-            } else if ctrl_pressed {
-                buffer_forward_char()
+            switch {
+            case A: buffer_forward_word()
+            case C: buffer_forward_char()
             }
         }
         case .N: {
-            if ctrl_pressed {
-                buffer_next_line()
+            switch {
+            case C: buffer_next_line()
             }
         }
         case .P: {
-            if ctrl_pressed {
-                buffer_previous_line()
+            switch {
+            case C: buffer_previous_line()
+            }
+        }
+        case .S: {
+            switch {
+            case CX && C: editor_save_file()
+            case C: fmt.println("Search pressed") //buffer_search_forward()
             }
         }
         case .V: {
-            if alt_pressed && !ctrl_pressed {
-                buffer_scroll(-buffer_page_size().y)
-            } else if ctrl_pressed && !alt_pressed {
-                buffer_scroll(buffer_page_size().y)
+            switch {
+            case A: buffer_scroll(-buffer_page_size().y)
+            case C: buffer_scroll(buffer_page_size().y)
+            }
+        }
+        case .X: {
+            switch {
+            case A: // editor_command_dialog()
+            case C: vkb.Cx_pressed = true
             }
         }
         case .PERIOD: {
-            if alt_pressed && shift_pressed {
-                buffer_end_of_buffer()
+            switch {
+            case A && S: buffer_end_of_buffer()
             }
         }
         case .GREATER: {
-            if alt_pressed {
-                buffer_end_of_buffer()
+            switch {
+            case A: buffer_end_of_buffer()
             }
         }
         case .COMMA: {
-            if alt_pressed && shift_pressed {
-                buffer_beginning_of_buffer()
+            switch {
+            case A && S: buffer_beginning_of_buffer()
             }
         }
         case .LESS: {
-            if alt_pressed {
-                buffer_beginning_of_buffer()
+            switch {
+            case A: buffer_beginning_of_buffer()
             }
         }
     }
 }
 
 handle_key_down :: proc(key: sdl.Keysym) {
+    // NOTE: Disallow mod keys as keystrokes
+    disallowed_keystrokes := [?]sdl.Keycode{
+            .LCTRL, .RCTRL, .LSHIFT, .RSHIFT, .LALT, .RALT, .LGUI, .RGUI,
+    }
+
+    if slice.contains(disallowed_keystrokes[:], key.sym) {
+        return
+    }
+
+    bragi.keybinds.last_keystroke = sdl.GetTicks()
+
     // Generic keybindings
     handle_generic_keybindings(key)
 

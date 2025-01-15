@@ -43,10 +43,11 @@ SDL_Context :: struct {
 }
 
 Bragi :: struct {
-    cbuffer  : ^Buffer,
     buffers  : [dynamic]Buffer,
-
+    cbuffer  : ^Buffer,
+    keybinds : Keybinds,
     settings : Settings,
+
     ctx      : SDL_Context,
 }
 
@@ -138,6 +139,7 @@ main :: proc() {
     editor_open()
     initialize_sdl()
     create_textures_for_characters()
+    load_keybinds()
 
     for bragi.ctx.running {
         duration, dt_ms, frame_start, frame_end: u32

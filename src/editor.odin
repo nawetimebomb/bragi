@@ -25,12 +25,13 @@ editor_open :: proc() {
         // TODO: Load desktop configuration
     } else {
         bragi.cbuffer =
-            editor_maybe_create_buffer_from_file("C:/Code/bragi/src/main.odin")
+            editor_maybe_create_buffer_from_file("C:/Code/bragi/tests/hello.odin")
         //bragi.cbuffer = editor_create_buffer("*note*")
     }
 }
 
 editor_save_file :: proc() {
+    fmt.println("Trying to save file")
     buf := bragi.cbuffer
     string_buffer := strings.join(buf.lines[:], "\n")
     data := transmute([]u8)string_buffer

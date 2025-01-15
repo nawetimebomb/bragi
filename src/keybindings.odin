@@ -31,6 +31,9 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
                 editor_delete_char_at_point(.Right)
             }
         }
+        case .RETURN: {
+            editor_insert_new_line_and_indent()
+        }
     }
 }
 

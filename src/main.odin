@@ -112,7 +112,6 @@ create_textures_for_characters :: proc() {
 
 get_standard_character_size :: proc() -> Vector2 {
     M_char_rect := bragi.ctx.characters['M'].dest
-
     return Vector2{ int(M_char_rect.w), int(M_char_rect.h) }
 }
 
@@ -158,7 +157,6 @@ main :: proc() {
                             int(e.window.data1),
                             int(e.window.data2),
                         }
-                        //editor_adjust_viewport_to_cursor()
                     }
                 }
                 case .DROPFILE: {
@@ -182,8 +180,6 @@ main :: proc() {
                     handle_key_down(e.key.keysym)
 
                     #partial switch e.key.keysym.sym {
-                        // TODO: Dev mode only
-                        case .RETURN    : editor_insert_new_line_and_indent()
                         case .UP:
                             if e.key.keysym.mod == sdl.KMOD_LCTRL {
                                 editor_move_cursor(.Page_Up)

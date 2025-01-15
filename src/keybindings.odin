@@ -34,6 +34,12 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         case .RETURN: {
             buffer_newline()
         }
+        case .PAGEUP: {
+            buffer_scroll(-buffer_page_size().y)
+        }
+        case .PAGEDOWN: {
+            buffer_scroll(buffer_page_size().y)
+        }
         case .UP: {
             if is_any_ctrl_pressed(key.mod) {
                 buffer_backward_paragraph()

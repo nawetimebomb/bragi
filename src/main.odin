@@ -174,7 +174,8 @@ main :: proc() {
                 }
                 case .MOUSEWHEEL: {
                     m := e.wheel
-                    editor_scroll(int(m.y * -1))
+                    // TODO: Maybe make scrolling offset configurable
+                    buffer_scroll(int(m.y * -1) * 5)
                 }
                 case .KEYDOWN: {
                     handle_key_down(e.key.keysym)
@@ -185,7 +186,7 @@ main :: proc() {
             }
         }
 
-        editor_adjust_viewport_to_cursor()
+        buffer_correct_viewport()
 
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
         sdl.RenderClear(bragi.ctx.renderer)

@@ -53,7 +53,7 @@ buffer_newline :: proc() {
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
     og_line_index := buf.cursor.position.y
-    new_line_indent := get_line_indentation(buf.lines[og_line_index])
+    new_line_indent := get_string_indentation(buf.lines[og_line_index])
     builder := strings.builder_make(context.temp_allocator)
 
     current_line_content_before_break := buf.lines[og_line_index][:new_pos.x]
@@ -79,7 +79,7 @@ buffer_newline :: proc() {
 buffer_delete_word_backward :: proc() {
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
-    line_indent := get_line_indentation(buf.lines[new_pos.y])
+    line_indent := get_string_indentation(buf.lines[new_pos.y])
     builder := create_string_builder()
 
     if new_pos.x == 0 {
@@ -104,7 +104,7 @@ buffer_delete_word_backward :: proc() {
 buffer_delete_word_forward :: proc() {
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
-    line_indent := get_line_indentation(buf.lines[new_pos.y])
+    line_indent := get_string_indentation(buf.lines[new_pos.y])
     builder := create_string_builder()
 
     if new_pos.x == len(buf.lines[new_pos.y]) {
@@ -185,6 +185,22 @@ buffer_delete_char_forward :: proc() {
     buf.modified = true
 }
 
+buffer_backward_char :: proc() {
+    buf := bragi.cbuffer
+    new_pos := buf.cursor.position
+
+    if new_pos.x > 0 {
+        new_pos.x -= 1
+    } else {
+        if new_pos.y > 0 {
+            new_pos.y -= 1
+            new_pos.x = len(buf.lines[new_pos.y])
+        }
+    }
+
+    buf.cursor.position = new_pos
+}
+
 buffer_backward_paragraph :: proc() {
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
@@ -205,6 +221,40 @@ buffer_backward_paragraph :: proc() {
     buf.cursor.position = new_pos
 }
 
+buffer_backward_word :: proc() {
+    buf := bragi.cbuffer
+    new_pos := buf.cursor.position
+    prev_word_offset := find_backward_word(buf.lines[new_pos.y], new_pos.x)
+
+    if new_pos.x == 0 {
+        if new_pos.y > 0 {
+            new_pos.y -= 1
+            new_pos.x = len(buf.lines[new_pos.y])
+        }
+    } else {
+        new_pos.x = prev_word_offset
+    }
+
+    buf.cursor.position = new_pos
+}
+
+buffer_forward_char :: proc() {
+    buf := bragi.cbuffer
+    new_pos := buf.cursor.position
+    last_line := len(buf.lines) - 1
+
+    if new_pos.x < len(buf.lines[new_pos.y]) {
+        new_pos.x += 1
+    } else {
+        if new_pos.y < last_line {
+            new_pos.x = 0
+            new_pos.y += 1
+        }
+    }
+
+    buf.cursor.position = new_pos
+}
+
 buffer_forward_paragraph :: proc() {
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
@@ -220,6 +270,24 @@ buffer_forward_paragraph :: proc() {
     if new_pos.y == buf.cursor.position.y {
         new_pos.y = len(buf.lines) - 1
         new_pos.x = 0
+    }
+
+    buf.cursor.position = new_pos
+}
+
+buffer_forward_word :: proc() {
+    buf := bragi.cbuffer
+    new_pos := buf.cursor.position
+    next_word_offset := find_forward_word(buf.lines[new_pos.y], new_pos.x)
+    last_line := len(buf.lines) - 1
+
+    if new_pos.x >= len(buf.lines[new_pos.y]) {
+        if new_pos.y < last_line {
+            new_pos.y += 1
+            new_pos.x = 0
+        }
+    } else {
+        new_pos.x = next_word_offset
     }
 
     buf.cursor.position = new_pos
@@ -271,4 +339,32 @@ buffer_next_line :: proc() {
     }
 
     buf.cursor.position = new_pos
+}
+
+buffer_beginning_of_buffer :: proc() {
+    buf := bragi.cbuffer
+    buf.cursor.position = { 0, 0 }
+}
+
+buffer_beginning_of_line :: proc() {
+    buf := bragi.cbuffer
+    new_pos := buf.cursor.position
+
+    if new_pos.x == 0 {
+        new_pos.x = get_string_indentation(buf.lines[new_pos.y])
+    } else {
+        new_pos.x = 0
+    }
+
+    buf.cursor.position = new_pos
+}
+
+buffer_end_of_buffer :: proc() {
+    buf := bragi.cbuffer
+    buf.cursor.position = { 0, len(buf.lines) - 1 }
+}
+
+buffer_end_of_line :: proc() {
+    buf := bragi.cbuffer
+    buf.cursor.position.x = len(buf.lines[buf.cursor.position.y])
 }

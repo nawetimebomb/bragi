@@ -49,18 +49,18 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
             }
         }
         case .LEFT: {
-            // if e.key.keysym.mod == sdl.KMOD_LCTRL {
-            //     editor_move_cursor(.Begin_Line)
-            // } else {
-                editor_move_cursor(.Backward)
-            // }
+            if is_any_ctrl_pressed(key.mod) {
+                buffer_backward_word()
+            } else {
+                buffer_backward_char()
+            }
         }
         case .RIGHT: {
-            // if e.key.keysym.mod == sdl.KMOD_LCTRL {
-            //     editor_move_cursor(.End_Line)
-            // } else {
-                editor_move_cursor(.Forward)
-            // }
+            if is_any_ctrl_pressed(key.mod) {
+                buffer_forward_word()
+            } else {
+                buffer_forward_char()
+            }
         }
     }
 }

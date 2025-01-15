@@ -131,105 +131,64 @@ editor_position_cursor :: proc(p: Vector2) {
 }
 
 editor_move_cursor :: proc(d: Cursor_Direction) {
-    buf := bragi.cbuffer
-    page_size := get_page_size()
-    last_line := len(buf.lines) - 1
-    new_pos := buf.cursor.position
+    // buf := bragi.cbuffer
+    // page_size := get_page_size()
+    // last_line := len(buf.lines) - 1
+    // new_pos := buf.cursor.position
 
-    switch d {
-    case .Up, .Down:
-        if (d == .Up && new_pos.y > 0) || (d == .Down && new_pos.y < last_line) {
-            new_pos.y += d == .Up ? -1 : 1
-            line_len := len(buf.lines[new_pos.y])
+    // switch d {
+    // case .Begin_Line:
+    //     if new_pos.x == 0 {
+    //         for c, i in buf.lines[new_pos.y] {
+    //             if c != ' ' {
+    //                 new_pos.x = i
+    //                 return
+    //             }
+    //         }
+    //     } else {
+    //         new_pos.x = 0
+    //     }
+    // case .Page_Up:
+    //     new_pos.y -= page_size.y
 
-            if new_pos.x != 0 && new_pos.x > buf.cursor.previous_x {
-                buf.cursor.previous_x = new_pos.x
-            }
+    //     if new_pos.y < 0 {
+    //         new_pos.y = 0
+    //         new_pos.x = 0
+    //     } else {
+    //         line_len := len(buf.lines[new_pos.y])
 
-            if new_pos.x <= line_len && buf.cursor.previous_x <= line_len {
-                new_pos.x = buf.cursor.previous_x
-            } else {
-                new_pos.x = line_len
-            }
-        }
-    case .Backward:
-        if new_pos.x > 0 {
-            new_pos.x -= 1
-        } else {
-            if new_pos.y > 0 {
-                new_pos.y -= 1
-                new_pos.x = len(buf.lines[new_pos.y])
-            }
-        }
-    case .Forward:
-        if new_pos.x < len(buf.lines[new_pos.y]) {
-            new_pos.x += 1
-        } else {
-            if new_pos.y < last_line {
-                new_pos.x = 0
-                new_pos.y += 1
-            }
-        }
-    case .Begin_Line:
-        if new_pos.x == 0 {
-            for c, i in buf.lines[new_pos.y] {
-                if c != ' ' {
-                    new_pos.x = i
-                    return
-                }
-            }
-        } else {
-            new_pos.x = 0
-        }
-    case .Begin_File:
-        new_pos.x = 0
-        new_pos.y = 0
-    case .End_Line:
-        new_pos.x = len(buf.lines[new_pos.y])
-    case .End_File:
-        new_pos.y = last_line
-        new_pos.x = len(buf.lines[last_line])
-    case .Page_Up:
-        new_pos.y -= page_size.y
+    //         if new_pos.x != 0 {
+    //             buf.cursor.previous_x = new_pos.x
+    //         }
 
-        if new_pos.y < 0 {
-            new_pos.y = 0
-            new_pos.x = 0
-        } else {
-            line_len := len(buf.lines[new_pos.y])
+    //         if new_pos.x > line_len {
+    //             new_pos.x = line_len
+    //         } else {
+    //             new_pos.x = buf.cursor.previous_x
+    //         }
+    //     }
+    // case .Page_Down:
+    //     new_pos.y += page_size.y
 
-            if new_pos.x != 0 {
-                buf.cursor.previous_x = new_pos.x
-            }
+    //     if new_pos.y > last_line {
+    //         new_pos.y = last_line
+    //         new_pos.x = len(buf.lines[last_line])
+    //     } else {
+    //         line_len := len(buf.lines[new_pos.y])
 
-            if new_pos.x > line_len {
-                new_pos.x = line_len
-            } else {
-                new_pos.x = buf.cursor.previous_x
-            }
-        }
-    case .Page_Down:
-        new_pos.y += page_size.y
+    //         if new_pos.x != 0 {
+    //             buf.cursor.previous_x = new_pos.x
+    //         }
 
-        if new_pos.y > last_line {
-            new_pos.y = last_line
-            new_pos.x = len(buf.lines[last_line])
-        } else {
-            line_len := len(buf.lines[new_pos.y])
+    //         if new_pos.x > line_len {
+    //             new_pos.x = line_len
+    //         } else {
+    //             new_pos.x = buf.cursor.previous_x
+    //         }
+    //     }
+    // }
 
-            if new_pos.x != 0 {
-                buf.cursor.previous_x = new_pos.x
-            }
-
-            if new_pos.x > line_len {
-                new_pos.x = line_len
-            } else {
-                new_pos.x = buf.cursor.previous_x
-            }
-        }
-    }
-
-    buf.cursor.position = new_pos
+    // buf.cursor.position = new_pos
 }
 
 editor_adjust_viewport_to_cursor :: proc() {

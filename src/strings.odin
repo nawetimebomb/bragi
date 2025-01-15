@@ -14,12 +14,13 @@ find_backward_word :: proc(line: string, point: int) -> int {
 
 find_forward_word :: proc(line: string, point: int) -> int {
     delimiters := get_word_delimiters()
-    part_of_line_to_find_word := line[point:]
+    part_of_line_to_find_word := strings.trim_left_space(line[point:])
+    rest_of_string := line[:point]
     result := max(strings.index_any(part_of_line_to_find_word, delimiters) + 1, 0)
-    return result > 0 ? result : len(line)
+    return result > 0 ? result + len(rest_of_string) : len(line)
 }
 
-get_line_indentation :: proc(s: string) -> int {
+get_string_indentation :: proc(s: string) -> int {
     for char, index in s { if char != ' ' && char != '\t' { return index } }
     return 0
 }

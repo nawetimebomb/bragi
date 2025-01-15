@@ -78,14 +78,11 @@ is_code_block_open :: proc(line_index: int) -> bool {
     return len(line) > 0 && line[len(line) - 1] == '{'
 }
 
-editor_position_cursor :: proc(p: Vector2) {
+editor_position_cursor :: proc(wp: Vector2) {
     buf := bragi.cbuffer
     std_char_size := get_standard_character_size()
-    new_pos := Vector2{}
+    new_pos := cursor_canonicalize(wp)
     last_line := len(buf.lines) - 1
-
-    new_pos.x = buf.viewport.x + p.x / std_char_size.x
-    new_pos.y = buf.viewport.y + p.y / std_char_size.y
 
     if new_pos.y > last_line {
         new_pos.y = last_line
@@ -99,5 +96,20 @@ editor_position_cursor :: proc(p: Vector2) {
         new_pos.x = 0
     }
 
+    buf.cursor.position = new_pos
+}
+
+editor_select :: proc(wp: Vector2) {
+    editor_position_cursor(wp)
+
+    buf := bragi.cbuffer
+    new_pos := buf.cursor.position
+
+    start, end := find_word_in_place(buf.lines[new_pos.y], new_pos.x)
+
+    new_pos.x = end
+
+    buf.cursor.region_enabled = true
+    buf.cursor.region_start = { start, new_pos.y }
     buf.cursor.position = new_pos
 }

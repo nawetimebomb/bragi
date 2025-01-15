@@ -27,14 +27,33 @@ find_forward_word :: proc(line: string, point: int) -> int {
     diff_point := len(line) - len(part_of_the_string)
 
     for x := diff_point + 1; x < len(line); x += 1 {
-        test_string := line[x:x + 1]
-
-        if strings.contains_any(test_string, delimiters) {
+        if strings.contains_rune(delimiters, rune(line[x])) {
             return x
         }
     }
 
     return len(line)
+}
+
+find_word_in_place :: proc(line: string, point: int) -> (int, int) {
+    delimiters := get_word_delimiters()
+    start, end := 0, len(line)
+
+    for x := point; x > 0; x -= 1 {
+        if strings.contains_rune(delimiters, rune(line[x - 1])) {
+            start = x
+            break
+        }
+    }
+
+    for x := point; x < len(line); x += 1 {
+        if strings.contains_rune(delimiters, rune(line[x])) {
+            end = x
+            break
+        }
+    }
+
+    return start, end
 }
 
 get_string_indentation :: proc(s: string) -> int {

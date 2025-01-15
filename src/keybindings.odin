@@ -19,26 +19,32 @@ Keybinds :: struct {
 
 KMod :: sdl.KeymodFlag
 
-is_any_alt_pressed :: proc(mod: sdl.Keymod) -> bool {
+check_alt :: proc(mod: sdl.Keymod) -> bool {
     return KMod.LALT in mod || KMod.RALT in mod
 }
 
-is_any_ctrl_pressed :: proc(mod: sdl.Keymod) -> bool {
+check_ctrl :: proc(mod: sdl.Keymod) -> bool {
     return KMod.LCTRL in mod || KMod.RCTRL in mod
 }
 
-is_any_shift_pressed :: proc(mod: sdl.Keymod) -> bool {
+check_shift :: proc(mod: sdl.Keymod) -> bool {
     return KMod.LSHIFT in mod || KMod.RSHIFT in mod
 }
 
-is_only_alt_pressed :: proc(mod: sdl.Keymod) -> bool {
-    return is_any_alt_pressed(mod) &&
-        !is_any_ctrl_pressed(mod) && !is_any_shift_pressed(mod)
+check_alt_shift :: proc(mod: sdl.Keymod) -> bool {
+    return check_alt(mod) && check_shift(mod) && !check_ctrl(mod)
 }
 
-is_only_ctrl_pressed :: proc(mod: sdl.Keymod) -> bool {
-    return is_any_ctrl_pressed(mod) &&
-        !is_any_alt_pressed(mod) && !is_any_shift_pressed(mod)
+check_ctrl_alt :: proc(mod: sdl.Keymod) -> bool {
+    return check_alt(mod) && check_ctrl(mod) && !check_shift(mod)
+}
+
+check_ctrl_shift :: proc(mod: sdl.Keymod) -> bool {
+    return check_ctrl(mod) && check_shift(mod) && !check_alt(mod)
+}
+
+check_ctrl_alt_shift :: proc(mod: sdl.Keymod) -> bool {
+    return check_alt(mod) && check_ctrl(mod) && check_shift(mod)
 }
 
 load_keybinds :: proc() {
@@ -48,6 +54,14 @@ load_keybinds :: proc() {
 
 // These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
 handle_generic_keybindings :: proc(key: sdl.Keysym) {
+    A   := check_alt(key.mod)
+    AS  := check_alt_shift(key.mod)
+    C   := check_ctrl(key.mod)
+    CA  := check_ctrl_alt(key.mod)
+    CS  := check_ctrl_shift(key.mod)
+    CAS := check_ctrl_alt_shift(key.mod)
+    S   := check_shift(key.mod)
+
     #partial switch key.sym {
         case .ESCAPE: {
             when ODIN_DEBUG {
@@ -55,17 +69,15 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
             }
         }
         case .BACKSPACE: {
-            if is_any_ctrl_pressed(key.mod) {
-                buffer_delete_word_backward()
-            } else {
-                buffer_delete_char_backward()
+            switch {
+            case C: buffer_delete_word_backward()
+            case  : buffer_delete_char_backward()
             }
         }
         case .DELETE: {
-            if is_any_ctrl_pressed(key.mod) {
-                buffer_delete_word_forward()
-            } else {
-                buffer_delete_char_forward()
+            switch {
+            case C: buffer_delete_word_forward()
+            case  : buffer_delete_char_forward()
             }
         }
         case .RETURN: {
@@ -78,41 +90,45 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
             buffer_scroll(buffer_page_size().y)
         }
         case .UP: {
-            if is_any_ctrl_pressed(key.mod) {
-                buffer_backward_paragraph()
-            } else {
-                buffer_previous_line()
+            switch {
+            case C: buffer_backward_paragraph()
+            case  : buffer_previous_line()
             }
         }
         case .DOWN: {
-            if is_any_ctrl_pressed(key.mod) {
-                buffer_forward_paragraph()
-            } else {
-                buffer_next_line()
+            switch {
+            case C: buffer_forward_paragraph()
+            case  : buffer_next_line()
             }
         }
         case .LEFT: {
-            if is_any_ctrl_pressed(key.mod) {
-                buffer_backward_word()
-            } else {
-                buffer_backward_char()
+            switch {
+            case C: buffer_backward_word()
+            case  : buffer_backward_char()
             }
         }
         case .RIGHT: {
-            if is_any_ctrl_pressed(key.mod) {
-                buffer_forward_word()
-            } else {
-                buffer_forward_char()
+            switch {
+            case C: buffer_forward_word()
+            case  : buffer_forward_char()
             }
         }
     }
 }
 
 handle_sublime_keybindings :: proc(key: sdl.Keysym) {
+    A   := check_alt(key.mod)
+    AS  := check_alt_shift(key.mod)
+    C   := check_ctrl(key.mod)
+    CA  := check_ctrl_alt(key.mod)
+    CS  := check_ctrl_shift(key.mod)
+    CAS := check_ctrl_alt_shift(key.mod)
+    S   := check_shift(key.mod)
+
     #partial switch key.sym {
         case .S: {
-            if is_any_ctrl_pressed(key.mod) {
-                editor_save_file()
+            switch {
+            case C: editor_save_file()
             }
         }
     }
@@ -121,10 +137,14 @@ handle_sublime_keybindings :: proc(key: sdl.Keysym) {
 handle_emacs_keybindings :: proc(key: sdl.Keysym) {
     vkb := &bragi.keybinds.variant.(Emacs_Keybinds)
 
-    A  := is_only_alt_pressed(key.mod)
-    C  := is_only_ctrl_pressed(key.mod)
-    CX := vkb.Cx_pressed
-    S  := is_any_shift_pressed(key.mod)
+    A   := check_alt(key.mod)
+    AS  := check_alt_shift(key.mod)
+    C   := check_ctrl(key.mod)
+    CA  := check_ctrl_alt(key.mod)
+    CS  := check_ctrl_shift(key.mod)
+    CAS := check_ctrl_alt_shift(key.mod)
+    CX  := vkb.Cx_pressed
+    S   := check_shift(key.mod)
 
     vkb.Cx_pressed = false
 
@@ -187,7 +207,7 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .PERIOD: {
             switch {
-            case A && S: buffer_end_of_buffer()
+            case AS: buffer_end_of_buffer()
             }
         }
         case .GREATER: {

@@ -3,15 +3,6 @@ package main
 import "core:fmt"
 import "core:strings"
 
-Cursor :: struct {
-    animated       : bool,
-    position       : Vector2,
-    previous_x     : int,
-    region_enabled : bool,
-    region_start   : Vector2,
-    selection_mode : bool,
-}
-
 Buffer :: struct {
     name     : string,
     filepath : string,
@@ -385,6 +376,8 @@ buffer_page_size :: proc() -> Vector2 {
     return Vector2{ horizontal_page_size, vertical_page_size }
 }
 
+// TODO: Maybe improve this so it scrolls the camera instead of the cursor, and
+// then align the cursor if it ended up out of the screen
 buffer_scroll :: proc(offset: int) {
     buf := bragi.cbuffer
     last_line := len(buf.lines) - 1

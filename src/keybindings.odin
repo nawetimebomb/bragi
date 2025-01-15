@@ -19,16 +19,16 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         }
         case .BACKSPACE: {
             if is_any_ctrl_pressed(key.mod) {
-                editor_delete_word_at_point(.Left)
+                editor_delete_word_at_point(.Backward)
             } else {
-                editor_delete_char_at_point(.Left)
+                editor_delete_char_at_point(.Backward)
             }
         }
         case .DELETE: {
             if is_any_ctrl_pressed(key.mod) {
-                editor_delete_word_at_point(.Right)
+                editor_delete_word_at_point(.Forward)
             } else {
-                editor_delete_char_at_point(.Right)
+                editor_delete_char_at_point(.Forward)
             }
         }
         case .RETURN: {

@@ -197,14 +197,14 @@ main :: proc() {
                             if e.key.keysym.mod == sdl.KMOD_LCTRL {
                                 editor_move_cursor(.Begin_Line)
                             } else {
-                                editor_move_cursor(.Left)
+                                editor_move_cursor(.Backward)
                             }
                         }
                         case .RIGHT: {
                             if e.key.keysym.mod == sdl.KMOD_LCTRL {
                                 editor_move_cursor(.End_Line)
                             } else {
-                                editor_move_cursor(.Right)
+                                editor_move_cursor(.Forward)
                             }
                         }
                         case .A, .E, .B, .F, .P, .N, .PERIOD: {
@@ -214,8 +214,8 @@ main :: proc() {
                                     case .E       : editor_move_cursor(.End_Line)
                                     case .P       : editor_move_cursor(.Up)
                                     case .N       : editor_move_cursor(.Down)
-                                    case .B       : editor_move_cursor(.Left)
-                                    case .F       : editor_move_cursor(.Right)
+                                    case .B       : editor_move_cursor(.Backward)
+                                    case .F       : editor_move_cursor(.Forward)
                                     case .PERIOD  : editor_move_cursor(.End_File)
                                 }
                             }

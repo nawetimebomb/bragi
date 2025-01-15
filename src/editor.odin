@@ -13,7 +13,8 @@ Vector2 :: distinct [2]int
 Line    :: string
 
 Cursor_Direction :: enum {
-    Up, Down, Left, Right,
+    Up, Down,
+    Backward, Forward,
     Begin_Line, Begin_File,
     End_Line, End_File,
     Page_Up, Page_Down,
@@ -150,7 +151,7 @@ editor_insert_new_line_and_indent :: proc() {
 }
 
 find_word_len_with_delimiter :: proc(s: string, p: int, d: Cursor_Direction) -> int {
-    if d == .Left {
+    if d == .Backward {
         delimiters := " _-."
         test_string := s[:p]
         return max(strings.last_index_any(test_string, delimiters), 0)
@@ -179,21 +180,21 @@ editor_delete_word_at_point :: proc(d: Cursor_Direction) {
     line_indentation := calculate_line_indentation(buf.lines[new_pos.y])
     builder := strings.builder_make(context.temp_allocator)
 
-    if d == .Left && new_pos.x == 0 {
-        editor_delete_char_at_point(.Left)
+    if d == .Backward && new_pos.x == 0 {
+        editor_delete_char_at_point(.Backward)
         return
-    } else if d == .Right && new_pos.x == len(buf.lines[new_pos.y]) {
-        editor_delete_char_at_point(.Right)
+    } else if d == .Forward && new_pos.x == len(buf.lines[new_pos.y]) {
+        editor_delete_char_at_point(.Forward)
         return
     }
 
     word_end_index := find_word_len_with_delimiter(buf.lines[new_pos.y], new_pos.x, d)
     cutoff_index: int
 
-    if d == .Left {
+    if d == .Backward {
         new_pos.x = word_end_index
         cutoff_index = buf.cursor.position.x
-    } else if d == .Right {
+    } else if d == .Forward {
         if new_pos.x < line_indentation && word_end_index < line_indentation {
             cutoff_index = line_indentation
         } else {
@@ -216,7 +217,7 @@ editor_delete_char_at_point :: proc(d: Cursor_Direction) {
     last_line := len(buf.lines)
     builder := strings.builder_make(context.temp_allocator)
 
-    if d == .Left {
+    if d == .Backward {
         new_pos.x -= 1
     }
 
@@ -332,7 +333,7 @@ editor_move_cursor :: proc(d: Cursor_Direction) {
                 new_pos.x = line_len
             }
         }
-    case .Left:
+    case .Backward:
         if new_pos.x > 0 {
             new_pos.x -= 1
         } else {
@@ -341,7 +342,7 @@ editor_move_cursor :: proc(d: Cursor_Direction) {
                 new_pos.x = len(buf.lines[new_pos.y])
             }
         }
-    case .Right:
+    case .Forward:
         if new_pos.x < len(buf.lines[new_pos.y]) {
             new_pos.x += 1
         } else {

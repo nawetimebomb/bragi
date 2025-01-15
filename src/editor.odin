@@ -4,11 +4,6 @@ import "core:fmt"
 import "core:strings"
 import "core:os"
 
-// NOTE: Because we have some UI content showing all the time in the editor,
-// we have to limit the page size to the space that's actually seen,
-// and make sure we scroll earlier.
-EDITOR_UI_VIEWPORT_OFFSET :: 2
-
 Vector2 :: distinct [2]int
 Line    :: string
 
@@ -30,9 +25,22 @@ editor_open :: proc() {
         // TODO: Load desktop configuration
     } else {
         bragi.cbuffer =
-            editor_maybe_create_buffer_from_file("C:/Code/bragi/tests/hello.odin")
+            editor_maybe_create_buffer_from_file("C:/Code/bragi/src/main.odin")
         //bragi.cbuffer = editor_create_buffer("*note*")
     }
+}
+
+editor_save_file :: proc() {
+    buf := bragi.cbuffer
+    string_buffer := strings.join(buf.lines[:], "\n")
+    data := transmute([]u8)string_buffer
+    err := os.write_entire_file_or_err(buf.filepath, data)
+
+    if err != nil {
+        fmt.println(data, "Failed to save file", err)
+    }
+
+    delete(string_buffer)
 }
 
 editor_create_buffer :: proc(buf_name: string, initial_length: int = 1) -> ^Buffer {
@@ -53,6 +61,7 @@ editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
     data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
     str_data := string(data)
     buf := editor_create_buffer(name, 0)
+    buf.filepath = filepath
 
     for line in strings.split_lines_iterator(&str_data) {
         append(&buf.lines, strings.clone(line))

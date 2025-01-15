@@ -217,6 +217,7 @@ buffer_backward_word :: proc() {
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
     prev_word_offset := find_backward_word(buf.lines[new_pos.y], new_pos.x)
+    line_indent := get_string_indentation(buf.lines[new_pos.y])
 
     if new_pos.x == 0 {
         if new_pos.y > 0 {
@@ -225,6 +226,10 @@ buffer_backward_word :: proc() {
         }
     } else {
         new_pos.x = prev_word_offset
+
+        if new_pos.x < line_indent {
+            new_pos.x = 0
+        }
     }
 
     buf.cursor.position = new_pos
@@ -272,14 +277,19 @@ buffer_forward_word :: proc() {
     new_pos := buf.cursor.position
     next_word_offset := find_forward_word(buf.lines[new_pos.y], new_pos.x)
     last_line := len(buf.lines) - 1
+    line_indent := get_string_indentation(buf.lines[new_pos.y])
 
     if new_pos.x >= len(buf.lines[new_pos.y]) {
         if new_pos.y < last_line {
             new_pos.y += 1
-            new_pos.x = 0
+            new_pos.x = get_string_indentation(buf.lines[new_pos.y])
         }
     } else {
         new_pos.x = next_word_offset
+
+        if new_pos.x < line_indent {
+            new_pos.x = line_indent
+        }
     }
 
     buf.cursor.position = new_pos
@@ -362,6 +372,11 @@ buffer_end_of_line :: proc() {
 }
 
 buffer_page_size :: proc() -> Vector2 {
+    // NOTE: Because we have some UI content showing all the time in the editor,
+    // we have to limit the page size to the space that's actually seen,
+    // and make sure we scroll earlier.
+    EDITOR_UI_VIEWPORT_OFFSET :: 2
+
     window_size := bragi.ctx.window_size
     std_char_size := get_standard_character_size()
     horizontal_page_size := (window_size.x / std_char_size.x) - EDITOR_UI_VIEWPORT_OFFSET
@@ -384,6 +399,8 @@ buffer_scroll :: proc(offset: int) {
         } else if new_pos.y > last_line {
             new_pos.y = last_line
         }
+
+        new_pos.x = len(buf.lines[new_pos.y])
     }
 
     buf.cursor.position = new_pos

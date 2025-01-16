@@ -9,11 +9,14 @@ import "core:unicode/utf8"
 
 Text_Buffer :: struct {
     allocator : runtime.Allocator,
+    cursor    : int,
     data      : []u8,
+    filepath  : string,
     gap_start : int,
     gap_end   : int,
-    cursor    : int,
     lines     : [dynamic]int,
+    name      : string,
+    strbuffer : strings.Builder,
 }
 
 make_text_buffer :: proc(bytes_count: int, allocator := context.allocator) -> Text_Buffer {
@@ -21,6 +24,7 @@ make_text_buffer :: proc(bytes_count: int, allocator := context.allocator) -> Te
         allocator = allocator,
         data      = make([]u8, bytes_count, allocator),
         gap_end   = bytes_count,
+        strbuffer = strings.builder_make(context.temp_allocator),
     }
 }
 
@@ -32,14 +36,13 @@ delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
     buffer_calculate_lines(buffer)
 }
 
-insert_at :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
-    buffer_insert(buffer, cursor, str)
+insert_at :: proc(buffer: ^Text_Buffer, str: string) {
+    buffer_insert(buffer, buffer.cursor, str)
     buffer.cursor += len(str)
     buffer_calculate_lines(buffer)
 }
 
 rune_at :: proc(buffer: ^Text_Buffer) -> rune {
-    fmt.println(buffer.cursor)
     cursor := clamp(buffer.cursor, 0, buffer_len(buffer) - 1)
     left, right := buffer_get_strings(buffer)
 
@@ -50,7 +53,7 @@ rune_at :: proc(buffer: ^Text_Buffer) -> rune {
     }
 }
 
-flush_range :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder, start, end: int) {
+flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
     left, right := buffer_get_strings(buffer)
     assert(start >= 0, "invalid cursor start position")
     assert(end <= buffer_len(buffer), "invalid cursor end position")
@@ -58,17 +61,17 @@ flush_range :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder, start, e
     left_len := len(left)
 
     if end <= left_len {
-        strings.write_string(str_buffer, left[start:end])
+        strings.write_string(&buffer.strbuffer, left[start:end])
     } else if start >= left_len {
-        strings.write_string(str_buffer, right[start - left_len:end - left_len])
+        strings.write_string(&buffer.strbuffer, right[start - left_len:end - left_len])
     } else {
-        strings.write_string(str_buffer, left[start:])
-        strings.write_string(str_buffer, right[:end - left_len])
+        strings.write_string(&buffer.strbuffer, left[start:])
+        strings.write_string(&buffer.strbuffer, right[:end - left_len])
     }
 }
 
-flush_entire_buffer :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder) {
-    flush_range(buffer, str_buffer, 0, buffer_len(buffer))
+flush_entire_buffer :: proc(buffer: ^Text_Buffer) {
+    flush_range(buffer, 0, buffer_len(buffer))
 }
 
 @(private="file")

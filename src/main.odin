@@ -1,11 +1,12 @@
 package main
 
 import     "base:runtime"
-import     "core:unicode/utf8"
 import     "core:fmt"
 import     "core:log"
 import     "core:mem"
 import     "core:os"
+import     "core:strings"
+import     "core:unicode/utf8"
 import sdl "vendor:sdl2"
 import ttf "vendor:sdl2/ttf"
 
@@ -42,13 +43,23 @@ SDL_Context :: struct {
     window_size  : Vector2,
 }
 
-Bragi :: struct {
-    buffers  : [dynamic]Buffer,
-    cbuffer  : ^Buffer,
-    keybinds : Keybinds,
-    settings : Settings,
+Pane :: struct {
+    dimensions : Vector2,
+    buffer     : ^Text_Buffer,
+}
 
+Bragi :: struct {
     ctx      : SDL_Context,
+
+    tbuffers:     [dynamic]Text_Buffer,
+    panes:        [dynamic]Pane,
+    focused_pane: int,
+    keybinds:     Keybinds,
+
+    buffers:      [dynamic]Buffer,
+    cbuffer:      ^Buffer,
+
+    settings:     Settings,
 }
 
 bragi: Bragi
@@ -193,6 +204,8 @@ main :: proc() {
                 case .TEXTINPUT: {
                     bragi.cbuffer.cursor.region_enabled = false
                     bragi.keybinds.last_keystroke = sdl.GetTicks()
+                    input_char := cstring(raw_data(e.text.text[:]))
+                    insert_at(bragi.panes[bragi.focused_pane].buffer, string(input_char))
                     buffer_insert_at_point(cstring(raw_data(e.text.text[:])))
                 }
             }
@@ -200,111 +213,8 @@ main :: proc() {
 
         buffer_correct_viewport()
 
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
-        sdl.RenderClear(bragi.ctx.renderer)
-
-        buf := bragi.cbuffer
-        cursor := &buf.cursor
-        viewport := buf.viewport
-        std_char_size := get_standard_character_size()
-        cursor_rendered := false
-
-        cursor.timer += dt_ms
-
-        if bragi.keybinds.last_keystroke == sdl.GetTicks() {
-            cursor.timer = 0
-            cursor.hidden = false
-        }
-
-        if cursor.timer > 500 {
-            cursor.timer = 0
-            cursor.hidden = !cursor.hidden
-        }
-
-        // TODO: Should be rendering the code that went through the parser/lexer
-        // instead of just the code from the lines, with exceptions (maybe)
-        // This also should be improved to make sense
-        for line, yidx in buf.lines {
-            x_pos: i32
-
-            for c, xidx in line {
-                char := bragi.ctx.characters[c]
-                cpos := cursor.position
-
-                if !cursor.hidden && !cursor_rendered && yidx == cpos.y && xidx == cpos.x {
-                    cursor_rendered = true
-
-                    sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
-                    cursor_rect := sdl.Rect{
-                        i32(cpos.x * std_char_size.x - viewport.x * std_char_size.x),
-                        i32(cpos.y * std_char_size.y - viewport.y * std_char_size.y),
-                        i32(std_char_size.x), i32(std_char_size.y),
-                    }
-                    sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
-                    sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-                    sdl.SetTextureColorMod(char.texture, 1, 32, 39)
-                }
-
-                if cursor.region_enabled {
-                    region_start := cursor.region_start
-                    region_end := cursor.position
-
-                    if yidx >= region_start.y && yidx <= region_end.y &&
-                        xidx >= region_start.x && xidx < region_end.x {
-                            sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 52, 63, 255)
-                            region_rect := sdl.Rect{
-                                x_pos - i32(viewport.x) * char.dest.w,
-                                i32(yidx - viewport.y) * char.dest.h,
-                                char.dest.w, char.dest.h,
-                            }
-                            sdl.RenderFillRect(bragi.ctx.renderer, &region_rect)
-                            sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-                        }
-                }
-
-                char.dest.x = x_pos - i32(viewport.x) * char.dest.w
-                char.dest.y = i32(yidx - viewport.y) * char.dest.h
-                sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
-                x_pos += char.dest.w
-
-                if cursor_rendered {
-                    sdl.SetTextureColorMod(char.texture, 255, 255, 255)
-                }
-            }
-        }
-
-        if !cursor.hidden && !cursor_rendered {
-            cpos := cursor.position
-            cursor_rendered = true
-
-            sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
-            cursor_rect := sdl.Rect{
-                i32(cpos.x * std_char_size.x - viewport.x * std_char_size.x),
-                i32(cpos.y * std_char_size.y - viewport.y * std_char_size.y),
-                i32(std_char_size.x), i32(std_char_size.y),
-            }
-            sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
-            sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-        }
-
-        { // Render modeline
-            sdl.SetRenderDrawColor(bragi.ctx.renderer, 0, 86, 98, 255)
-            background_rect := sdl.Rect{
-                0, i32(bragi.ctx.window_size.y - std_char_size.y),
-                i32(bragi.ctx.window_size.x), i32(std_char_size.y),
-            }
-            sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
-
-            sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-            name_x: i32 = 10
-            for c in bragi.cbuffer.name {
-                char := bragi.ctx.characters[c]
-                char.dest.x = name_x
-                char.dest.y = i32(bragi.ctx.window_size.y) - char.dest.h
-                sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
-                name_x += char.dest.w
-            }
-        }
+        //render_old_version()
+        render_new_version()
 
         sdl.RenderPresent(bragi.ctx.renderer)
 
@@ -326,4 +236,165 @@ main :: proc() {
     }
 
     mem.tracking_allocator_destroy(&tracking_allocator)
+}
+
+render_new_version :: proc() {
+    dt_ms : u32 = 1000 / FPS
+
+    sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
+    sdl.RenderClear(bragi.ctx.renderer)
+
+    std_char_size := get_standard_character_size()
+
+    for pane in bragi.panes {
+        flush_entire_buffer(pane.buffer)
+
+        x, y: i32
+        str := strings.to_string(pane.buffer.strbuffer)
+        cursor_rendered := false
+
+        for c, index in str {
+            char := bragi.ctx.characters[c]
+
+            if !cursor_rendered && pane.buffer.cursor == index {
+                cursor_rendered = true
+
+                sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
+                cursor_rect := sdl.Rect{
+                    x, y * i32(std_char_size.y),
+                    i32(std_char_size.x), i32(std_char_size.y),
+                }
+                sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
+                sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+                sdl.SetTextureColorMod(char.texture, 1, 32, 39)
+            }
+
+            if c == '\n' {
+                x = 0
+                y += 1
+                continue
+            }
+
+            char.dest.x = x
+            char.dest.y = y * char.dest.h
+            sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
+            x += char.dest.w
+
+            if cursor_rendered {
+                sdl.SetTextureColorMod(char.texture, 255, 255, 255)
+            }
+        }
+
+        clear(&pane.buffer.strbuffer.buf)
+    }
+}
+
+render_old_version :: proc() {
+    dt_ms : u32 = 1000 / FPS
+
+    sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
+    sdl.RenderClear(bragi.ctx.renderer)
+
+    buf := bragi.cbuffer
+    cursor := &buf.cursor
+    viewport := buf.viewport
+    std_char_size := get_standard_character_size()
+    cursor_rendered := false
+
+    cursor.timer += dt_ms
+
+    if bragi.keybinds.last_keystroke == sdl.GetTicks() {
+        cursor.timer = 0
+        cursor.hidden = false
+    }
+
+    if cursor.timer > 500 {
+        cursor.timer = 0
+        cursor.hidden = !cursor.hidden
+    }
+
+    // TODO: Should be rendering the code that went through the parser/lexer
+    // instead of just the code from the lines, with exceptions (maybe)
+    // This also should be improved to make sense
+    for line, yidx in buf.lines {
+        x_pos: i32
+
+        for c, xidx in line {
+            char := bragi.ctx.characters[c]
+            cpos := cursor.position
+
+            if !cursor.hidden && !cursor_rendered && yidx == cpos.y && xidx == cpos.x {
+                cursor_rendered = true
+
+                sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
+                cursor_rect := sdl.Rect{
+                    i32(cpos.x * std_char_size.x - viewport.x * std_char_size.x),
+                    i32(cpos.y * std_char_size.y - viewport.y * std_char_size.y),
+                    i32(std_char_size.x), i32(std_char_size.y),
+                }
+                sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
+                sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+                sdl.SetTextureColorMod(char.texture, 1, 32, 39)
+            }
+
+            if cursor.region_enabled {
+                region_start := cursor.region_start
+                region_end := cursor.position
+
+                if yidx >= region_start.y && yidx <= region_end.y &&
+                    xidx >= region_start.x && xidx < region_end.x {
+                        sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 52, 63, 255)
+                        region_rect := sdl.Rect{
+                            x_pos - i32(viewport.x) * char.dest.w,
+                            i32(yidx - viewport.y) * char.dest.h,
+                            char.dest.w, char.dest.h,
+                        }
+                        sdl.RenderFillRect(bragi.ctx.renderer, &region_rect)
+                        sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+                    }
+            }
+
+            char.dest.x = x_pos - i32(viewport.x) * char.dest.w
+            char.dest.y = i32(yidx - viewport.y) * char.dest.h
+            sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
+            x_pos += char.dest.w
+
+            if cursor_rendered {
+                sdl.SetTextureColorMod(char.texture, 255, 255, 255)
+            }
+        }
+    }
+
+    if !cursor.hidden && !cursor_rendered {
+        cpos := cursor.position
+        cursor_rendered = true
+
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
+        cursor_rect := sdl.Rect{
+            i32(cpos.x * std_char_size.x - viewport.x * std_char_size.x),
+            i32(cpos.y * std_char_size.y - viewport.y * std_char_size.y),
+            i32(std_char_size.x), i32(std_char_size.y),
+        }
+        sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+    }
+
+    { // Render modeline
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, 0, 86, 98, 255)
+        background_rect := sdl.Rect{
+            0, i32(bragi.ctx.window_size.y - std_char_size.y),
+            i32(bragi.ctx.window_size.x), i32(std_char_size.y),
+        }
+        sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
+
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+        name_x: i32 = 10
+        for c in bragi.cbuffer.name {
+            char := bragi.ctx.characters[c]
+            char.dest.x = name_x
+            char.dest.y = i32(bragi.ctx.window_size.y) - char.dest.h
+            sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
+            name_x += char.dest.w
+        }
+    }
 }

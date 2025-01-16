@@ -12,6 +12,13 @@ editor_close :: proc() {
         // TODO: Save desktop configuration
     }
 
+    for &b in bragi.tbuffers {
+        delete(b.data)
+        delete(b.lines)
+    }
+    delete(bragi.tbuffers)
+    delete(bragi.panes)
+
     for &buf in bragi.buffers {
         for &line in buf.lines { delete(line) }
         delete(buf.lines)
@@ -21,6 +28,27 @@ editor_close :: proc() {
 }
 
 editor_open :: proc() {
+    filepath := "C:/Code/bragi/tests/hello.odin"
+
+    // - Create an empty text buffer
+    append(&bragi.tbuffers, make_text_buffer(0))
+
+    // - Create a pane, with the empty buffer
+    // TODO: Should get the last buffer, or clone from an existing pane
+    new_pane := Pane{
+        buffer = &bragi.tbuffers[0],
+    }
+
+    // - Open a test file, dump data to the buffer
+    data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
+    // TODO: Check for file opening error
+    insert_at(new_pane.buffer, string(data))
+
+    new_pane.buffer.cursor = 0
+
+    append(&bragi.panes, new_pane)
+
+    // OLD CODE
     if bragi.settings.save_desktop_mode {
         // TODO: Load desktop configuration
     } else {
@@ -52,6 +80,10 @@ editor_create_buffer :: proc(buf_name: string, initial_length: int = 1) -> ^Buff
 }
 
 editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
+    // NEW
+    append(&bragi.tbuffers, make_text_buffer(0))
+    bragi.panes[0].buffer = &bragi.tbuffers[len(bragi.tbuffers) - 1]
+    // OLD
     for &buf in bragi.buffers {
         if buf.filepath == filepath {
             return &buf
@@ -63,6 +95,10 @@ editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
     str_data := string(data)
     buf := editor_create_buffer(name, 0)
     buf.filepath = filepath
+
+
+    insert_at(bragi.panes[0].buffer, str_data)
+    bragi.panes[0].buffer.cursor = 0
 
     for line in strings.split_lines_iterator(&str_data) {
         append(&buf.lines, strings.clone(line))

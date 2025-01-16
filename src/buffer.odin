@@ -227,6 +227,8 @@ buffer_backward_word :: proc() {
 }
 
 buffer_forward_char :: proc() {
+    bragi.panes[bragi.focused_pane].buffer.cursor += 1
+
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
     last_line := len(buf.lines) - 1

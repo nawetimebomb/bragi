@@ -41,10 +41,18 @@ editor_open :: proc() {
 
     // - Open a test file, dump data to the buffer
     data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
-    // TODO: Check for file opening error
-    insert_at(new_pane.buffer, string(data))
 
-    new_pane.buffer.cursor = 0
+    parsed_data := make([dynamic]u8, 0, len(data), context.temp_allocator)
+
+    for c in data {
+        if c != '\r' {
+            append(&parsed_data, c)
+        }
+    }
+
+    insert_new_file(new_pane.buffer, parsed_data[:])
+
+    delete(parsed_data)
 
     append(&bragi.panes, new_pane)
 
@@ -59,17 +67,20 @@ editor_open :: proc() {
 }
 
 editor_save_file :: proc() {
-    fmt.println("Trying to save file")
-    buf := bragi.cbuffer
-    string_buffer := strings.join(buf.lines[:], "\n")
-    data := transmute([]u8)string_buffer
-    err := os.write_entire_file_or_err(buf.filepath, data)
+    fmt.println(string(bragi.panes[bragi.focused_pane].buffer.data))
+    fmt.println("------------------")
+    fmt.println(entire_buffer_to_string(bragi.panes[bragi.focused_pane].buffer))
+    // fmt.println("Trying to save file")
+    // buf := bragi.cbuffer
+    // string_buffer := strings.join(buf.lines[:], "\n")
+    // data := transmute([]u8)string_buffer
+    // err := os.write_entire_file_or_err(buf.filepath, data)
 
-    if err != nil {
-        fmt.println(data, "Failed to save file", err)
-    }
+    // if err != nil {
+    //     fmt.println(data, "Failed to save file", err)
+    // }
 
-    delete(string_buffer)
+    // delete(string_buffer)
 }
 
 editor_create_buffer :: proc(buf_name: string, initial_length: int = 1) -> ^Buffer {
@@ -96,9 +107,7 @@ editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
     buf := editor_create_buffer(name, 0)
     buf.filepath = filepath
 
-
-    insert_at(bragi.panes[0].buffer, str_data)
-    bragi.panes[0].buffer.cursor = 0
+    insert_new_file(get_buffer_from_current_pane(), data)
 
     for line in strings.split_lines_iterator(&str_data) {
         append(&buf.lines, strings.clone(line))

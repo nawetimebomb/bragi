@@ -54,6 +54,8 @@ load_keybinds :: proc() {
 
 // These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
 handle_generic_keybindings :: proc(key: sdl.Keysym) {
+    pane := get_focused_pane()
+
     A   := check_alt(key.mod)
     AS  := check_alt_shift(key.mod)
     C   := check_ctrl(key.mod)
@@ -81,6 +83,7 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
             }
         }
         case .RETURN: {
+            newline(pane.buffer)
             buffer_newline()
         }
         case .PAGEUP: {

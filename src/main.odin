@@ -43,23 +43,17 @@ SDL_Context :: struct {
     window_size  : Vector2,
 }
 
-Pane :: struct {
-    dimensions : Vector2,
-    buffer     : ^Text_Buffer,
-}
-
 Bragi :: struct {
-    ctx      : SDL_Context,
+    ctx          : SDL_Context,
 
-    tbuffers:     [dynamic]Text_Buffer,
-    panes:        [dynamic]Pane,
-    focused_pane: int,
-    keybinds:     Keybinds,
+    tbuffers     : [dynamic]Text_Buffer,
+    panes        : [dynamic]Pane,
+    focused_pane : int,
+    keybinds     : Keybinds,
 
-    buffers:      [dynamic]Buffer,
-    cbuffer:      ^Buffer,
-
-    settings:     Settings,
+    buffers      : [dynamic]Buffer,
+    cbuffer      : ^Buffer,
+    settings     : Settings,
 }
 
 bragi: Bragi
@@ -205,7 +199,7 @@ main :: proc() {
                     bragi.cbuffer.cursor.region_enabled = false
                     bragi.keybinds.last_keystroke = sdl.GetTicks()
                     input_char := cstring(raw_data(e.text.text[:]))
-                    insert_at(bragi.panes[bragi.focused_pane].buffer, string(input_char))
+                    insert_at_point(get_buffer_from_current_pane(), string(input_char))
                     buffer_insert_at_point(cstring(raw_data(e.text.text[:])))
                 }
             }
@@ -213,7 +207,7 @@ main :: proc() {
 
         buffer_correct_viewport()
 
-        //render_old_version()
+        // render_old_version()
         render_new_version()
 
         sdl.RenderPresent(bragi.ctx.renderer)
@@ -247,14 +241,17 @@ render_new_version :: proc() {
     std_char_size := get_standard_character_size()
 
     for pane in bragi.panes {
-        flush_entire_buffer(pane.buffer)
-
         x, y: i32
-        str := strings.to_string(pane.buffer.strbuffer)
+        str := entire_buffer_to_string(pane.buffer)
         cursor_rendered := false
 
         for c, index in str {
             char := bragi.ctx.characters[c]
+
+            if c == '\n' {
+                x = 0
+                y += 1
+            }
 
             if !cursor_rendered && pane.buffer.cursor == index {
                 cursor_rendered = true
@@ -269,12 +266,6 @@ render_new_version :: proc() {
                 sdl.SetTextureColorMod(char.texture, 1, 32, 39)
             }
 
-            if c == '\n' {
-                x = 0
-                y += 1
-                continue
-            }
-
             char.dest.x = x
             char.dest.y = y * char.dest.h
             sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
@@ -284,8 +275,6 @@ render_new_version :: proc() {
                 sdl.SetTextureColorMod(char.texture, 255, 255, 255)
             }
         }
-
-        clear(&pane.buffer.strbuffer.buf)
     }
 }
 

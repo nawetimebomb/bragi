@@ -36,14 +36,34 @@ delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
     buffer_calculate_lines(buffer)
 }
 
-insert_at :: proc(buffer: ^Text_Buffer, str: string) {
-    buffer_insert(buffer, buffer.cursor, str)
+insert_new_file :: proc(buffer: ^Text_Buffer, data: []u8) {
+    buffer_insert(buffer, 0, data)
+    buffer.cursor = 0
+    buffer_calculate_lines(buffer)
+}
+
+insert_at :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
+    buffer_insert(buffer, cursor, str)
     buffer.cursor += len(str)
     buffer_calculate_lines(buffer)
 }
 
+insert_at_point :: proc(buffer: ^Text_Buffer, str: string) {
+    insert_at(buffer, buffer.cursor, str)
+}
+
+length_of_buffer :: proc(buffer: ^Text_Buffer) -> int {
+    gap := buffer.gap_end - buffer.gap_start
+    return len(buffer.data) - gap
+}
+
+newline :: proc(buffer: ^Text_Buffer) {
+    buffer_insert_char(buffer, buffer.cursor, '\n')
+    buffer.cursor += 1
+}
+
 rune_at :: proc(buffer: ^Text_Buffer) -> rune {
-    cursor := clamp(buffer.cursor, 0, buffer_len(buffer) - 1)
+    cursor := clamp(buffer.cursor, 0, length_of_buffer(buffer) - 1)
     left, right := buffer_get_strings(buffer)
 
     if cursor < len(left) {
@@ -56,7 +76,7 @@ rune_at :: proc(buffer: ^Text_Buffer) -> rune {
 flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
     left, right := buffer_get_strings(buffer)
     assert(start >= 0, "invalid cursor start position")
-    assert(end <= buffer_len(buffer), "invalid cursor end position")
+    assert(end <= length_of_buffer(buffer), "invalid cursor end position")
 
     left_len := len(left)
 
@@ -71,7 +91,14 @@ flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
 }
 
 flush_entire_buffer :: proc(buffer: ^Text_Buffer) {
-    flush_range(buffer, 0, buffer_len(buffer))
+    flush_range(buffer, 0, length_of_buffer(buffer))
+}
+
+entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
+    flush_entire_buffer(buffer)
+    str := strings.to_string(buffer.strbuffer)
+    clear(&buffer.strbuffer.buf)
+    return str
 }
 
 @(private="file")
@@ -79,15 +106,6 @@ buffer_get_strings :: proc(buffer: ^Text_Buffer) -> (string, string) {
     left := string(buffer.data[:buffer.gap_start])
     right := string(buffer.data[buffer.gap_end:])
     return left, right
-}
-
-@(private="file")
-buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
-    strs := [?]string{
-        string(buffer.data[:buffer.gap_start]),
-        string(buffer.data[buffer.gap_end:]),
-    }
-    return strings.concatenate(strs[:], context.temp_allocator)
 }
 
 @(private="file")
@@ -156,19 +174,13 @@ buffer_line_len :: proc(buffer: ^Text_Buffer, line: int) -> int {
     assert(line >= 0 && line <= len(buffer.lines), "Array overflow")
 
     if line >= len(buffer.lines) - 1 {
-        buf_len := buffer_len(buffer)
+        buf_len := length_of_buffer(buffer)
         return buf_len - buffer.lines[len(buffer.lines) - 1]
     } else {
         starts_at := buffer.lines[line]
         next_at := buffer.lines[line + 1]
         return next_at - starts_at
     }
-}
-
-@(private="file")
-buffer_len :: proc(buffer: ^Text_Buffer) -> int {
-    gap := buffer.gap_end - buffer.gap_start
-    return len(buffer.data) - gap
 }
 
 @(private="file")

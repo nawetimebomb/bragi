@@ -110,6 +110,8 @@ buffer_delete_word_forward :: proc() {
 }
 
 buffer_delete_char_backward :: proc() {
+    buffer := get_buffer_from_current_pane()
+    delete_at(buffer, buffer.cursor, -1)
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
     builder := create_string_builder()
@@ -169,6 +171,9 @@ buffer_delete_char_forward :: proc() {
 }
 
 buffer_backward_char :: proc() {
+    buffer := get_buffer_from_current_pane()
+    buffer.cursor = max(buffer.cursor - 1, 0)
+
     buf := bragi.cbuffer
     new_pos := buf.cursor.position
 
@@ -227,7 +232,8 @@ buffer_backward_word :: proc() {
 }
 
 buffer_forward_char :: proc() {
-    bragi.panes[bragi.focused_pane].buffer.cursor += 1
+    buffer := get_buffer_from_current_pane()
+    buffer.cursor = min(buffer.cursor + 1, length_of_buffer(buffer))
 
     buf := bragi.cbuffer
     new_pos := buf.cursor.position

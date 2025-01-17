@@ -191,9 +191,13 @@ main :: proc() {
                     handle_key_down(e.key.keysym)
                 }
                 case .TEXTINPUT: {
-                    bragi.keybinds.last_keystroke = sdl.GetTicks()
-                    input_char := cstring(raw_data(e.text.text[:]))
-                    insert_at_point(get_buffer_from_current_pane(), string(input_char))
+                    if !bragi.keybinds.key_handled {
+                        bragi.keybinds.last_keystroke = sdl.GetTicks()
+                        input_char := cstring(raw_data(e.text.text[:]))
+                        insert_at_point(get_buffer_from_current_pane(), string(input_char))
+                    }
+
+                    bragi.keybinds.key_handled = false
                 }
             }
         }

@@ -13,8 +13,9 @@ Keybinds_Variant :: union {
 }
 
 Keybinds :: struct {
-    last_keystroke: u32,
-    variant: Keybinds_Variant,
+    key_handled    : bool,
+    last_keystroke : u32,
+    variant        : Keybinds_Variant,
 }
 
 KMod :: sdl.KeymodFlag
@@ -192,7 +193,11 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .S: {
             switch {
-            case CX && C: editor_save_file()
+            case CX && C: save_buffer(pane.buffer)
+            case CX: {
+                bragi.keybinds.key_handled = true
+                save_some_buffers()
+            }
             case C: fmt.println("Search pressed") //buffer_search_forward()
             }
         }

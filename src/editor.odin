@@ -24,7 +24,7 @@ editor_start :: proc() {
         make_pane()
     }
 
-    filepath := "C:/Code/bragi/tests/hello.odin"
+    filepath := "C:/Code/bragi/demo/hello.odin"
     editor_open_file(filepath)
 }
 

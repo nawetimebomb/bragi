@@ -84,6 +84,7 @@ insert_at_point :: proc(buffer: ^Text_Buffer, str: string) {
 insert_whole_file :: proc(buffer: ^Text_Buffer, data: []u8) {
     buffer_insert(buffer, 0, data)
     buffer.cursor = 0
+    buffer.modified = false
 }
 
 length_of_buffer :: proc(buffer: ^Text_Buffer) -> int {
@@ -144,6 +145,25 @@ move_cursor_to :: proc(buffer: ^Text_Buffer, from, to: int, break_on_newline: bo
     }
 }
 
+save_buffer :: proc(buffer: ^Text_Buffer) {
+    if buffer.modified {
+        log.debugf("Saving {0}", buffer.name)
+        str := entire_buffer_to_string(buffer)
+        err := os.write_entire_file_or_err(buffer.filepath, transmute([]u8)str)
+
+        if err != nil {
+            log.errorf("Error saving buffer {0}\nError: {1}", buffer.name, err)
+        }
+    } else {
+        log.debugf("Nothing to save in {0}", buffer.name)
+    }
+}
+
+save_some_buffers :: proc() {
+    log.debug("Saving some buffers")
+    // TODO: Implement
+}
+
 flush_buffer_to_custom_string :: proc(buffer: ^Text_Buffer, strbuffer: ^strings.Builder, start, end: int) -> string {
     buffer_flush(buffer, strbuffer, start, end)
     return strings.to_string(strbuffer^)
@@ -161,10 +181,6 @@ range_buffer_to_string :: proc(buffer: ^Text_Buffer, start, end: int) -> string 
     return strings.to_string(buffer.strbuffer)
 }
 
-flush_entire_buffer :: proc(buffer: ^Text_Buffer) {
-    buffer_flush(buffer, &buffer.strbuffer, 0, length_of_buffer(buffer))
-}
-
 entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
     if buffer.str_cache == .Full {
         return strings.to_string(buffer.strbuffer)
@@ -172,7 +188,7 @@ entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
 
     log.debugf("- Generating new string for buffer {0}", buffer.name)
     clear(&buffer.strbuffer.buf)
-    flush_entire_buffer(buffer)
+    buffer_flush_everything(buffer)
     buffer.str_cache = .Full
     return strings.to_string(buffer.strbuffer)
 }
@@ -196,6 +212,11 @@ buffer_flush :: proc(buffer: ^Text_Buffer, strbuffer: ^strings.Builder, start, e
 }
 
 @(private="file")
+buffer_flush_everything :: proc(buffer: ^Text_Buffer) {
+    buffer_flush(buffer, &buffer.strbuffer, 0, length_of_buffer(buffer))
+}
+
+@(private="file")
 buffer_get_strings :: proc(buffer: ^Text_Buffer) -> (string, string) {
     left := string(buffer.data[:buffer.gap_start])
     right := string(buffer.data[buffer.gap_end:])
@@ -206,6 +227,7 @@ buffer_get_strings :: proc(buffer: ^Text_Buffer) -> (string, string) {
 buffer_move_gap :: proc(buffer: ^Text_Buffer, cursor: int) {
     cursor := clamp(cursor, 0, length_of_buffer(buffer))
     buffer.str_cache = .None
+    buffer.modified = true
 
     if cursor == buffer.gap_start {
         return

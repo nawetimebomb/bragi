@@ -73,13 +73,13 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         case .BACKSPACE: {
             switch {
             // case C: buffer_delete_word_backward()
-            // case  : buffer_delete_char_backward()
+            case  : delete_backward_char(pane)
             }
         }
         case .DELETE: {
             switch {
             // case C: buffer_delete_word_forward()
-            // case  : buffer_delete_char_forward()
+            case  : delete_forward_char(pane)
             }
         }
         case .RETURN: {
@@ -154,7 +154,7 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
     #partial switch key.sym {
         case .A: {
             switch {
-            // case C: buffer_beginning_of_line()
+            case C: beginning_of_line(pane)
             }
         }
         case .B: {
@@ -166,12 +166,12 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         case .D: {
             switch {
             // case A: buffer_delete_word_forward()
-            // case C: buffer_delete_char_forward()
+            case C: delete_forward_char(pane)
             }
         }
         case .E: {
             switch {
-            // case C: buffer_end_of_line()
+            case C: end_of_line(pane)
             }
         }
         case .F: {
@@ -210,22 +210,22 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .PERIOD: {
             switch {
-            // case AS: buffer_end_of_buffer()
+            case AS: end_of_buffer(pane)
             }
         }
         case .GREATER: {
             switch {
-            // case A: buffer_end_of_buffer()
+            case A: end_of_buffer(pane)
             }
         }
         case .COMMA: {
             switch {
-            // case A && S: buffer_beginning_of_buffer()
+            case A && S: beginning_of_buffer(pane)
             }
         }
         case .LESS: {
             switch {
-            // case A: buffer_beginning_of_buffer()
+            case A: beginning_of_buffer(pane)
             }
         }
     }

@@ -1,8 +1,6 @@
 package main
 
 import "core:fmt"
-import "core:strings"
-import "core:os"
 
 Vector2 :: distinct [2]int
 Line    :: string
@@ -110,13 +108,56 @@ editor_select :: proc(wp: Vector2) {
     // buf.cursor.position = new_pos
 }
 
+beginning_of_buffer :: proc(pane: ^Pane) {
+    pane.buffer.cursor = 0
+}
+
+beginning_of_line :: proc(pane: ^Pane) {
+    start_of_line := line_start(pane.buffer, pane.buffer.cursor)
+    end_of_line := line_end(pane.buffer, pane.buffer.cursor)
+    new_cursor_position := start_of_line
+
+    if pane.buffer.cursor == start_of_line {
+        temp_buffer := make_temp_strbuffer()
+
+        str := flush_buffer_to_custom_string(
+            pane.buffer, &temp_buffer, start_of_line, end_of_line,
+        )
+
+        for x := 0; x < len(str); x += 1 {
+            if str[x] != '\t' && str[x] != ' ' {
+                new_cursor_position = start_of_line + x
+                break
+            }
+        }
+    }
+
+    pane.buffer.cursor = new_cursor_position
+}
+
+end_of_buffer :: proc(pane: ^Pane) {
+    pane.buffer.cursor = length_of_buffer(pane.buffer) - 1
+}
+
+end_of_line :: proc(pane: ^Pane) {
+    pane.buffer.cursor = line_end(pane.buffer, pane.buffer.cursor)
+}
+
+delete_backward_char :: proc(pane: ^Pane) {
+    delete_at(pane.buffer, pane.buffer.cursor, -1)
+}
+
+delete_forward_char :: proc(pane: ^Pane) {
+    delete_at(pane.buffer, pane.buffer.cursor, 1)
+}
+
 newline :: proc(pane: ^Pane) {
     cursor_screen_to_buffer(pane)
     insert_char_at_point(pane.buffer, '\n')
 }
 
 forward_char :: proc(pane: ^Pane) {
-    pane.buffer.cursor = min(pane.buffer.cursor + 1, length_of_buffer(pane.buffer))
+    pane.buffer.cursor = min(pane.buffer.cursor + 1, length_of_buffer(pane.buffer) - 1)
 }
 
 backward_char :: proc(pane: ^Pane) {

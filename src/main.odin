@@ -1,7 +1,6 @@
 package main
 
 import     "base:runtime"
-import     "core:fmt"
 import     "core:log"
 import     "core:mem"
 import     "core:os"
@@ -131,7 +130,7 @@ main :: proc() {
         err := false
 
         for _, value in a.allocation_map {
-            fmt.printfln("{0}: Leaked {1} bytes", value.location, value.size)
+            log.errorf("{0}: Leaked {1} bytes", value.location, value.size)
             err = true
         }
 

@@ -1,8 +1,7 @@
 package main
 
-import "core:fmt"
-
 import "base:runtime"
+import "core:log"
 import "core:mem"
 import "core:os"
 import "core:slice"
@@ -51,6 +50,10 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
     text_buffer.modified = len(data) != len(parsed_data)
     delete(data)
     return text_buffer
+}
+
+make_temp_strbuffer :: proc() -> strings.Builder {
+    return strings.builder_make(context.temp_allocator)
 }
 
 delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
@@ -141,21 +144,9 @@ move_cursor_to :: proc(buffer: ^Text_Buffer, from, to: int, break_on_newline: bo
     }
 }
 
-flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
-    left, right := buffer_get_strings(buffer)
-    assert(start >= 0, "invalid cursor start position")
-    assert(end <= length_of_buffer(buffer), "invalid cursor end position")
-
-    left_len := len(left)
-
-    if end <= left_len {
-        strings.write_string(&buffer.strbuffer, left[start:end])
-    } else if start >= left_len {
-        strings.write_string(&buffer.strbuffer, right[start - left_len:end - left_len])
-    } else {
-        strings.write_string(&buffer.strbuffer, left[start:])
-        strings.write_string(&buffer.strbuffer, right[:end - left_len])
-    }
+flush_buffer_to_custom_string :: proc(buffer: ^Text_Buffer, strbuffer: ^strings.Builder, start, end: int) -> string {
+    buffer_flush(buffer, strbuffer, start, end)
+    return strings.to_string(strbuffer^)
 }
 
 range_buffer_to_string :: proc(buffer: ^Text_Buffer, start, end: int) -> string {
@@ -164,14 +155,14 @@ range_buffer_to_string :: proc(buffer: ^Text_Buffer, start, end: int) -> string 
     }
 
     clear(&buffer.strbuffer.buf)
-    flush_range(buffer, start, end)
+    buffer_flush(buffer, &buffer.strbuffer, start, end)
     buffer.str_cache = .Range
     buffer.cache_size = start + end
     return strings.to_string(buffer.strbuffer)
 }
 
 flush_entire_buffer :: proc(buffer: ^Text_Buffer) {
-    flush_range(buffer, 0, length_of_buffer(buffer))
+    buffer_flush(buffer, &buffer.strbuffer, 0, length_of_buffer(buffer))
 }
 
 entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
@@ -179,11 +170,29 @@ entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
         return strings.to_string(buffer.strbuffer)
     }
 
-    fmt.println("- Generating new string buffer")
+    log.debugf("- Generating new string for buffer {0}", buffer.name)
     clear(&buffer.strbuffer.buf)
     flush_entire_buffer(buffer)
     buffer.str_cache = .Full
     return strings.to_string(buffer.strbuffer)
+}
+
+@(private="file")
+buffer_flush :: proc(buffer: ^Text_Buffer, strbuffer: ^strings.Builder, start, end: int) {
+    left, right := buffer_get_strings(buffer)
+    assert(start >= 0, "invalid cursor start position")
+    assert(end <= length_of_buffer(buffer), "invalid cursor end position")
+
+    left_len := len(left)
+
+    if end <= left_len {
+        strings.write_string(strbuffer, left[start:end])
+    } else if start >= left_len {
+        strings.write_string(strbuffer, right[start - left_len:end - left_len])
+    } else {
+        strings.write_string(strbuffer, left[start:])
+        strings.write_string(strbuffer, right[:end - left_len])
+    }
 }
 
 @(private="file")

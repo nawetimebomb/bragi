@@ -231,26 +231,22 @@ render_new_version :: proc() {
 
     std_char_size := get_standard_character_size()
 
-    for pane in bragi.panes {
+    for &pane in bragi.panes {
         x, y: i32
-        limit := min(35, len(pane.buffer.lines) - 1)
-        str := range_buffer_to_string(pane.buffer, 0, pane.buffer.lines[limit])
         cursor_rendered := false
+        str := entire_buffer_to_string(pane.buffer)
 
-        for c, index in str {
+        for c, char_index in str {
             char := bragi.ctx.characters[c]
 
-            if c == '\n' {
-                x = 0
-                y += 1
-            }
+            column := x * i32(std_char_size.x)
+            row := y * i32(std_char_size.y)
 
-            if !cursor_rendered && pane.buffer.cursor == index {
+            if !cursor_rendered && pane.buffer.cursor == char_index {
                 cursor_rendered = true
-
                 sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
                 cursor_rect := sdl.Rect{
-                    x, y * i32(std_char_size.y),
+                    column, row,
                     i32(std_char_size.x), i32(std_char_size.y),
                 }
                 sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
@@ -258,10 +254,16 @@ render_new_version :: proc() {
                 sdl.SetTextureColorMod(char.texture, 1, 32, 39)
             }
 
-            char.dest.x = x
-            char.dest.y = y * char.dest.h
+            char.dest.x = column
+            char.dest.y = row
             sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
-            x += char.dest.w
+
+            x += 1
+
+            if c == '\n' {
+                x = 0
+                y += 1
+            }
 
             if cursor_rendered {
                 sdl.SetTextureColorMod(char.texture, 255, 255, 255)

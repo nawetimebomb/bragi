@@ -11,10 +11,9 @@ editor_close :: proc() {
     if bragi.settings.save_desktop_mode {
         // TODO: Save desktop configuration
     }
-
     for &b in bragi.buffers {
         delete(b.data)
-        delete(b.lines)
+        delete(b.strbuffer.buf)
     }
     delete(bragi.buffers)
     delete(bragi.panes)
@@ -28,26 +27,7 @@ editor_start :: proc() {
     }
 
     filepath := "C:/Code/bragi/tests/hello.odin"
-
-    // - Create a pane, with the empty buffer
-    // TODO: Should get the last buffer, or clone from an existing pane
-    // - Open a test file, dump data to the buffer
-    // data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
-
-    // parsed_data := make([dynamic]u8, 0, len(data), context.temp_allocator)
-
-    // for c in data {
-    //     if c != '\r' {
-    //         append(&parsed_data, c)
-    //     }
-    // }
-
-    // insert_whole_file(new_pane.buffer, parsed_data[:])
-
-    // delete(parsed_data)
-
-    // OLD CODE
-
+    editor_open_file(filepath)
 }
 
 editor_open_file :: proc(filepath: string) {
@@ -128,4 +108,41 @@ editor_select :: proc(wp: Vector2) {
     // buf.cursor.region_enabled = true
     // buf.cursor.region_start = { start, new_pos.y }
     // buf.cursor.position = new_pos
+}
+
+newline :: proc(pane: ^Pane) {
+    cursor_screen_to_buffer(pane)
+    insert_char_at_point(pane.buffer, '\n')
+}
+
+forward_char :: proc(pane: ^Pane) {
+    pane.buffer.cursor = min(pane.buffer.cursor + 1, length_of_buffer(pane.buffer))
+}
+
+backward_char :: proc(pane: ^Pane) {
+    pane.buffer.cursor = max(pane.buffer.cursor - 1, 0)
+}
+
+previous_line :: proc(pane: ^Pane) {
+    start_of_line := line_start(pane.buffer, pane.buffer.cursor)
+    start_of_prev_line := line_start(pane.buffer, start_of_line - 1)
+    x_offset := max(pane.cursor.max_x, pane.buffer.cursor - start_of_line)
+    str := entire_buffer_to_string(pane.buffer)
+    move_cursor_to(pane.buffer, start_of_prev_line, start_of_prev_line + x_offset, true)
+
+    if x_offset > pane.cursor.max_x {
+        pane.cursor.max_x = x_offset
+    }
+}
+
+next_line :: proc(pane: ^Pane) {
+    start_of_line := line_start(pane.buffer, pane.buffer.cursor)
+    start_of_next_line := line_end(pane.buffer, pane.buffer.cursor) + 1
+    x_offset := max(pane.cursor.max_x, pane.buffer.cursor - start_of_line)
+    str := entire_buffer_to_string(pane.buffer)
+    move_cursor_to(pane.buffer, start_of_next_line, start_of_next_line + x_offset, true)
+
+    if x_offset > pane.cursor.max_x {
+        pane.cursor.max_x = x_offset
+    }
 }

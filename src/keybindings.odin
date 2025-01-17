@@ -54,7 +54,7 @@ load_keybinds :: proc() {
 
 // These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
 handle_generic_keybindings :: proc(key: sdl.Keysym) {
-    buffer := get_buffer_from_current_pane()
+    pane := get_focused_pane()
 
     A   := check_alt(key.mod)
     AS  := check_alt_shift(key.mod)
@@ -83,7 +83,7 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
             }
         }
         case .RETURN: {
-            newline(buffer)
+            newline(pane)
         }
         case .PAGEUP: {
             // buffer_scroll(-buffer_page_size().y)
@@ -94,25 +94,25 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         case .UP: {
             switch {
             // case C: buffer_backward_paragraph()
-            // case  : buffer_previous_line()
+            case  : previous_line(pane)
             }
         }
         case .DOWN: {
             switch {
             // case C: buffer_forward_paragraph()
-            // case  : buffer_next_line()
+            case  : next_line(pane)
             }
         }
         case .LEFT: {
             switch {
             // case C: buffer_backward_word()
-            // case  : buffer_backward_char()
+            case  : backward_char(pane)
             }
         }
         case .RIGHT: {
             switch {
             // case C: buffer_forward_word()
-            // case  : buffer_forward_char()
+            case  : forward_char(pane)
             }
         }
     }
@@ -137,6 +137,7 @@ handle_sublime_keybindings :: proc(key: sdl.Keysym) {
 }
 
 handle_emacs_keybindings :: proc(key: sdl.Keysym) {
+    pane := get_focused_pane()
     vkb := &bragi.keybinds.variant.(Emacs_Keybinds)
 
     A   := check_alt(key.mod)
@@ -159,7 +160,7 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         case .B: {
             switch {
             // case A: buffer_backward_word()
-            // case C: buffer_backward_char()
+            case C: backward_char(pane)
             }
         }
         case .D: {
@@ -176,17 +177,17 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         case .F: {
             switch {
             // case A: buffer_forward_word()
-            // case C: buffer_forward_char()
+            case C: forward_char(pane)
             }
         }
         case .N: {
             switch {
-            // case C: buffer_next_line()
+            case C: next_line(pane)
             }
         }
         case .P: {
             switch {
-            // case C: buffer_previous_line()
+            case C: previous_line(pane)
             }
         }
         case .S: {

@@ -5,20 +5,28 @@ import "core:fmt"
 import "base:runtime"
 import "core:mem"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
 
+String_Cache_Type :: enum {
+    None,
+    Range,
+    Full,
+}
+
 Text_Buffer :: struct {
-    allocator : runtime.Allocator,
-    cursor    : int,
-    data      : []u8,
-    filepath  : string,
-    gap_start : int,
-    gap_end   : int,
-    lines     : [dynamic]int,
-    modified  : bool,
-    name      : string,
-    strbuffer : strings.Builder,
+    allocator  : runtime.Allocator,
+    cursor     : int,
+    data       : []u8,
+    filepath   : string,
+    gap_start  : int,
+    gap_end    : int,
+    modified   : bool,
+    name       : string,
+    strbuffer  : strings.Builder,
+    str_cache  : String_Cache_Type,
+    cache_size : int,
 }
 
 make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.allocator) -> ^Text_Buffer {
@@ -27,20 +35,20 @@ make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.al
         data      = make([]u8, bytes_count, allocator),
         gap_end   = bytes_count,
         name      = name,
-        strbuffer = strings.builder_make(context.temp_allocator),
+        strbuffer = strings.builder_make(),
     })
     text_buffer := &bragi.buffers[len(bragi.buffers) - 1]
-    buffer_calculate_lines(text_buffer)
     return text_buffer
 }
 
 make_text_buffer_from_file :: proc(filepath: string, allocator := context.allocator) -> ^Text_Buffer {
     data, success := os.read_entire_file_from_filename(filepath)
-    // TODO: Clean up file for CRs
-    text_buffer := make_text_buffer(filepath, len(data))
-    insert_whole_file(text_buffer, data)
+    parsed_data := buffer_clean_up_carriage_returns(data)
+    text_buffer := make_text_buffer(filepath, len(parsed_data))
+    insert_whole_file(text_buffer, parsed_data)
     text_buffer.filepath = filepath
     text_buffer.cursor = 0
+    text_buffer.modified = len(data) != len(parsed_data)
     delete(data)
     return text_buffer
 }
@@ -50,13 +58,20 @@ delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
     if count < 0 {
         buffer.cursor = max(0, buffer.cursor + count)
     }
-    buffer_calculate_lines(buffer)
+}
+
+insert_char_at :: proc(buffer: ^Text_Buffer, cursor: int, char: u8) {
+    buffer_insert_char(buffer, cursor, char)
+    buffer.cursor += 1
+}
+
+insert_char_at_point :: proc(buffer: ^Text_Buffer, char: u8) {
+    insert_char_at(buffer, buffer.cursor, char)
 }
 
 insert_at :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
     buffer_insert(buffer, cursor, str)
     buffer.cursor += len(str)
-    buffer_calculate_lines(buffer)
 }
 
 insert_at_point :: proc(buffer: ^Text_Buffer, str: string) {
@@ -66,17 +81,11 @@ insert_at_point :: proc(buffer: ^Text_Buffer, str: string) {
 insert_whole_file :: proc(buffer: ^Text_Buffer, data: []u8) {
     buffer_insert(buffer, 0, data)
     buffer.cursor = 0
-    buffer_calculate_lines(buffer)
 }
 
 length_of_buffer :: proc(buffer: ^Text_Buffer) -> int {
     gap := buffer.gap_end - buffer.gap_start
     return len(buffer.data) - gap
-}
-
-newline :: proc(buffer: ^Text_Buffer) {
-    buffer_insert_char(buffer, buffer.cursor, '\n')
-    buffer.cursor += 1
 }
 
 rune_at :: proc(buffer: ^Text_Buffer, cursor: int) -> rune {
@@ -92,6 +101,44 @@ rune_at :: proc(buffer: ^Text_Buffer, cursor: int) -> rune {
 
 rune_at_point :: proc(buffer: ^Text_Buffer) -> rune {
     return rune_at(buffer, buffer.cursor)
+}
+
+line_start :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
+    str := entire_buffer_to_string(buffer)
+    cursor := clamp(cursor, 0, length_of_buffer(buffer) - 1)
+
+    for x := cursor - 1; x > 0; x -= 1 {
+        if str[x] == '\n' {
+            return x + 1
+        }
+    }
+
+    return 0
+}
+
+line_end :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
+    cursor := clamp(cursor, 0, length_of_buffer(buffer) - 1)
+    str := entire_buffer_to_string(buffer)
+
+    for x := cursor; x < len(str); x += 1 {
+        if str[x] == '\n' {
+            return x
+        }
+    }
+
+    return cursor
+}
+
+move_cursor_to :: proc(buffer: ^Text_Buffer, from, to: int, break_on_newline: bool) {
+    str := entire_buffer_to_string(buffer)
+
+    for x := from; x < len(str); x += 1 {
+        buffer.cursor = x
+
+        if x == to || (break_on_newline && str[x] == '\n') {
+            break
+        }
+    }
 }
 
 flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
@@ -112,10 +159,15 @@ flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
 }
 
 range_buffer_to_string :: proc(buffer: ^Text_Buffer, start, end: int) -> string {
-    flush_range(buffer, start, end)
-    str := strings.to_string(buffer.strbuffer)
+    if buffer.str_cache == .Range && buffer.cache_size == start + end {
+        return strings.to_string(buffer.strbuffer)
+    }
+
     clear(&buffer.strbuffer.buf)
-    return str
+    flush_range(buffer, start, end)
+    buffer.str_cache = .Range
+    buffer.cache_size = start + end
+    return strings.to_string(buffer.strbuffer)
 }
 
 flush_entire_buffer :: proc(buffer: ^Text_Buffer) {
@@ -123,10 +175,15 @@ flush_entire_buffer :: proc(buffer: ^Text_Buffer) {
 }
 
 entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
-    flush_entire_buffer(buffer)
-    str := strings.to_string(buffer.strbuffer)
+    if buffer.str_cache == .Full {
+        return strings.to_string(buffer.strbuffer)
+    }
+
+    fmt.println("- Generating new string buffer")
     clear(&buffer.strbuffer.buf)
-    return str
+    flush_entire_buffer(buffer)
+    buffer.str_cache = .Full
+    return strings.to_string(buffer.strbuffer)
 }
 
 @(private="file")
@@ -138,8 +195,8 @@ buffer_get_strings :: proc(buffer: ^Text_Buffer) -> (string, string) {
 
 @(private="file")
 buffer_move_gap :: proc(buffer: ^Text_Buffer, cursor: int) {
-    gap_len := buffer.gap_end - buffer.gap_start
-    cursor := clamp(cursor, 0, len(buffer.data) - gap_len)
+    cursor := clamp(cursor, 0, length_of_buffer(buffer))
+    buffer.str_cache = .None
 
     if cursor == buffer.gap_start {
         return
@@ -173,42 +230,6 @@ conditionally_grow_buffer :: proc(buffer: ^Text_Buffer, bytes_count: int) {
         delete(buffer.data)
         buffer.data = new_data_array
         buffer.gap_end = len(new_data_array)
-    }
-}
-
-@(private="file")
-buffer_calculate_lines :: proc(buffer: ^Text_Buffer) {
-    // TODO: It shouldn't clear all lines, but the ones affected, after the current
-    // cursor position
-    fmt.println("- Calculating lines")
-    clear(&buffer.lines)
-    left, right := buffer_get_strings(buffer)
-    append(&buffer.lines, 0)
-
-    for i := 0 ; i < len(left); i += 1 {
-        if left[i] == '\n' {
-            append(&buffer.lines, i + 1)
-        }
-    }
-
-    for i := 0 ; i < len(right); i += 1 {
-        if right[i] == '\n' {
-            append(&buffer.lines, len(left) + i + 1)
-        }
-    }
-}
-
-@(private="file")
-buffer_line_len :: proc(buffer: ^Text_Buffer, line: int) -> int {
-    assert(line >= 0 && line <= len(buffer.lines), "Array overflow")
-
-    if line >= len(buffer.lines) - 1 {
-        buf_len := length_of_buffer(buffer)
-        return buf_len - buffer.lines[len(buffer.lines) - 1]
-    } else {
-        starts_at := buffer.lines[line]
-        next_at := buffer.lines[line + 1]
-        return next_at - starts_at
     }
 }
 
@@ -258,4 +279,15 @@ buffer_insert_array :: proc(buffer: ^Text_Buffer, cursor: int, array: []u8) {
 @(private="file")
 buffer_insert_string :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
     buffer_insert_array(buffer, cursor, transmute([]u8)str)
+}
+
+@(private="file")
+buffer_clean_up_carriage_returns :: proc(data: []u8) -> []u8 {
+    parsed_data := slice.clone_to_dynamic(data, context.temp_allocator)
+    for char, index in parsed_data {
+        if char == '\r' {
+            ordered_remove(&parsed_data, index)
+        }
+    }
+    return parsed_data[:]
 }

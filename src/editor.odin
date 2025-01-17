@@ -12,57 +12,58 @@ editor_close :: proc() {
         // TODO: Save desktop configuration
     }
 
-    for &b in bragi.tbuffers {
+    for &b in bragi.buffers {
         delete(b.data)
         delete(b.lines)
     }
-    delete(bragi.tbuffers)
-    delete(bragi.panes)
-
-    for &buf in bragi.buffers {
-        for &line in buf.lines { delete(line) }
-        delete(buf.lines)
-    }
-
     delete(bragi.buffers)
+    delete(bragi.panes)
 }
 
-editor_open :: proc() {
-    filepath := "C:/Code/bragi/tests/hello.odin"
-
-    // - Create an empty text buffer
-    append(&bragi.tbuffers, make_text_buffer(0))
-
-    // - Create a pane, with the empty buffer
-    // TODO: Should get the last buffer, or clone from an existing pane
-    new_pane := Pane{
-        buffer = &bragi.tbuffers[0],
-    }
-
-    // - Open a test file, dump data to the buffer
-    data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
-
-    parsed_data := make([dynamic]u8, 0, len(data), context.temp_allocator)
-
-    for c in data {
-        if c != '\r' {
-            append(&parsed_data, c)
-        }
-    }
-
-    insert_new_file(new_pane.buffer, parsed_data[:])
-
-    delete(parsed_data)
-
-    append(&bragi.panes, new_pane)
-
-    // OLD CODE
+editor_start :: proc() {
     if bragi.settings.save_desktop_mode {
         // TODO: Load desktop configuration
     } else {
-        bragi.cbuffer =
-            editor_maybe_create_buffer_from_file("C:/Code/bragi/tests/hello.odin")
-        //bragi.cbuffer = editor_create_buffer("*note*")
+        make_pane()
+    }
+
+    filepath := "C:/Code/bragi/tests/hello.odin"
+
+    // - Create a pane, with the empty buffer
+    // TODO: Should get the last buffer, or clone from an existing pane
+    // - Open a test file, dump data to the buffer
+    // data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
+
+    // parsed_data := make([dynamic]u8, 0, len(data), context.temp_allocator)
+
+    // for c in data {
+    //     if c != '\r' {
+    //         append(&parsed_data, c)
+    //     }
+    // }
+
+    // insert_whole_file(new_pane.buffer, parsed_data[:])
+
+    // delete(parsed_data)
+
+    // OLD CODE
+
+}
+
+editor_open_file :: proc(filepath: string) {
+    buffer_found := false
+    pane := get_focused_pane()
+
+    for &b in bragi.buffers {
+        if b.filepath == filepath {
+            pane.buffer = &b
+            buffer_found = true
+            break
+        }
+    }
+
+    if !buffer_found {
+        pane.buffer = make_text_buffer_from_file(filepath)
     }
 }
 
@@ -83,78 +84,48 @@ editor_save_file :: proc() {
     // delete(string_buffer)
 }
 
-editor_create_buffer :: proc(buf_name: string, initial_length: int = 1) -> ^Buffer {
-    buf := Buffer{ name = buf_name }
-    buf.lines = make([dynamic]Line, initial_length, 10)
-    append(&bragi.buffers, buf)
-    return &bragi.buffers[len(bragi.buffers) - 1]
-}
-
-editor_maybe_create_buffer_from_file :: proc(filepath: string) -> ^Buffer {
+editor_maybe_create_buffer_from_file :: proc(filepath: string) {
     // NEW
-    append(&bragi.tbuffers, make_text_buffer(0))
-    bragi.panes[0].buffer = &bragi.tbuffers[len(bragi.tbuffers) - 1]
-    // OLD
-    for &buf in bragi.buffers {
-        if buf.filepath == filepath {
-            return &buf
-        }
-    }
+    // append(&bragi.buffers, make_text_buffer(0))
+    // bragi.panes[0].buffer = &bragi.buffers[len(bragi.buffers) - 1]
+    // name := filepath
+    // data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
 
-    name := filepath
-    data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
-    str_data := string(data)
-    buf := editor_create_buffer(name, 0)
-    buf.filepath = filepath
-
-    insert_new_file(get_buffer_from_current_pane(), data)
-
-    for line in strings.split_lines_iterator(&str_data) {
-        append(&buf.lines, strings.clone(line))
-    }
-
-    append(&buf.lines, "")
-
-    return buf
-}
-
-is_code_block_open :: proc(line_index: int) -> bool {
-    line := bragi.cbuffer.lines[line_index]
-    return len(line) > 0 && line[len(line) - 1] == '{'
+    // insert_whole_file(get_buffer_from_current_pane(), data)
 }
 
 editor_position_cursor :: proc(wp: Vector2) {
-    buf := bragi.cbuffer
-    std_char_size := get_standard_character_size()
-    new_pos := cursor_canonicalize(wp)
-    last_line := len(buf.lines) - 1
+    // buf := bragi.cbuffer
+    // std_char_size := get_standard_character_size()
+    // new_pos := cursor_canonicalize(wp)
+    // last_line := len(buf.lines) - 1
 
-    if new_pos.y > last_line {
-        new_pos.y = last_line
-    } else if new_pos.y < 0 {
-        new_pos.y = 0
-    }
+    // if new_pos.y > last_line {
+    //     new_pos.y = last_line
+    // } else if new_pos.y < 0 {
+    //     new_pos.y = 0
+    // }
 
-    if new_pos.x > len(buf.lines[new_pos.y]) {
-        new_pos.x = len(buf.lines[new_pos.y])
-    } else if new_pos.x < 0 {
-        new_pos.x = 0
-    }
+    // if new_pos.x > len(buf.lines[new_pos.y]) {
+    //     new_pos.x = len(buf.lines[new_pos.y])
+    // } else if new_pos.x < 0 {
+    //     new_pos.x = 0
+    // }
 
-    buf.cursor.position = new_pos
+    // buf.cursor.position = new_pos
 }
 
 editor_select :: proc(wp: Vector2) {
-    editor_position_cursor(wp)
+    // editor_position_cursor(wp)
 
-    buf := bragi.cbuffer
-    new_pos := buf.cursor.position
+    // buf := bragi.cbuffer
+    // new_pos := buf.cursor.position
 
-    start, end := find_word_in_place(buf.lines[new_pos.y], new_pos.x)
+    // start, end := find_word_in_place(buf.lines[new_pos.y], new_pos.x)
 
-    new_pos.x = end
+    // new_pos.x = end
 
-    buf.cursor.region_enabled = true
-    buf.cursor.region_start = { start, new_pos.y }
-    buf.cursor.position = new_pos
+    // buf.cursor.region_enabled = true
+    // buf.cursor.region_start = { start, new_pos.y }
+    // buf.cursor.position = new_pos
 }

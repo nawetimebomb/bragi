@@ -4,6 +4,7 @@ import "core:fmt"
 
 import "base:runtime"
 import "core:mem"
+import "core:os"
 import "core:strings"
 import "core:unicode/utf8"
 
@@ -15,17 +16,33 @@ Text_Buffer :: struct {
     gap_start : int,
     gap_end   : int,
     lines     : [dynamic]int,
+    modified  : bool,
     name      : string,
     strbuffer : strings.Builder,
 }
 
-make_text_buffer :: proc(bytes_count: int, allocator := context.allocator) -> Text_Buffer {
-    return Text_Buffer{
+make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.allocator) -> ^Text_Buffer {
+    append(&bragi.buffers, Text_Buffer{
         allocator = allocator,
         data      = make([]u8, bytes_count, allocator),
         gap_end   = bytes_count,
+        name      = name,
         strbuffer = strings.builder_make(context.temp_allocator),
-    }
+    })
+    text_buffer := &bragi.buffers[len(bragi.buffers) - 1]
+    buffer_calculate_lines(text_buffer)
+    return text_buffer
+}
+
+make_text_buffer_from_file :: proc(filepath: string, allocator := context.allocator) -> ^Text_Buffer {
+    data, success := os.read_entire_file_from_filename(filepath)
+    // TODO: Clean up file for CRs
+    text_buffer := make_text_buffer(filepath, len(data))
+    insert_whole_file(text_buffer, data)
+    text_buffer.filepath = filepath
+    text_buffer.cursor = 0
+    delete(data)
+    return text_buffer
 }
 
 delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
@@ -33,12 +50,6 @@ delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
     if count < 0 {
         buffer.cursor = max(0, buffer.cursor + count)
     }
-    buffer_calculate_lines(buffer)
-}
-
-insert_new_file :: proc(buffer: ^Text_Buffer, data: []u8) {
-    buffer_insert(buffer, 0, data)
-    buffer.cursor = 0
     buffer_calculate_lines(buffer)
 }
 
@@ -52,6 +63,12 @@ insert_at_point :: proc(buffer: ^Text_Buffer, str: string) {
     insert_at(buffer, buffer.cursor, str)
 }
 
+insert_whole_file :: proc(buffer: ^Text_Buffer, data: []u8) {
+    buffer_insert(buffer, 0, data)
+    buffer.cursor = 0
+    buffer_calculate_lines(buffer)
+}
+
 length_of_buffer :: proc(buffer: ^Text_Buffer) -> int {
     gap := buffer.gap_end - buffer.gap_start
     return len(buffer.data) - gap
@@ -62,8 +79,8 @@ newline :: proc(buffer: ^Text_Buffer) {
     buffer.cursor += 1
 }
 
-rune_at :: proc(buffer: ^Text_Buffer) -> rune {
-    cursor := clamp(buffer.cursor, 0, length_of_buffer(buffer) - 1)
+rune_at :: proc(buffer: ^Text_Buffer, cursor: int) -> rune {
+    cursor := clamp(cursor, 0, length_of_buffer(buffer) - 1)
     left, right := buffer_get_strings(buffer)
 
     if cursor < len(left) {
@@ -71,6 +88,10 @@ rune_at :: proc(buffer: ^Text_Buffer) -> rune {
     } else {
         return rune(right[cursor - len(left)])
     }
+}
+
+rune_at_point :: proc(buffer: ^Text_Buffer) -> rune {
+    return rune_at(buffer, buffer.cursor)
 }
 
 flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
@@ -88,6 +109,13 @@ flush_range :: proc(buffer: ^Text_Buffer, start, end: int) {
         strings.write_string(&buffer.strbuffer, left[start:])
         strings.write_string(&buffer.strbuffer, right[:end - left_len])
     }
+}
+
+range_buffer_to_string :: proc(buffer: ^Text_Buffer, start, end: int) -> string {
+    flush_range(buffer, start, end)
+    str := strings.to_string(buffer.strbuffer)
+    clear(&buffer.strbuffer.buf)
+    return str
 }
 
 flush_entire_buffer :: proc(buffer: ^Text_Buffer) {
@@ -152,6 +180,7 @@ conditionally_grow_buffer :: proc(buffer: ^Text_Buffer, bytes_count: int) {
 buffer_calculate_lines :: proc(buffer: ^Text_Buffer) {
     // TODO: It shouldn't clear all lines, but the ones affected, after the current
     // cursor position
+    fmt.println("- Calculating lines")
     clear(&buffer.lines)
     left, right := buffer_get_strings(buffer)
     append(&buffer.lines, 0)

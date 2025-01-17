@@ -54,7 +54,7 @@ load_keybinds :: proc() {
 
 // These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
 handle_generic_keybindings :: proc(key: sdl.Keysym) {
-    pane := get_focused_pane()
+    buffer := get_buffer_from_current_pane()
 
     A   := check_alt(key.mod)
     AS  := check_alt_shift(key.mod)
@@ -72,48 +72,47 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         }
         case .BACKSPACE: {
             switch {
-            case C: buffer_delete_word_backward()
-            case  : buffer_delete_char_backward()
+            // case C: buffer_delete_word_backward()
+            // case  : buffer_delete_char_backward()
             }
         }
         case .DELETE: {
             switch {
-            case C: buffer_delete_word_forward()
-            case  : buffer_delete_char_forward()
+            // case C: buffer_delete_word_forward()
+            // case  : buffer_delete_char_forward()
             }
         }
         case .RETURN: {
-            newline(pane.buffer)
-            buffer_newline()
+            newline(buffer)
         }
         case .PAGEUP: {
-            buffer_scroll(-buffer_page_size().y)
+            // buffer_scroll(-buffer_page_size().y)
         }
         case .PAGEDOWN: {
-            buffer_scroll(buffer_page_size().y)
+            // buffer_scroll(buffer_page_size().y)
         }
         case .UP: {
             switch {
-            case C: buffer_backward_paragraph()
-            case  : buffer_previous_line()
+            // case C: buffer_backward_paragraph()
+            // case  : buffer_previous_line()
             }
         }
         case .DOWN: {
             switch {
-            case C: buffer_forward_paragraph()
-            case  : buffer_next_line()
+            // case C: buffer_forward_paragraph()
+            // case  : buffer_next_line()
             }
         }
         case .LEFT: {
             switch {
-            case C: buffer_backward_word()
-            case  : buffer_backward_char()
+            // case C: buffer_backward_word()
+            // case  : buffer_backward_char()
             }
         }
         case .RIGHT: {
             switch {
-            case C: buffer_forward_word()
-            case  : buffer_forward_char()
+            // case C: buffer_forward_word()
+            // case  : buffer_forward_char()
             }
         }
     }
@@ -154,40 +153,40 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
     #partial switch key.sym {
         case .A: {
             switch {
-            case C: buffer_beginning_of_line()
+            // case C: buffer_beginning_of_line()
             }
         }
         case .B: {
             switch {
-            case A: buffer_backward_word()
-            case C: buffer_backward_char()
+            // case A: buffer_backward_word()
+            // case C: buffer_backward_char()
             }
         }
         case .D: {
             switch {
-            case A: buffer_delete_word_forward()
-            case C: buffer_delete_char_forward()
+            // case A: buffer_delete_word_forward()
+            // case C: buffer_delete_char_forward()
             }
         }
         case .E: {
             switch {
-            case C: buffer_end_of_line()
+            // case C: buffer_end_of_line()
             }
         }
         case .F: {
             switch {
-            case A: buffer_forward_word()
-            case C: buffer_forward_char()
+            // case A: buffer_forward_word()
+            // case C: buffer_forward_char()
             }
         }
         case .N: {
             switch {
-            case C: buffer_next_line()
+            // case C: buffer_next_line()
             }
         }
         case .P: {
             switch {
-            case C: buffer_previous_line()
+            // case C: buffer_previous_line()
             }
         }
         case .S: {
@@ -198,8 +197,8 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .V: {
             switch {
-            case A: buffer_scroll(-buffer_page_size().y)
-            case C: buffer_scroll(buffer_page_size().y)
+            // case A: buffer_scroll(-buffer_page_size().y)
+            // case C: buffer_scroll(buffer_page_size().y)
             }
         }
         case .X: {
@@ -210,22 +209,22 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .PERIOD: {
             switch {
-            case AS: buffer_end_of_buffer()
+            // case AS: buffer_end_of_buffer()
             }
         }
         case .GREATER: {
             switch {
-            case A: buffer_end_of_buffer()
+            // case A: buffer_end_of_buffer()
             }
         }
         case .COMMA: {
             switch {
-            case A && S: buffer_beginning_of_buffer()
+            // case A && S: buffer_beginning_of_buffer()
             }
         }
         case .LESS: {
             switch {
-            case A: buffer_beginning_of_buffer()
+            // case A: buffer_beginning_of_buffer()
             }
         }
     }

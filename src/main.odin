@@ -20,6 +20,8 @@ DEFAULT_WINDOW_HEIGHT :: 768
 DEFAULT_CURSOR_BLINK  :: 1.0
 
 Settings :: struct {
+    mm: map[Major_Mode]Major_Mode_Settings,
+
     font_size: i32,
 
     cursor_blink_delay_in_seconds : f32,
@@ -36,7 +38,6 @@ Program_Context :: struct {
     delta_time   : f32,
     font         : ^ttf.Font,
     characters   : map[rune]Character_Texture,
-    mm_settings  : map[Major_Mode]Major_Mode_Settings,
     running      : bool,
     renderer     : ^sdl.Renderer,
     window       : ^sdl.Window,
@@ -56,7 +57,55 @@ Bragi :: struct {
 
 bragi: Bragi
 
-initialize_sdl :: proc() {
+destroy_context :: proc() {
+    log.debug("Destroying context")
+    for _, char in bragi.ctx.characters {
+        sdl.DestroyTexture(char.texture)
+    }
+    delete(bragi.ctx.characters)
+
+    sdl.DestroyRenderer(bragi.ctx.renderer)
+    sdl.DestroyWindow(bragi.ctx.window)
+    ttf.CloseFont(bragi.ctx.font)
+    ttf.Quit()
+    sdl.Quit()
+}
+
+destroy_editor :: proc() {
+    log.debug("Destroying editor")
+    if bragi.settings.save_desktop_mode {
+        // TODO: Save desktop configuration
+    }
+    for &b in bragi.buffers {
+        delete(b.name)
+        delete(b.data)
+        delete(b.str_buffer.buf)
+    }
+    delete(bragi.buffers)
+    delete(bragi.panes)
+}
+
+destroy_settings :: proc() {
+    log.debug("Destroying settings")
+    delete(bragi.settings.mm)
+}
+
+initialize_editor :: proc() {
+    log.debug("Initializing editor")
+
+    bragi.buffers = make([dynamic]Text_Buffer, 0, 10)
+    bragi.panes = make([dynamic]Pane, 0, 2)
+
+    create_pane()
+
+    // TODO: This is a debug only thing
+    filepath := "C:/Code/bragi/demo/hello.odin"
+    editor_open_file(filepath)
+}
+
+initialize_context :: proc() {
+    log.debug("Initializing context")
+
     assert(sdl.Init({.VIDEO}) == 0, sdl.GetErrorString())
     assert(ttf.Init() == 0, sdl.GetErrorString())
 
@@ -77,23 +126,15 @@ initialize_sdl :: proc() {
     assert(bragi.ctx.font != nil, sdl.GetErrorString())
 
     set_characters_textures()
-    set_major_modes_settings()
+
     bragi.ctx.running = true
     bragi.ctx.window_size = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
 }
 
-destroy_sdl :: proc() {
-    for _, char in bragi.ctx.characters {
-        sdl.DestroyTexture(char.texture)
-    }
-    delete(bragi.ctx.characters)
-    delete(bragi.ctx.mm_settings)
+initialize_settings :: proc() {
+    log.debug("Initializing settings")
 
-    sdl.DestroyRenderer(bragi.ctx.renderer)
-    sdl.DestroyWindow(bragi.ctx.window)
-    ttf.CloseFont(bragi.ctx.font)
-    ttf.Quit()
-    sdl.Quit()
+    set_major_modes_settings()
 }
 
 // NOTE: This function should run every time the user changes the font
@@ -102,7 +143,8 @@ set_characters_textures :: proc() {
     ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~á"
 
     clear(&bragi.ctx.characters)
-    log.debug("Generating character textures")
+    log.debug("Generating new character textures")
+
     for c in ascii[:] {
         ostr := utf8.runes_to_string([]rune{c})
         cstr := cstring(raw_data(ostr))
@@ -147,8 +189,9 @@ main :: proc() {
         return err
     }
 
-    editor_start()
-    initialize_sdl()
+    initialize_settings()
+    initialize_editor()
+    initialize_context()
     load_keybinds()
 
     last_update := sdl.GetTicks()
@@ -177,17 +220,7 @@ main :: proc() {
                     delete(e.drop.file)
                 }
                 case .MOUSEBUTTONDOWN: {
-                    m := e.button
 
-                    if m.button == 1 {
-                        pos := Vector2{ int(m.x), int(m.y) }
-
-                        if m.clicks == 1 {
-                            editor_position_cursor(pos)
-                        } else {
-                            editor_select(pos)
-                        }
-                    }
                 }
                 case .MOUSEWHEEL: {
                     m := e.wheel
@@ -244,8 +277,9 @@ main :: proc() {
         }
     }
 
-    destroy_sdl()
-    editor_close()
+    destroy_context()
+    destroy_editor()
+    destroy_settings()
 
     if reset_tracking_allocator(&tracking_allocator) {
         os.exit(1)
@@ -326,7 +360,7 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
         pane.caret.position.x, pane.caret.position.y,
     )
     rmodeline_format := fmt.tprintf(
-        "{0}", bragi.ctx.mm_settings[pane.buffer.major_mode].name,
+        "{0}", bragi.settings.mm[pane.buffer.major_mode].name,
     )
     y := i32(bragi.ctx.window_size.y - std_char_size.y * 2)
     background_rect := sdl.Rect{

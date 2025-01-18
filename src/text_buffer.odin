@@ -35,6 +35,7 @@ make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.al
         allocator  = allocator,
         data       = make([]u8, bytes_count, allocator),
         gap_end    = bytes_count,
+        major_mode = .Fundamental,
         name       = strings.clone(name),
         str_buffer = strings.builder_make(),
     })
@@ -46,14 +47,20 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
     norm_filepath, _ := strings.replace_all(filepath, "\\", "/", context.temp_allocator)
     split_filepath := strings.split(norm_filepath, "/", context.temp_allocator)
     name := split_filepath[len(split_filepath) - 1]
-    log.debugf("Opening file {0} in buffer {1}", filepath, name)
+    split_filename := strings.split(name, ".", context.temp_allocator)
+    extension := split_filename[len(split_filename) - 1]
     data, success := os.read_entire_file_from_filename(filepath)
     parsed_data := buffer_clean_up_carriage_returns(data)
     text_buffer := make_text_buffer(name, len(parsed_data))
+
     insert_whole_file(text_buffer, parsed_data)
+
     text_buffer.filepath = filepath
     text_buffer.cursor = 0
+    text_buffer.major_mode = find_major_mode(extension)
     text_buffer.modified = len(data) != len(parsed_data)
+
+    log.debugf("Opening file {0} in buffer {1}", filepath, name)
     delete(data)
     return text_buffer
 }
@@ -144,7 +151,7 @@ count_backward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) ->
     starting_cursor := cursor
     str := entire_buffer_to_string(buffer)
     word_started := false
-    delimiters := bragi.ctx.mm_settings[buffer.major_mode].word_delimiters
+    delimiters := get_word_delimiters(buffer.major_mode)
 
     for offset = starting_cursor; offset > 0; offset -= 1 {
         r := rune(str[offset])
@@ -177,7 +184,7 @@ count_forward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) -> 
     starting_cursor := cursor
     str := entire_buffer_to_string(buffer)
     word_started := false
-    delimiters := bragi.ctx.mm_settings[buffer.major_mode].word_delimiters
+    delimiters := get_word_delimiters(buffer.major_mode)
 
     for offset = starting_cursor; offset < length_of_buffer(buffer) - 1; offset += 1 {
         r := rune(str[offset])

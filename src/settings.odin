@@ -1,5 +1,7 @@
 package main
 
+import "core:strings"
+
 Major_Mode :: enum {
     Fundamental,
     Odin,
@@ -17,7 +19,7 @@ Auto_Indentation_Type  :: enum { Off, Relaxed, Electric, }
 Major_Mode_Settings :: struct {
     enable_lexer       : bool,
     name               : string,
-    file_extensions    : []string,
+    file_extensions    : string,
     keywords           : []string,
     types              : []string,
     comment_delimiters : string,
@@ -29,8 +31,24 @@ Major_Mode_Settings :: struct {
 }
 
 set_major_modes_settings :: proc() {
-    bragi.ctx.mm_settings[.Fundamental] = major_mode_fundamental()
-    bragi.ctx.mm_settings[.Odin] = major_mode_odin()
+    bragi.settings.mm[.Fundamental] = major_mode_fundamental()
+    bragi.settings.mm[.Odin]        = major_mode_odin()
+}
+
+find_major_mode :: proc(file_ext: string) -> Major_Mode {
+    if len(file_ext) > 0 {
+        for key, value in bragi.settings.mm {
+            if strings.contains(value.file_extensions, file_ext) {
+                return key
+            }
+        }
+    }
+
+    return .Fundamental
+}
+
+get_word_delimiters :: proc(mode: Major_Mode) -> string {
+    return bragi.settings.mm[mode].word_delimiters
 }
 
 @(private="file")
@@ -50,7 +68,7 @@ major_mode_odin :: proc() -> Major_Mode_Settings {
     return {
         enable_lexer      = true,
         name              = "Odin",
-        file_extensions   = { ".odin" },
+        file_extensions   = "odin",
         word_delimiters   = " .,_-[]():\n",
         auto_indent_type  = .Electric,
         indentation_width = 4,

@@ -1,33 +1,7 @@
 package main
 
-import "core:fmt"
-
 Vector2 :: distinct [2]int
 Line    :: string
-
-editor_close :: proc() {
-    if bragi.settings.save_desktop_mode {
-        // TODO: Save desktop configuration
-    }
-    for &b in bragi.buffers {
-        delete(b.name)
-        delete(b.data)
-        delete(b.str_buffer.buf)
-    }
-    delete(bragi.buffers)
-    delete(bragi.panes)
-}
-
-editor_start :: proc() {
-    if bragi.settings.save_desktop_mode {
-        // TODO: Load desktop configuration
-    } else {
-        create_pane()
-    }
-
-    filepath := "C:/Code/bragi/demo/hello.odin"
-    editor_open_file(filepath)
-}
 
 editor_open_file :: proc(filepath: string) {
     buffer_found := false
@@ -44,42 +18,6 @@ editor_open_file :: proc(filepath: string) {
     if !buffer_found {
         pane.buffer = make_text_buffer_from_file(filepath)
     }
-}
-
-editor_position_cursor :: proc(wp: Vector2) {
-    // buf := bragi.cbuffer
-    // std_char_size := get_standard_character_size()
-    // new_pos := cursor_canonicalize(wp)
-    // last_line := len(buf.lines) - 1
-
-    // if new_pos.y > last_line {
-    //     new_pos.y = last_line
-    // } else if new_pos.y < 0 {
-    //     new_pos.y = 0
-    // }
-
-    // if new_pos.x > len(buf.lines[new_pos.y]) {
-    //     new_pos.x = len(buf.lines[new_pos.y])
-    // } else if new_pos.x < 0 {
-    //     new_pos.x = 0
-    // }
-
-    // buf.cursor.position = new_pos
-}
-
-editor_select :: proc(wp: Vector2) {
-    // editor_position_cursor(wp)
-
-    // buf := bragi.cbuffer
-    // new_pos := buf.cursor.position
-
-    // start, end := find_word_in_place(buf.lines[new_pos.y], new_pos.x)
-
-    // new_pos.x = end
-
-    // buf.cursor.region_enabled = true
-    // buf.cursor.region_start = { start, new_pos.y }
-    // buf.cursor.position = new_pos
 }
 
 beginning_of_buffer :: proc(pane: ^Pane) {

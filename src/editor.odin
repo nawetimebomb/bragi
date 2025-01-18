@@ -5,9 +5,6 @@ import "core:fmt"
 Vector2 :: distinct [2]int
 Line    :: string
 
-// TODO: This should be defined by the language
-DELIMITERS :: " _-.,:()[]\n"
-
 editor_close :: proc() {
     if bragi.settings.save_desktop_mode {
         // TODO: Save desktop configuration
@@ -151,7 +148,7 @@ delete_backward_char :: proc(pane: ^Pane) {
 }
 
 delete_backward_word :: proc(pane: ^Pane) {
-    offset := count_backward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    offset := count_backward_words_offset(pane.buffer, pane.buffer.cursor, 1)
     delete_at(pane.buffer, pane.buffer.cursor, -offset)
 }
 
@@ -160,7 +157,7 @@ delete_forward_char :: proc(pane: ^Pane) {
 }
 
 delete_forward_word :: proc(pane: ^Pane) {
-    offset := count_forward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    offset := count_forward_words_offset(pane.buffer, pane.buffer.cursor, 1)
     delete_at(pane.buffer, pane.buffer.cursor, offset)
 }
 
@@ -173,7 +170,7 @@ backward_char :: proc(pane: ^Pane) {
 }
 
 backward_word :: proc(pane: ^Pane) {
-    offset := count_backward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    offset := count_backward_words_offset(pane.buffer, pane.buffer.cursor, 1)
     pane.buffer.cursor = max(0, pane.buffer.cursor - offset)
 }
 
@@ -182,7 +179,7 @@ forward_char :: proc(pane: ^Pane) {
 }
 
 forward_word :: proc(pane: ^Pane) {
-    offset := count_forward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    offset := count_forward_words_offset(pane.buffer, pane.buffer.cursor, 1)
     pane.buffer.cursor = min(pane.buffer.cursor + offset, length_of_buffer(pane.buffer) - 1)
 }
 

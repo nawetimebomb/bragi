@@ -22,6 +22,7 @@ Text_Buffer :: struct {
     gap_start  : int,
     gap_end    : int,
     modified   : bool,
+    major_mode : Major_Mode,
     name       : string,
     readonly   : bool,
     str_buffer : strings.Builder,
@@ -138,11 +139,12 @@ line_end :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
     return cursor
 }
 
-count_backward_words_offset :: proc(buffer: ^Text_Buffer, delimiters: string, cursor, count: int) -> int {
+count_backward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) -> int {
     found, offset: int
     starting_cursor := cursor
     str := entire_buffer_to_string(buffer)
     word_started := false
+    delimiters := bragi.ctx.mm_settings[buffer.major_mode].word_delimiters
 
     for offset = starting_cursor; offset > 0; offset -= 1 {
         r := rune(str[offset])
@@ -170,11 +172,12 @@ count_backward_words_offset :: proc(buffer: ^Text_Buffer, delimiters: string, cu
     return max(0, starting_cursor - offset)
 }
 
-count_forward_words_offset :: proc(buffer: ^Text_Buffer, delimiters: string, cursor, count: int) -> int {
+count_forward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) -> int {
     found, offset: int
     starting_cursor := cursor
     str := entire_buffer_to_string(buffer)
     word_started := false
+    delimiters := bragi.ctx.mm_settings[buffer.major_mode].word_delimiters
 
     for offset = starting_cursor; offset < length_of_buffer(buffer) - 1; offset += 1 {
         r := rune(str[offset])

@@ -32,10 +32,11 @@ Character_Texture :: struct {
     dest    : sdl.Rect,
 }
 
-SDL_Context :: struct {
+Program_Context :: struct {
     delta_time   : f32,
     font         : ^ttf.Font,
     characters   : map[rune]Character_Texture,
+    mm_settings  : map[Major_Mode]Major_Mode_Settings,
     running      : bool,
     renderer     : ^sdl.Renderer,
     window       : ^sdl.Window,
@@ -43,7 +44,7 @@ SDL_Context :: struct {
 }
 
 Bragi :: struct {
-    ctx          : SDL_Context,
+    ctx          : Program_Context,
 
     buffers      : [dynamic]Text_Buffer,
     panes        : [dynamic]Pane,
@@ -69,9 +70,14 @@ initialize_sdl :: proc() {
         sdl.CreateRenderer(bragi.ctx.window, -1, {.ACCELERATED, .PRESENTVSYNC})
     assert(bragi.ctx.renderer != nil, "Cannot create renderer")
 
-    bragi.ctx.font = ttf.OpenFont("../res/font/firacode.ttf", DEFAULT_FONT_SIZE)
+
+    src_data :=
+        sdl.RWFromConstMem(raw_data(DEFAULT_FONT_DATA), i32(len(DEFAULT_FONT_DATA)))
+    bragi.ctx.font = ttf.OpenFontRW(src_data, true, DEFAULT_FONT_SIZE)
     assert(bragi.ctx.font != nil, sdl.GetErrorString())
 
+    set_characters_textures()
+    set_major_modes_settings()
     bragi.ctx.running = true
     bragi.ctx.window_size = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
 }
@@ -81,6 +87,7 @@ destroy_sdl :: proc() {
         sdl.DestroyTexture(char.texture)
     }
     delete(bragi.ctx.characters)
+    delete(bragi.ctx.mm_settings)
 
     sdl.DestroyRenderer(bragi.ctx.renderer)
     sdl.DestroyWindow(bragi.ctx.window)
@@ -90,10 +97,12 @@ destroy_sdl :: proc() {
 }
 
 // NOTE: This function should run every time the user changes the font
-create_textures_for_characters :: proc() {
+set_characters_textures :: proc() {
     COLOR_WHITE : sdl.Color : { 255, 255, 255, 255 }
     ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~á"
 
+    clear(&bragi.ctx.characters)
+    log.debug("Generating character textures")
     for c in ascii[:] {
         ostr := utf8.runes_to_string([]rune{c})
         cstr := cstring(raw_data(ostr))
@@ -140,7 +149,6 @@ main :: proc() {
 
     editor_start()
     initialize_sdl()
-    create_textures_for_characters()
     load_keybinds()
 
     last_update := sdl.GetTicks()
@@ -273,6 +281,7 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
         column := x * i32(std_char_size.x)
         row := y * i32(std_char_size.y)
 
+        // TODO: here I should have the lexer figuring out what color this character is
         sdl.SetTextureColorMod(char.texture, 255, 255, 255)
 
         if !pane.caret.hidden && pane.buffer.cursor == char_index {
@@ -307,13 +316,17 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
 }
 
 render_modeline :: proc(pane: ^Pane, focused: bool) {
+    MARGIN :: 20
+
     std_char_size := get_standard_character_size()
-    padding_minimum_size :: 20
-    modeline_format := fmt.tprintf(
+    lmodeline_format := fmt.tprintf(
         "{0} {1}  ({2}, {3})",
         get_buffer_status(pane.buffer),
         pane.buffer.name,
         pane.caret.position.x, pane.caret.position.y,
+    )
+    rmodeline_format := fmt.tprintf(
+        "{0}", bragi.ctx.mm_settings[pane.buffer.major_mode].name,
     )
     y := i32(bragi.ctx.window_size.y - std_char_size.y * 2)
     background_rect := sdl.Rect{
@@ -333,7 +346,7 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
         sdl.RenderDrawRect(bragi.ctx.renderer, &background_rect)
     }
 
-    for c, index in modeline_format {
+    for c, index in lmodeline_format {
         char := bragi.ctx.characters[c]
 
         if focused {
@@ -342,7 +355,22 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
             sdl.SetTextureColorMod(char.texture, 132, 132, 132)
         }
 
-        char.dest.x = padding_minimum_size + char.dest.w * i32(index)
+        char.dest.x = MARGIN + char.dest.w * i32(index)
+        char.dest.y = y
+        sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
+    }
+
+    rmdf_padding := i32(len(rmodeline_format) * std_char_size.x)
+    for c, index in rmodeline_format {
+        char := bragi.ctx.characters[c]
+
+        if focused {
+            sdl.SetTextureColorMod(char.texture, 255, 255, 255)
+        } else {
+            sdl.SetTextureColorMod(char.texture, 132, 132, 132)
+        }
+
+        char.dest.x = i32(bragi.ctx.window_size.x) - MARGIN - rmdf_padding + char.dest.w * i32(index)
         char.dest.y = y
         sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
     }

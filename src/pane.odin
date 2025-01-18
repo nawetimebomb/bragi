@@ -2,12 +2,12 @@ package main
 
 import "core:mem"
 
-CARET_BLINK_TIMER :: 1000 / FPS * 60
+CARET_BLINK_TIMER_DEFAULT :: 0.5
 
 Caret :: struct {
     animated       : bool,
     hidden         : bool,
-    timer          : u32,
+    timer          : f32,
     max_x          : int,
     region_enabled : bool,
     region_start   : Vector2,
@@ -40,8 +40,4 @@ make_pane :: proc(current_pane: ^Pane = nil) {
 
 get_focused_pane :: proc() -> ^Pane {
     return &bragi.panes[bragi.focused_pane]
-}
-
-get_buffer_from_current_pane :: proc() -> ^Text_Buffer {
-    return get_focused_pane().buffer
 }

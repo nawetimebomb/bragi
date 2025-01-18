@@ -1,6 +1,7 @@
 package main
 
 import     "base:runtime"
+import     "core:fmt"
 import     "core:log"
 import     "core:mem"
 import     "core:os"
@@ -11,8 +12,6 @@ import ttf "vendor:sdl2/ttf"
 
 TITLE   :: "Bragi"
 VERSION :: 0
-
-FPS :: 60
 
 DEFAULT_FONT_DATA     :: #load("../res/font/firacode.ttf")
 DEFAULT_FONT_SIZE     :: 22
@@ -34,6 +33,7 @@ Character_Texture :: struct {
 }
 
 SDL_Context :: struct {
+    delta_time   : f32,
     font         : ^ttf.Font,
     characters   : map[rune]Character_Texture,
     running      : bool,
@@ -66,7 +66,7 @@ initialize_sdl :: proc() {
     assert(bragi.ctx.window != nil, "Cannot open window")
 
     bragi.ctx.renderer =
-        sdl.CreateRenderer(bragi.ctx.window, -1, {.ACCELERATED})
+        sdl.CreateRenderer(bragi.ctx.window, -1, {.ACCELERATED, .PRESENTVSYNC})
     assert(bragi.ctx.renderer != nil, "Cannot create renderer")
 
     bragi.ctx.font = ttf.OpenFont("../res/font/firacode.ttf", DEFAULT_FONT_SIZE)
@@ -143,12 +143,11 @@ main :: proc() {
     create_textures_for_characters()
     load_keybinds()
 
-    for bragi.ctx.running {
-        duration, dt_ms, frame_start, frame_end: u32
-        dt_ms = 1000 / FPS
-        e: sdl.Event
+    last_update := sdl.GetTicks()
+    frame_update_timer : f32 = 10
 
-        frame_start = sdl.GetTicks()
+    for bragi.ctx.running {
+        e: sdl.Event
 
         for sdl.PollEvent(&e) {
             #partial switch e.type {
@@ -192,9 +191,10 @@ main :: proc() {
                 }
                 case .TEXTINPUT: {
                     if !bragi.keybinds.key_handled {
+                        pane := get_focused_pane()
                         bragi.keybinds.last_keystroke = sdl.GetTicks()
                         input_char := cstring(raw_data(e.text.text[:]))
-                        insert_at_point(get_buffer_from_current_pane(), string(input_char))
+                        insert_at_point(pane.buffer, string(input_char))
                     }
 
                     bragi.keybinds.key_handled = false
@@ -202,17 +202,28 @@ main :: proc() {
             }
         }
 
+        current_update := sdl.GetTicks()
+
+        bragi.ctx.delta_time = f32(current_update - last_update) / 1000
+        last_update = current_update
+
         render_new_version()
 
         sdl.RenderPresent(bragi.ctx.renderer)
 
         free_all(context.temp_allocator)
 
-        frame_end = sdl.GetTicks()
-        duration = frame_end - frame_start
+        frame_update_timer += bragi.ctx.delta_time
 
-        if duration < dt_ms {
-            sdl.Delay(dt_ms - duration)
+        if frame_update_timer > 0.5 {
+            frame_update_timer = 0
+
+            window_title := fmt.ctprintf(
+                "Bragi - {0} fps {1} frametime",
+                1 / bragi.ctx.delta_time,
+                bragi.ctx.delta_time,
+            )
+            sdl.SetWindowTitle(bragi.ctx.window, window_title)
         }
     }
 
@@ -227,8 +238,6 @@ main :: proc() {
 }
 
 render_new_version :: proc() {
-    dt_ms : u32 = 1000 / FPS
-
     sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
     sdl.RenderClear(bragi.ctx.renderer)
 
@@ -236,21 +245,20 @@ render_new_version :: proc() {
 
     for &pane, index in bragi.panes {
         x, y: i32
-        caret_rendered := false
         str := entire_buffer_to_string(pane.buffer)
         focused := bragi.focused_pane == index
 
         pane.caret.animated = focused
 
         if pane.caret.animated {
-            pane.caret.timer += 1000 / FPS
+            pane.caret.timer += bragi.ctx.delta_time
 
             if bragi.keybinds.last_keystroke == sdl.GetTicks() {
                 pane.caret.timer = 0
                 pane.caret.hidden = false
             }
 
-            if pane.caret.timer > 500 {
+            if pane.caret.timer > CARET_BLINK_TIMER_DEFAULT {
                 pane.caret.timer = 0
                 pane.caret.hidden = !pane.caret.hidden
             }
@@ -260,20 +268,27 @@ render_new_version :: proc() {
 
         for c, char_index in str {
             char := bragi.ctx.characters[c]
-
             column := x * i32(std_char_size.x)
             row := y * i32(std_char_size.y)
 
-            if !pane.caret.hidden && !caret_rendered && pane.buffer.cursor == char_index {
-                caret_rendered = true
-                sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
+            sdl.SetTextureColorMod(char.texture, 255, 255, 255)
+
+            if !pane.caret.hidden && pane.buffer.cursor == char_index {
                 caret_rect := sdl.Rect{
                     column, row,
                     i32(std_char_size.x), i32(std_char_size.y),
                 }
-                sdl.RenderFillRect(bragi.ctx.renderer, &caret_rect)
+
+                sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
+
+                if pane.caret.animated {
+                    sdl.RenderFillRect(bragi.ctx.renderer, &caret_rect)
+                    sdl.SetTextureColorMod(char.texture, 1, 32, 39)
+                } else {
+                    sdl.RenderDrawRect(bragi.ctx.renderer, &caret_rect)
+                }
+
                 sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-                sdl.SetTextureColorMod(char.texture, 1, 32, 39)
             }
 
             char.dest.x = column
@@ -285,10 +300,6 @@ render_new_version :: proc() {
             if c == '\n' {
                 x = 0
                 y += 1
-            }
-
-            if caret_rendered {
-                sdl.SetTextureColorMod(char.texture, 255, 255, 255)
             }
         }
     }

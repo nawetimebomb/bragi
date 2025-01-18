@@ -92,7 +92,7 @@ destroy_sdl :: proc() {
 // NOTE: This function should run every time the user changes the font
 create_textures_for_characters :: proc() {
     COLOR_WHITE : sdl.Color : { 255, 255, 255, 255 }
-    ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~á"
 
     for c in ascii[:] {
         ostr := utf8.runes_to_string([]rune{c})

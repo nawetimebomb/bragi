@@ -41,6 +41,7 @@ make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.al
 }
 
 make_text_buffer_from_file :: proc(filepath: string, allocator := context.allocator) -> ^Text_Buffer {
+    log.debugf("Opening file {0}", filepath)
     data, success := os.read_entire_file_from_filename(filepath)
     parsed_data := buffer_clean_up_carriage_returns(data)
     text_buffer := make_text_buffer(filepath, len(parsed_data))
@@ -131,6 +132,66 @@ line_end :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
     }
 
     return cursor
+}
+
+count_backward_words_offset :: proc(buffer: ^Text_Buffer, delimiters: string, cursor, count: int) -> int {
+    found, offset: int
+    starting_cursor := cursor
+    str := entire_buffer_to_string(buffer)
+    word_started := false
+
+    for offset = starting_cursor; offset > 0; offset -= 1 {
+        r := rune(str[offset])
+
+        if !word_started {
+            if !strings.contains_rune(delimiters, r) {
+                word_started = true
+            }
+        } else {
+            if strings.contains_rune(delimiters, r) {
+                // NOTE: adjustment for better feeling when trying to find
+                // or delete a previous word, since we don't need to get
+                // stuck on the end of a line
+                if r == '\n' { offset -= 1 }
+                word_started = false
+                found += 1
+            }
+        }
+
+        if found == count {
+            break
+        }
+    }
+
+    return max(0, starting_cursor - offset)
+}
+
+count_forward_words_offset :: proc(buffer: ^Text_Buffer, delimiters: string, cursor, count: int) -> int {
+    found, offset: int
+    starting_cursor := cursor
+    str := entire_buffer_to_string(buffer)
+    word_started := false
+
+    for offset = starting_cursor; offset < length_of_buffer(buffer) - 1; offset += 1 {
+        r := rune(str[offset])
+
+        if !word_started {
+            if !strings.contains_rune(delimiters, r) {
+                word_started = true
+            }
+        } else {
+            if strings.contains_rune(delimiters, r) {
+                word_started = false
+                found += 1
+            }
+        }
+
+        if found == count {
+            break
+        }
+    }
+
+    return max(0, offset - starting_cursor)
 }
 
 move_cursor_to :: proc(buffer: ^Text_Buffer, from, to: int, break_on_newline: bool) {

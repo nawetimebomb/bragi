@@ -12,14 +12,13 @@ Cursor :: struct {
     region_enabled : bool,
     region_start   : Vector2,
     selection_mode : bool,
-    x              : int,
-    y              : int,
 }
 
 Pane :: struct {
     buffer     : ^Text_Buffer,
     cursor     : Cursor,
     dimensions : Vector2,
+    camera     : Vector2,
 }
 
 make_pane :: proc(current_pane: ^Pane = nil) {

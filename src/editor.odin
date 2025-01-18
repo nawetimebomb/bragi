@@ -5,6 +5,9 @@ import "core:fmt"
 Vector2 :: distinct [2]int
 Line    :: string
 
+// TODO: This should be defined by the language
+DELIMITERS :: " _-.,:()[]\n"
+
 editor_close :: proc() {
     if bragi.settings.save_desktop_mode {
         // TODO: Save desktop configuration
@@ -147,8 +150,18 @@ delete_backward_char :: proc(pane: ^Pane) {
     delete_at(pane.buffer, pane.buffer.cursor, -1)
 }
 
+delete_backward_word :: proc(pane: ^Pane) {
+    offset := count_backward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    delete_at(pane.buffer, pane.buffer.cursor, -offset)
+}
+
 delete_forward_char :: proc(pane: ^Pane) {
     delete_at(pane.buffer, pane.buffer.cursor, 1)
+}
+
+delete_forward_word :: proc(pane: ^Pane) {
+    offset := count_forward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    delete_at(pane.buffer, pane.buffer.cursor, offset)
 }
 
 newline :: proc(pane: ^Pane) {
@@ -156,12 +169,22 @@ newline :: proc(pane: ^Pane) {
     insert_char_at_point(pane.buffer, '\n')
 }
 
+backward_char :: proc(pane: ^Pane) {
+    pane.buffer.cursor = max(pane.buffer.cursor - 1, 0)
+}
+
+backward_word :: proc(pane: ^Pane) {
+    offset := count_backward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    pane.buffer.cursor = max(0, pane.buffer.cursor - offset)
+}
+
 forward_char :: proc(pane: ^Pane) {
     pane.buffer.cursor = min(pane.buffer.cursor + 1, length_of_buffer(pane.buffer) - 1)
 }
 
-backward_char :: proc(pane: ^Pane) {
-    pane.buffer.cursor = max(pane.buffer.cursor - 1, 0)
+forward_word :: proc(pane: ^Pane) {
+    offset := count_forward_words_offset(pane.buffer, DELIMITERS, pane.buffer.cursor, 1)
+    pane.buffer.cursor = min(pane.buffer.cursor + offset, length_of_buffer(pane.buffer) - 1)
 }
 
 previous_line :: proc(pane: ^Pane) {

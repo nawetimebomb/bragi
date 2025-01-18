@@ -73,13 +73,13 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         }
         case .BACKSPACE: {
             switch {
-            // case C: buffer_delete_word_backward()
+            case C: delete_backward_word(pane)
             case  : delete_backward_char(pane)
             }
         }
         case .DELETE: {
             switch {
-            // case C: buffer_delete_word_forward()
+            case C: delete_forward_word(pane)
             case  : delete_forward_char(pane)
             }
         }
@@ -160,13 +160,13 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .B: {
             switch {
-            // case A: buffer_backward_word()
+            case A: backward_word(pane)
             case C: backward_char(pane)
             }
         }
         case .D: {
             switch {
-            // case A: buffer_delete_word_forward()
+            case A: delete_forward_word(pane)
             case C: delete_forward_char(pane)
             }
         }
@@ -177,7 +177,7 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .F: {
             switch {
-            // case A: buffer_forward_word()
+            case A: forward_word(pane)
             case C: forward_char(pane)
             }
         }

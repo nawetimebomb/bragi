@@ -42,10 +42,13 @@ make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.al
 }
 
 make_text_buffer_from_file :: proc(filepath: string, allocator := context.allocator) -> ^Text_Buffer {
-    log.debugf("Opening file {0}", filepath)
+    norm_filepath, _ := strings.replace_all(filepath, "\\", "/", context.temp_allocator)
+    split_filepath := strings.split(norm_filepath, "/", context.temp_allocator)
+    name := split_filepath[len(split_filepath) - 1]
+    log.debugf("Opening file {0} in buffer {1}", filepath, name)
     data, success := os.read_entire_file_from_filename(filepath)
     parsed_data := buffer_clean_up_carriage_returns(data)
-    text_buffer := make_text_buffer(filepath, len(parsed_data))
+    text_buffer := make_text_buffer(name, len(parsed_data))
     insert_whole_file(text_buffer, parsed_data)
     text_buffer.filepath = filepath
     text_buffer.cursor = 0
@@ -253,6 +256,12 @@ entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
     buffer_flush_everything(buffer)
     buffer.str_cache = .Full
     return strings.to_string(buffer.str_buffer)
+}
+
+get_buffer_status :: proc(buffer: ^Text_Buffer) -> string {
+    temp_buffer := make_temp_str_buffer()
+    strings.write_string(&temp_buffer, buffer.modified ? "*" : "-")
+    return strings.to_string(temp_buffer)
 }
 
 @(private="file")

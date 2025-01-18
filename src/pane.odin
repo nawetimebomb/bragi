@@ -9,16 +9,17 @@ Caret :: struct {
     hidden         : bool,
     timer          : f32,
     max_x          : int,
+    position       : [2]i32,
     region_enabled : bool,
-    region_start   : Vector2,
+    region         : [2]int,
     selection_mode : bool,
 }
 
 Pane :: struct {
-    buffer     : ^Text_Buffer,
-    caret      : Caret,
-    dimensions : Vector2,
-    camera     : Vector2,
+    buffer          : ^Text_Buffer,
+    camera          : Vector2,
+    caret           : Caret,
+    dimensions      : Vector2,
 }
 
 make_pane :: proc(current_pane: ^Pane = nil) {

@@ -120,6 +120,8 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
 }
 
 handle_sublime_keybindings :: proc(key: sdl.Keysym) {
+    pane := get_focused_pane()
+
     A   := check_alt(key.mod)
     AS  := check_alt_shift(key.mod)
     C   := check_ctrl(key.mod)
@@ -131,7 +133,7 @@ handle_sublime_keybindings :: proc(key: sdl.Keysym) {
     #partial switch key.sym {
         case .S: {
             switch {
-            case C: editor_save_file()
+            case C: save_buffer(pane.buffer)
             }
         }
     }

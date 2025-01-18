@@ -35,7 +35,7 @@ make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.al
         allocator  = allocator,
         data       = make([]u8, bytes_count, allocator),
         gap_end    = bytes_count,
-        name       = name,
+        name       = strings.clone(name),
         str_buffer = strings.builder_make(),
     })
     text_buffer := &bragi.buffers[len(bragi.buffers) - 1]
@@ -221,6 +221,8 @@ save_buffer :: proc(buffer: ^Text_Buffer) {
 
         if err != nil {
             log.errorf("Error saving buffer {0}\nError: {1}", buffer.name, err)
+        } else {
+            buffer.modified = false
         }
     } else {
         log.debugf("Nothing to save in {0}", buffer.name)

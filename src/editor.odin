@@ -10,6 +10,7 @@ editor_close :: proc() {
         // TODO: Save desktop configuration
     }
     for &b in bragi.buffers {
+        delete(b.name)
         delete(b.data)
         delete(b.str_buffer.buf)
     }
@@ -21,7 +22,7 @@ editor_start :: proc() {
     if bragi.settings.save_desktop_mode {
         // TODO: Load desktop configuration
     } else {
-        make_pane()
+        create_pane()
     }
 
     filepath := "C:/Code/bragi/demo/hello.odin"
@@ -43,33 +44,6 @@ editor_open_file :: proc(filepath: string) {
     if !buffer_found {
         pane.buffer = make_text_buffer_from_file(filepath)
     }
-}
-
-editor_save_file :: proc() {
-    fmt.println(string(bragi.panes[bragi.focused_pane].buffer.data))
-    fmt.println("------------------")
-    fmt.println(entire_buffer_to_string(bragi.panes[bragi.focused_pane].buffer))
-    // fmt.println("Trying to save file")
-    // buf := bragi.cbuffer
-    // string_buffer := strings.join(buf.lines[:], "\n")
-    // data := transmute([]u8)string_buffer
-    // err := os.write_entire_file_or_err(buf.filepath, data)
-
-    // if err != nil {
-    //     fmt.println(data, "Failed to save file", err)
-    // }
-
-    // delete(string_buffer)
-}
-
-editor_maybe_create_buffer_from_file :: proc(filepath: string) {
-    // NEW
-    // append(&bragi.buffers, make_text_buffer(0))
-    // bragi.panes[0].buffer = &bragi.buffers[len(bragi.buffers) - 1]
-    // name := filepath
-    // data, success := os.read_entire_file_from_filename(filepath, context.temp_allocator)
-
-    // insert_whole_file(get_buffer_from_current_pane(), data)
 }
 
 editor_position_cursor :: proc(wp: Vector2) {

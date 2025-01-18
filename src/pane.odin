@@ -5,6 +5,10 @@ import "core:mem"
 
 CARET_BLINK_TIMER_DEFAULT :: 0.5
 
+New_Pane_Position :: enum {
+    Right, Bottom, Undefined,
+}
+
 Caret :: struct {
     animated        : bool,
     hidden          : bool,
@@ -22,19 +26,25 @@ Pane :: struct {
     camera          : Vector2,
     caret           : Caret,
     dimensions      : Vector2,
+    origin          : Vector2,
 }
 
-make_pane :: proc(current_pane: ^Pane = nil) {
+// TODO: Calculate new buffer dimensions and origin
+create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
     new_pane := Pane{}
 
-    if current_pane == nil {
+    if from == nil {
         if len(bragi.buffers) == 0 {
             make_text_buffer("*notes*", 0)
         }
 
         new_pane.buffer = &bragi.buffers[0]
     } else {
-        mem.copy_non_overlapping(&new_pane, current_pane, size_of(Pane))
+        if pos == .Undefined {
+            log.errorf("Should define a position for the new pane")
+        }
+
+        mem.copy_non_overlapping(&new_pane, from, size_of(Pane))
     }
 
     append(&bragi.panes, new_pane)

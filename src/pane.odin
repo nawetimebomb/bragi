@@ -1,18 +1,20 @@
 package main
 
+import "core:log"
 import "core:mem"
 
 CARET_BLINK_TIMER_DEFAULT :: 0.5
 
 Caret :: struct {
-    animated       : bool,
-    hidden         : bool,
-    timer          : f32,
-    max_x          : int,
-    position       : [2]i32,
-    region_enabled : bool,
-    region         : [2]int,
-    selection_mode : bool,
+    animated        : bool,
+    hidden          : bool,
+    timer           : f32,
+    max_x           : int,
+    prev_buffer_pos : int,
+    position        : [2]int,
+    region_enabled  : bool,
+    region          : [2]int,
+    selection_mode  : bool,
 }
 
 Pane :: struct {
@@ -41,4 +43,29 @@ make_pane :: proc(current_pane: ^Pane = nil) {
 
 get_focused_pane :: proc() -> ^Pane {
     return &bragi.panes[bragi.focused_pane]
+}
+
+update_pane :: proc(pane: ^Pane) {
+    current_cursor_pos := pane.buffer.cursor
+
+    if pane.caret.prev_buffer_pos != current_cursor_pos {
+        x, y: int
+        str := entire_buffer_to_string(pane.buffer)
+
+        for c, i in str {
+            if current_cursor_pos == i {
+                pane.caret.position = { x, y }
+                break
+            }
+
+            x += 1
+
+            if c == '\n' {
+                x = 0
+                y += 1
+            }
+        }
+    }
+
+    pane.caret.prev_buffer_pos = current_cursor_pos
 }

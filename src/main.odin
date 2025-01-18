@@ -206,6 +206,8 @@ main :: proc() {
         bragi.ctx.delta_time = f32(current_update - last_update) / 1000
         last_update = current_update
 
+        update_pane(get_focused_pane())
+
         // Start rendering
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
         sdl.RenderClear(bragi.ctx.renderer)
@@ -274,7 +276,6 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
         sdl.SetTextureColorMod(char.texture, 255, 255, 255)
 
         if !pane.caret.hidden && pane.buffer.cursor == char_index {
-            pane.caret.position = { x, y }
             caret_rect := sdl.Rect{
                 column, row,
                 i32(std_char_size.x), i32(std_char_size.y),

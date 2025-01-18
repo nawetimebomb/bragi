@@ -14,7 +14,7 @@ editor_close :: proc() {
     }
     for &b in bragi.buffers {
         delete(b.data)
-        delete(b.strbuffer.buf)
+        delete(b.str_buffer.buf)
     }
     delete(bragi.buffers)
     delete(bragi.panes)
@@ -121,7 +121,7 @@ beginning_of_line :: proc(pane: ^Pane) {
     new_cursor_position := start_of_line
 
     if pane.buffer.cursor == start_of_line {
-        temp_buffer := make_temp_strbuffer()
+        temp_buffer := make_temp_str_buffer()
 
         str := flush_buffer_to_custom_string(
             pane.buffer, &temp_buffer, start_of_line, end_of_line,
@@ -165,7 +165,6 @@ delete_forward_word :: proc(pane: ^Pane) {
 }
 
 newline :: proc(pane: ^Pane) {
-    cursor_screen_to_buffer(pane)
     insert_char_at_point(pane.buffer, '\n')
 }
 
@@ -190,23 +189,23 @@ forward_word :: proc(pane: ^Pane) {
 previous_line :: proc(pane: ^Pane) {
     start_of_line := line_start(pane.buffer, pane.buffer.cursor)
     start_of_prev_line := line_start(pane.buffer, start_of_line - 1)
-    x_offset := max(pane.cursor.max_x, pane.buffer.cursor - start_of_line)
+    x_offset := max(pane.caret.max_x, pane.buffer.cursor - start_of_line)
     str := entire_buffer_to_string(pane.buffer)
     move_cursor_to(pane.buffer, start_of_prev_line, start_of_prev_line + x_offset, true)
 
-    if x_offset > pane.cursor.max_x {
-        pane.cursor.max_x = x_offset
+    if x_offset > pane.caret.max_x {
+        pane.caret.max_x = x_offset
     }
 }
 
 next_line :: proc(pane: ^Pane) {
     start_of_line := line_start(pane.buffer, pane.buffer.cursor)
     start_of_next_line := line_end(pane.buffer, pane.buffer.cursor) + 1
-    x_offset := max(pane.cursor.max_x, pane.buffer.cursor - start_of_line)
+    x_offset := max(pane.caret.max_x, pane.buffer.cursor - start_of_line)
     str := entire_buffer_to_string(pane.buffer)
     move_cursor_to(pane.buffer, start_of_next_line, start_of_next_line + x_offset, true)
 
-    if x_offset > pane.cursor.max_x {
-        pane.cursor.max_x = x_offset
+    if x_offset > pane.caret.max_x {
+        pane.caret.max_x = x_offset
     }
 }

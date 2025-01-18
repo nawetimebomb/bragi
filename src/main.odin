@@ -234,10 +234,29 @@ render_new_version :: proc() {
 
     std_char_size := get_standard_character_size()
 
-    for &pane in bragi.panes {
+    for &pane, index in bragi.panes {
         x, y: i32
-        cursor_rendered := false
+        caret_rendered := false
         str := entire_buffer_to_string(pane.buffer)
+        focused := bragi.focused_pane == index
+
+        pane.caret.animated = focused
+
+        if pane.caret.animated {
+            pane.caret.timer += 1000 / FPS
+
+            if bragi.keybinds.last_keystroke == sdl.GetTicks() {
+                pane.caret.timer = 0
+                pane.caret.hidden = false
+            }
+
+            if pane.caret.timer > 500 {
+                pane.caret.timer = 0
+                pane.caret.hidden = !pane.caret.hidden
+            }
+        } else {
+            pane.caret.hidden = false
+        }
 
         for c, char_index in str {
             char := bragi.ctx.characters[c]
@@ -245,14 +264,14 @@ render_new_version :: proc() {
             column := x * i32(std_char_size.x)
             row := y * i32(std_char_size.y)
 
-            if !cursor_rendered && pane.buffer.cursor == char_index {
-                cursor_rendered = true
+            if !pane.caret.hidden && !caret_rendered && pane.buffer.cursor == char_index {
+                caret_rendered = true
                 sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
-                cursor_rect := sdl.Rect{
+                caret_rect := sdl.Rect{
                     column, row,
                     i32(std_char_size.x), i32(std_char_size.y),
                 }
-                sdl.RenderFillRect(bragi.ctx.renderer, &cursor_rect)
+                sdl.RenderFillRect(bragi.ctx.renderer, &caret_rect)
                 sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
                 sdl.SetTextureColorMod(char.texture, 1, 32, 39)
             }
@@ -268,7 +287,7 @@ render_new_version :: proc() {
                 y += 1
             }
 
-            if cursor_rendered {
+            if caret_rendered {
                 sdl.SetTextureColorMod(char.texture, 255, 255, 255)
             }
         }

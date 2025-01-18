@@ -23,18 +23,19 @@ Text_Buffer :: struct {
     gap_end    : int,
     modified   : bool,
     name       : string,
-    strbuffer  : strings.Builder,
+    readonly   : bool,
+    str_buffer : strings.Builder,
     str_cache  : String_Cache_Type,
     cache_size : int,
 }
 
 make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.allocator) -> ^Text_Buffer {
     append(&bragi.buffers, Text_Buffer{
-        allocator = allocator,
-        data      = make([]u8, bytes_count, allocator),
-        gap_end   = bytes_count,
-        name      = name,
-        strbuffer = strings.builder_make(),
+        allocator  = allocator,
+        data       = make([]u8, bytes_count, allocator),
+        gap_end    = bytes_count,
+        name       = name,
+        str_buffer = strings.builder_make(),
     })
     text_buffer := &bragi.buffers[len(bragi.buffers) - 1]
     return text_buffer
@@ -53,7 +54,7 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
     return text_buffer
 }
 
-make_temp_strbuffer :: proc() -> strings.Builder {
+make_temp_str_buffer :: proc() -> strings.Builder {
     return strings.builder_make(context.temp_allocator)
 }
 
@@ -225,37 +226,37 @@ save_some_buffers :: proc() {
     // TODO: Implement
 }
 
-flush_buffer_to_custom_string :: proc(buffer: ^Text_Buffer, strbuffer: ^strings.Builder, start, end: int) -> string {
-    buffer_flush(buffer, strbuffer, start, end)
-    return strings.to_string(strbuffer^)
+flush_buffer_to_custom_string :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder, start, end: int) -> string {
+    buffer_flush(buffer, str_buffer, start, end)
+    return strings.to_string(str_buffer^)
 }
 
 range_buffer_to_string :: proc(buffer: ^Text_Buffer, start, end: int) -> string {
     if buffer.str_cache == .Range && buffer.cache_size == start + end {
-        return strings.to_string(buffer.strbuffer)
+        return strings.to_string(buffer.str_buffer)
     }
 
-    clear(&buffer.strbuffer.buf)
-    buffer_flush(buffer, &buffer.strbuffer, start, end)
+    clear(&buffer.str_buffer.buf)
+    buffer_flush(buffer, &buffer.str_buffer, start, end)
     buffer.str_cache = .Range
     buffer.cache_size = start + end
-    return strings.to_string(buffer.strbuffer)
+    return strings.to_string(buffer.str_buffer)
 }
 
 entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
     if buffer.str_cache == .Full {
-        return strings.to_string(buffer.strbuffer)
+        return strings.to_string(buffer.str_buffer)
     }
 
     log.debugf("- Generating new string for buffer {0}", buffer.name)
-    clear(&buffer.strbuffer.buf)
+    clear(&buffer.str_buffer.buf)
     buffer_flush_everything(buffer)
     buffer.str_cache = .Full
-    return strings.to_string(buffer.strbuffer)
+    return strings.to_string(buffer.str_buffer)
 }
 
 @(private="file")
-buffer_flush :: proc(buffer: ^Text_Buffer, strbuffer: ^strings.Builder, start, end: int) {
+buffer_flush :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder, start, end: int) {
     left, right := buffer_get_strings(buffer)
     assert(start >= 0, "invalid cursor start position")
     assert(end <= length_of_buffer(buffer), "invalid cursor end position")
@@ -263,18 +264,18 @@ buffer_flush :: proc(buffer: ^Text_Buffer, strbuffer: ^strings.Builder, start, e
     left_len := len(left)
 
     if end <= left_len {
-        strings.write_string(strbuffer, left[start:end])
+        strings.write_string(str_buffer, left[start:end])
     } else if start >= left_len {
-        strings.write_string(strbuffer, right[start - left_len:end - left_len])
+        strings.write_string(str_buffer, right[start - left_len:end - left_len])
     } else {
-        strings.write_string(strbuffer, left[start:])
-        strings.write_string(strbuffer, right[:end - left_len])
+        strings.write_string(str_buffer, left[start:])
+        strings.write_string(str_buffer, right[:end - left_len])
     }
 }
 
 @(private="file")
 buffer_flush_everything :: proc(buffer: ^Text_Buffer) {
-    buffer_flush(buffer, &buffer.strbuffer, 0, length_of_buffer(buffer))
+    buffer_flush(buffer, &buffer.str_buffer, 0, length_of_buffer(buffer))
 }
 
 @(private="file")

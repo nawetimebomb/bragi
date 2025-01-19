@@ -323,6 +323,20 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
         // TODO: here I should have the lexer figuring out what color this character is
         sdl.SetTextureColorMod(char.texture, 255, 255, 255)
 
+        if pane.caret.region_enabled {
+            start_region := min(pane.caret.region_begin, pane.buffer.cursor)
+            end_region   := max(pane.caret.region_begin, pane.buffer.cursor)
+
+            if start_region <= char_index && end_region > char_index {
+                sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 52, 63, 255)
+                region_rect := sdl.Rect{
+                    column, row, i32(std_char_size.x), i32(std_char_size.y),
+                }
+                sdl.RenderFillRect(bragi.ctx.renderer, &region_rect)
+                sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+            }
+        }
+
         if !pane.caret.hidden && pane.buffer.cursor == char_index {
             caret_rect := sdl.Rect{
                 column, row,

@@ -118,3 +118,37 @@ next_line :: proc(pane: ^Pane) {
         pane.caret.max_x = x_offset
     }
 }
+
+yank :: proc(pane: ^Pane, text: string) {
+    insert_at_point(pane.buffer, text)
+}
+
+kill_region :: proc(pane: ^Pane, cut: bool) -> string {
+    result: string
+
+    if pane.caret.region_enabled {
+        start := min(pane.buffer.cursor, pane.caret.region_begin)
+        end   := max(pane.buffer.cursor, pane.caret.region_begin)
+        temp_buffer := make_temp_str_buffer()
+        result = flush_buffer_to_custom_string(pane.buffer, &temp_buffer, start, end)
+
+        if cut {
+            delete_at(pane.buffer, end, start - end)
+        }
+
+        keyboard_quit(pane)
+    }
+
+    return result
+}
+
+set_mark :: proc(pane: ^Pane) {
+    pane.caret.region_begin = pane.buffer.cursor
+    pane.caret.region_enabled = true
+    pane.caret.selection_mode = true
+}
+
+keyboard_quit :: proc(pane: ^Pane) {
+    pane.caret.region_enabled = false
+    pane.caret.selection_mode = false
+}

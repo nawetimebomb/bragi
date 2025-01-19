@@ -17,7 +17,7 @@ Caret :: struct {
     prev_buffer_pos : int,
     position        : [2]int,
     region_enabled  : bool,
-    region          : [2]int,
+    region_begin    : int,
     selection_mode  : bool,
 }
 

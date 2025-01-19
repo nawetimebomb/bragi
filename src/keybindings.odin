@@ -2,6 +2,7 @@ package main
 
 import     "core:fmt"
 import     "core:slice"
+import     "core:strings"
 import sdl "vendor:sdl2"
 
 Emacs_Keybinds :: struct {
@@ -183,6 +184,11 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
             case C: forward_char(pane)
             }
         }
+        case .G: {
+            switch {
+            case C: keyboard_quit(pane)
+            }
+        }
         case .N: {
             switch {
             case C: next_line(pane)
@@ -196,10 +202,9 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         case .S: {
             switch {
             case CX && C: save_buffer(pane.buffer)
-            case CX: {
+            case CX:
                 bragi.keybinds.key_handled = true
                 save_some_buffers()
-            }
             case C: fmt.println("Search pressed") //buffer_search_forward()
             }
         }
@@ -209,10 +214,28 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
             // case C: buffer_scroll(buffer_page_size().y)
             }
         }
+        case .W: {
+            switch {
+            case A: keybind_clipboard_copy(pane, false)
+            case C: keybind_clipboard_copy(pane, true)
+            }
+        }
         case .X: {
             switch {
             case A: // editor_command_dialog()
             case C: vkb.Cx_pressed = true
+            }
+        }
+        case .Y: {
+            switch {
+            case C: keybind_clipboard_yank(pane)
+            }
+        }
+        case .SPACE: {
+            switch {
+            case C:
+                bragi.keybinds.key_handled = true
+                set_mark(pane)
             }
         }
         case .PERIOD: {
@@ -255,4 +278,17 @@ handle_key_down :: proc(key: sdl.Keysym) {
 
     //handle_sublime_keybindings(key)
     handle_emacs_keybindings(key)
+}
+
+@(private="file")
+keybind_clipboard_yank :: proc(pane: ^Pane) {
+    result := sdl.GetClipboardText()
+    yank(pane, string(result))
+    delete(result)
+}
+
+keybind_clipboard_copy :: proc(pane: ^Pane, cut: bool) {
+    result := kill_region(pane, cut)
+    result_cs := strings.clone_to_cstring(result, context.temp_allocator)
+    sdl.SetClipboardText(result_cs)
 }

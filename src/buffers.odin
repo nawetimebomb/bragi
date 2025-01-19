@@ -24,7 +24,7 @@ Gap_Buffer :: struct {
     gap_start : int,
 }
 
-Undo_State :: struct {
+Text_Buffer_State :: struct {
     cursor:    int,
     data:      []u8,
     gap_end:   int,
@@ -39,8 +39,8 @@ Text_Buffer :: struct {
     cache_size:     int,
     cursor:         int,
 
-    undo:           [dynamic]Undo_State,
-    redo:           [dynamic]Undo_State,
+    undo:           [dynamic]Text_Buffer_State,
+    redo:           [dynamic]Text_Buffer_State,
     last_edit_time: time.Tick,
     current_time:   time.Tick,
 
@@ -59,8 +59,8 @@ make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.al
             gap_end   = bytes_count,
         },
 
-        undo       = make([dynamic]Undo_State, 0, 20),
-        redo       = make([dynamic]Undo_State, 0, 10),
+        undo       = make([dynamic]Text_Buffer_State, 0, 20),
+        redo       = make([dynamic]Text_Buffer_State, 0, 10),
 
         major_mode = .Fundamental,
         name       = strings.clone(name),
@@ -99,8 +99,8 @@ make_temp_str_buffer :: proc() -> strings.Builder {
 }
 
 destroy_text_buffer :: proc(buffer: ^Text_Buffer) {
-    undo_clear(&buffer.undo)
-    undo_clear(&buffer.redo)
+    text_buffer_undo_clear(&buffer.undo)
+    text_buffer_undo_clear(&buffer.redo)
     delete(buffer.data_buffer.buf)
     delete(buffer.name)
     delete(buffer.redo)
@@ -327,9 +327,9 @@ get_buffer_status :: proc(buffer: ^Text_Buffer) -> string {
     return strings.to_string(temp_buffer)
 }
 
-undo_redo :: proc(buffer: ^Text_Buffer, undo, redo: ^[dynamic]Undo_State) {
+undo_redo :: proc(buffer: ^Text_Buffer, undo, redo: ^[dynamic]Text_Buffer_State) {
     if len(undo) > 0 {
-        undo_state_push(buffer, redo)
+        text_buffer_state_push(buffer, redo)
         item := pop(undo)
 
         buffer.cursor                = item.cursor
@@ -346,17 +346,17 @@ undo_redo :: proc(buffer: ^Text_Buffer, undo, redo: ^[dynamic]Undo_State) {
 
 @(private="file")
 text_buffer_undo_check :: proc(buffer: ^Text_Buffer) {
-    undo_clear(&buffer.redo)
+    text_buffer_undo_clear(&buffer.redo)
     if time.tick_diff(buffer.last_edit_time, buffer.current_time) > UNDO_TIMEOUT {
         log.debug("Pushing a new UNDO state")
-        undo_state_push(buffer, &buffer.undo)
+        text_buffer_state_push(buffer, &buffer.undo)
     }
     buffer.last_edit_time = buffer.current_time
 }
 
 @(private="file")
-undo_state_push :: proc(buffer: ^Text_Buffer, undo: ^[dynamic]Undo_State) -> mem.Allocator_Error {
-    item := Undo_State{
+text_buffer_state_push :: proc(buffer: ^Text_Buffer, undo: ^[dynamic]Text_Buffer_State) -> mem.Allocator_Error {
+    item := Text_Buffer_State{
         cursor    = buffer.cursor,
         data      = slice.clone(buffer.data_buffer.buf, bragi.ctx.undo_allocator),
         gap_end   = buffer.data_buffer.gap_end,
@@ -369,7 +369,7 @@ undo_state_push :: proc(buffer: ^Text_Buffer, undo: ^[dynamic]Undo_State) -> mem
 }
 
 @(private="file")
-undo_clear :: proc(undo: ^[dynamic]Undo_State) {
+text_buffer_undo_clear :: proc(undo: ^[dynamic]Text_Buffer_State) {
     for len(undo) > 0 {
         item := pop(undo)
         delete(item.data)

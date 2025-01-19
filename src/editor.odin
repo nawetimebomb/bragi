@@ -135,27 +135,8 @@ next_line :: proc(pane: ^Pane, mark: bool) {
     line_len(pane.buffer, pane.buffer.cursor)
 }
 
-yank :: proc(pane: ^Pane, text: string) {
-    insert_at(pane.buffer, pane.buffer.cursor, text)
-}
-
-kill_region :: proc(pane: ^Pane, cut: bool) -> string {
-    result: string
-
-    if pane.caret.region_enabled {
-        start := min(pane.buffer.cursor, pane.caret.region_begin)
-        end   := max(pane.buffer.cursor, pane.caret.region_begin)
-        temp_buffer := make_temp_str_buffer()
-        result = flush_buffer_to_custom_string(pane.buffer, &temp_buffer, start, end)
-
-        if cut {
-            delete_at(pane.buffer, end, start - end)
-        }
-
-        keyboard_quit(pane)
-    }
-
-    return result
+yank :: proc(pane: ^Pane, callback: paste_proc) {
+    insert_at(pane.buffer, pane.buffer.cursor, callback())
 }
 
 toggle_mark_on :: proc(pane: ^Pane) {
@@ -191,4 +172,42 @@ undo :: proc(pane: ^Pane) {
 
 redo :: proc(pane: ^Pane) {
     undo_redo(pane.buffer, &pane.buffer.redo, &pane.buffer.undo)
+}
+
+kill_current_buffer :: proc(pane: ^Pane) {
+    for &b, index in bragi.buffers {
+        if &b == pane.buffer {
+            destroy_text_buffer(&b)
+            ordered_remove(&bragi.buffers, index)
+        }
+    }
+
+    if len(bragi.buffers) == 0 {
+        make_text_buffer("*notes*", 0)
+    }
+
+    pane.buffer = &bragi.buffers[len(bragi.buffers) - 1]
+}
+
+kill_line :: proc(pane: ^Pane, callback: copy_proc) {
+    pane.caret.region_enabled = true
+    pane.caret.region_begin = line_end(pane.buffer, pane.buffer.cursor)
+    kill_region(pane, true, callback)
+}
+
+kill_region :: proc(pane: ^Pane, cut: bool, callback: copy_proc) {
+    if pane.caret.region_enabled {
+        start := min(pane.buffer.cursor, pane.caret.region_begin)
+        end   := max(pane.buffer.cursor, pane.caret.region_begin)
+        temp_buffer := make_temp_str_buffer()
+        result := flush_buffer_to_custom_string(pane.buffer, &temp_buffer, start, end)
+
+        if cut {
+            delete_at(pane.buffer, end, start - end)
+        }
+
+        pane.buffer.cursor = start
+        keyboard_quit(pane)
+        callback(result)
+    }
 }

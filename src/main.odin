@@ -273,8 +273,9 @@ main :: proc() {
             frame_update_timer = 0
 
             window_title := fmt.ctprintf(
-                "Bragi v{0} - {1} fps {2} frametime",
+                "Bragi v{0} - {1} fps {2} frametime | {3}kb memory used",
                 VERSION, 1 / bragi.ctx.delta_time, bragi.ctx.delta_time,
+                tracking_allocator.current_memory_allocated / 1024,
             )
             sdl.SetWindowTitle(bragi.ctx.window, window_title)
         }

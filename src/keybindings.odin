@@ -5,6 +5,9 @@ import     "core:slice"
 import     "core:strings"
 import sdl "vendor:sdl2"
 
+copy_proc  :: #type proc(str: string)
+paste_proc :: #type proc() -> string
+
 Emacs_Keybinds :: struct {
     Cx_pressed: bool,
 }
@@ -211,6 +214,15 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym) -> bool {
                 handled = true
             }
         }
+        case .K: {
+            if CX {
+                kill_current_buffer(pane)
+                handled = true
+            } else if C {
+                kill_line(pane, handle_copy)
+                handled = true
+            }
+        }
         case .N: {
             if C {
                 next_line(pane, S)
@@ -246,10 +258,10 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym) -> bool {
         }
         case .W: {
             if A {
-                keybind_clipboard_copy(pane, false)
+                kill_region(pane, false, handle_copy)
                 handled = true
             } else if C {
-                keybind_clipboard_copy(pane, true)
+                kill_region(pane, true, handle_copy)
                 handled = true
             }
         }
@@ -263,7 +275,7 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym) -> bool {
         }
         case .Y: {
             if C {
-                keybind_clipboard_yank(pane)
+                yank(pane, handle_paste)
                 handled = true
             }
         }
@@ -345,15 +357,13 @@ handle_keydown :: proc(key: sdl.Keysym) -> bool {
 }
 
 @(private="file")
-keybind_clipboard_yank :: proc(pane: ^Pane) {
-    result := sdl.GetClipboardText()
-    yank(pane, string(result))
-    delete(result)
+handle_copy :: proc(str: string) {
+    result := strings.clone_to_cstring(str, context.temp_allocator)
+    sdl.SetClipboardText(result)
 }
 
 @(private="file")
-keybind_clipboard_copy :: proc(pane: ^Pane, cut: bool) {
-    result := kill_region(pane, cut)
-    result_cs := strings.clone_to_cstring(result, context.temp_allocator)
-    sdl.SetClipboardText(result_cs)
+handle_paste :: proc() -> string {
+    result := sdl.GetClipboardText()
+    return string(result)
 }

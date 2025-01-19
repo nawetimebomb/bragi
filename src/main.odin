@@ -73,9 +73,11 @@ destroy_context :: proc() {
 
 destroy_editor :: proc() {
     log.debug("Destroying editor")
+
     if bragi.settings.save_desktop_mode {
         // TODO: Save desktop configuration
     }
+
     for &b in bragi.buffers {
         delete(b.name)
         delete(b.data)
@@ -87,6 +89,7 @@ destroy_editor :: proc() {
 
 destroy_settings :: proc() {
     log.debug("Destroying settings")
+
     delete(bragi.settings.mm)
 }
 
@@ -94,13 +97,13 @@ initialize_editor :: proc() {
     log.debug("Initializing editor")
 
     bragi.buffers = make([dynamic]Text_Buffer, 0, 10)
-    bragi.panes = make([dynamic]Pane, 0, 2)
+    bragi.panes   = make([dynamic]Pane, 0, 2)
 
     create_pane()
 
     // TODO: This is a debug only thing
     filepath := "C:/Code/bragi/demo/hello.odin"
-    editor_open_file(filepath)
+    open_file(filepath)
 }
 
 initialize_context :: proc() {
@@ -127,7 +130,7 @@ initialize_context :: proc() {
 
     set_characters_textures()
 
-    bragi.ctx.running = true
+    bragi.ctx.running     = true
     bragi.ctx.window_size = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
 }
 
@@ -166,6 +169,7 @@ set_characters_textures :: proc() {
 
 get_standard_character_size :: proc() -> Vector2 {
     M_char_rect := bragi.ctx.characters['M'].dest
+
     return Vector2{ int(M_char_rect.w), int(M_char_rect.h) }
 }
 
@@ -195,7 +199,7 @@ main :: proc() {
     load_keybinds()
 
     last_update := sdl.GetTicks()
-    frame_update_timer : f32 = 10
+    frame_update_timer: f32 = 1
 
     for bragi.ctx.running {
         e: sdl.Event
@@ -215,7 +219,7 @@ main :: proc() {
                 }
                 case .DROPFILE: {
                     filepath := string(e.drop.file)
-                    editor_open_file(filepath)
+                    open_file(filepath)
                     sdl.RaiseWindow(bragi.ctx.window)
                     delete(e.drop.file)
                 }
@@ -259,6 +263,8 @@ main :: proc() {
             render_modeline(&pane, focused)
         }
 
+        render_message_minibuffer()
+
         sdl.RenderPresent(bragi.ctx.renderer)
 
         free_all(context.temp_allocator)
@@ -269,9 +275,8 @@ main :: proc() {
             frame_update_timer = 0
 
             window_title := fmt.ctprintf(
-                "Bragi - {0} fps {1} frametime",
-                1 / bragi.ctx.delta_time,
-                bragi.ctx.delta_time,
+                "Bragi v{0} - {1} fps {2} frametime",
+                VERSION, 1 / bragi.ctx.delta_time, bragi.ctx.delta_time,
             )
             sdl.SetWindowTitle(bragi.ctx.window, window_title)
         }
@@ -404,8 +409,20 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
             sdl.SetTextureColorMod(char.texture, 132, 132, 132)
         }
 
-        char.dest.x = i32(bragi.ctx.window_size.x) - MARGIN - rmdf_padding + char.dest.w * i32(index)
+        char.dest.x =
+            i32(bragi.ctx.window_size.x) - MARGIN - rmdf_padding + char.dest.w * i32(index)
         char.dest.y = y
         sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
     }
+}
+
+render_message_minibuffer :: proc() {
+    std_char_size := get_standard_character_size()
+    y : i32 = auto_cast (bragi.ctx.window_size.y - std_char_size.y)
+
+    sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
+    background_rect := sdl.Rect{
+        0, y, i32(bragi.ctx.window_size.x), i32(std_char_size.y),
+    }
+    sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
 }

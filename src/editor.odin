@@ -3,7 +3,7 @@ package main
 Vector2 :: distinct [2]int
 Line    :: string
 
-editor_open_file :: proc(filepath: string) {
+open_file :: proc(filepath: string) {
     buffer_found := false
     pane := get_focused_pane()
 

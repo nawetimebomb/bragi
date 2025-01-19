@@ -50,17 +50,19 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
     split_filename := strings.split(name, ".", context.temp_allocator)
     extension := split_filename[len(split_filename) - 1]
     data, success := os.read_entire_file_from_filename(filepath)
+
+    log.debugf("Opening file {0} in buffer {1}", filepath, name)
+
     parsed_data := buffer_clean_up_carriage_returns(data)
     text_buffer := make_text_buffer(name, len(parsed_data))
 
     insert_whole_file(text_buffer, parsed_data)
-
     text_buffer.filepath = filepath
     text_buffer.cursor = 0
     text_buffer.major_mode = find_major_mode(extension)
     text_buffer.modified = len(data) != len(parsed_data)
 
-    log.debugf("Opening file {0} in buffer {1}", filepath, name)
+
     delete(data)
     return text_buffer
 }
@@ -403,5 +405,12 @@ buffer_clean_up_carriage_returns :: proc(data: []u8) -> []u8 {
             ordered_remove(&parsed_data, index)
         }
     }
+
+    diff_between_buffers := len(data) - len(parsed_data)
+
+    if diff_between_buffers > 0 {
+        log.debugf("Cleaned up {0} carriage returns", diff_between_buffers)
+    }
+
     return parsed_data[:]
 }

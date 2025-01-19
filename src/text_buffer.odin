@@ -271,7 +271,7 @@ entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
         return strings.to_string(buffer.str_buffer)
     }
 
-    log.debugf("- Generating new string for buffer {0}", buffer.name)
+    log.debugf("Generating new string for buffer {0}", buffer.name)
     clear(&buffer.str_buffer.buf)
     buffer_flush_everything(buffer)
     buffer.str_cache = .Full

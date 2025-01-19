@@ -9,12 +9,14 @@ Emacs_Keybinds :: struct {
     Cx_pressed: bool,
 }
 
+Sublime_Keybinds :: struct {}
+
 Keybinds_Variant :: union {
     Emacs_Keybinds,
+    Sublime_Keybinds,
 }
 
 Keybinds :: struct {
-    key_handled    : bool,
     last_keystroke : u32,
     variant        : Keybinds_Variant,
 }
@@ -55,7 +57,8 @@ load_keybinds :: proc() {
 }
 
 // These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
-handle_generic_keybindings :: proc(key: sdl.Keysym) {
+handle_generic_keybindings :: proc(key: sdl.Keysym) -> bool {
+    handled := false
     pane := get_focused_pane()
 
     A   := check_alt(key.mod)
@@ -70,22 +73,30 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         case .ESCAPE: {
             when ODIN_DEBUG {
                 bragi.ctx.running = false
+                handled = true
             }
         }
         case .BACKSPACE: {
-            switch {
-            case C: delete_backward_word(pane)
-            case  : delete_backward_char(pane)
+            if C {
+                delete_backward_word(pane)
+            } else {
+                delete_backward_char(pane)
             }
+
+            handled = true
         }
         case .DELETE: {
-            switch {
-            case C: delete_forward_word(pane)
-            case  : delete_forward_char(pane)
+            if C {
+                delete_forward_word(pane)
+            } else {
+                delete_forward_char(pane)
             }
+
+            handled = true
         }
         case .RETURN: {
             newline(pane)
+            handled = true
         }
         case .PAGEUP: {
             // buffer_scroll(-buffer_page_size().y)
@@ -94,33 +105,28 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
             // buffer_scroll(buffer_page_size().y)
         }
         case .UP: {
-            switch {
-            // case C: buffer_backward_paragraph()
-            case  : previous_line(pane, S)
-            }
+            previous_line(pane, S)
+            handled = true
         }
         case .DOWN: {
-            switch {
-            // case C: buffer_forward_paragraph()
-            case  : next_line(pane, S)
-            }
+            next_line(pane, S)
+            handled = true
         }
         case .LEFT: {
-            switch {
-            // case C: buffer_backward_word()
-            case  : backward_char(pane, S)
-            }
+            backward_char(pane, S)
+            handled = true
         }
         case .RIGHT: {
-            switch {
-            // case C: buffer_forward_word()
-            case  : forward_char(pane, S)
-            }
+            forward_char(pane, S)
+            handled = true
         }
     }
+
+    return handled
 }
 
-handle_sublime_keybindings :: proc(key: sdl.Keysym) {
+handle_sublime_keybindings :: proc(key: sdl.Keysym) -> bool {
+    handled := false
     pane := get_focused_pane()
 
     A   := check_alt(key.mod)
@@ -133,14 +139,18 @@ handle_sublime_keybindings :: proc(key: sdl.Keysym) {
 
     #partial switch key.sym {
         case .S: {
-            switch {
-            case C: save_buffer(pane.buffer)
+            if C {
+                save_buffer(pane.buffer)
+                handled = true
             }
         }
     }
+
+    return handled
 }
 
-handle_emacs_keybindings :: proc(key: sdl.Keysym) {
+handle_global_emacs_keybindings :: proc(key: sdl.Keysym) -> bool {
+    handled := false
     pane := get_focused_pane()
     vkb := &bragi.keybinds.variant.(Emacs_Keybinds)
 
@@ -157,127 +167,181 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
 
     #partial switch key.sym {
         case .A: {
-            switch {
-            case C: beginning_of_line(pane, S)
+            if C {
+                beginning_of_line(pane, S)
+                handled = true
             }
         }
         case .B: {
-            switch {
-            case A: backward_word(pane, S)
-            case C: backward_char(pane, S)
+            if A {
+                backward_word(pane, S)
+                handled = true
+            } else if C {
+                backward_char(pane, S)
+                handled = true
             }
         }
         case .D: {
-            switch {
-            case A: delete_forward_word(pane)
-            case C: delete_forward_char(pane)
+            if A {
+                delete_forward_word(pane)
+                handled = true
+            } else if C {
+                delete_forward_char(pane)
+                handled = true
             }
         }
         case .E: {
-            switch {
-            case C: end_of_line(pane, S)
+            if C {
+                end_of_line(pane, S)
+                handled = true
             }
         }
         case .F: {
-            switch {
-            case A: forward_word(pane, S)
-            case C: forward_char(pane, S)
+            if A {
+                forward_word(pane, S)
+                handled = true
+            } else if C {
+                forward_char(pane, S)
+                handled = true
             }
         }
         case .G: {
-            switch {
-            case C: keyboard_quit(pane)
+            if C {
+                keyboard_quit(pane)
+                handled = true
             }
         }
         case .N: {
-            switch {
-            case C: next_line(pane, S)
+            if C {
+                next_line(pane, S)
+                handled = true
             }
         }
         case .P: {
-            switch {
-            case C: previous_line(pane, S)
+            if CX && C {
+                mark_buffer(pane)
+                handled = true
+            } else if C {
+                previous_line(pane, S)
+                handled = true
             }
         }
         case .S: {
-            switch {
-            case CX && C: save_buffer(pane.buffer)
-            case CX:
-                bragi.keybinds.key_handled = true
+            if CX && C {
+                save_buffer(pane.buffer)
+                handled = true
+            } else if CX {
                 save_some_buffers()
-            case C: fmt.println("Search pressed") //buffer_search_forward()
+                handled = true
+            } else if C {
+                fmt.println("Search pressed") //buffer_search_forward()
+                handled = true
             }
         }
         case .V: {
             switch {
-            // case A: buffer_scroll(-buffer_page_size().y)
-            // case C: buffer_scroll(buffer_page_size().y)
+                // case A: buffer_scroll(-buffer_page_size().y)
+                // case C: buffer_scroll(buffer_page_size().y)
             }
         }
         case .W: {
-            switch {
-            case A: keybind_clipboard_copy(pane, false)
-            case C: keybind_clipboard_copy(pane, true)
+            if A {
+                keybind_clipboard_copy(pane, false)
+                handled = true
+            } else if C {
+                keybind_clipboard_copy(pane, true)
+                handled = true
             }
         }
         case .X: {
-            switch {
-            case A: // editor_command_dialog()
-            case C: vkb.Cx_pressed = true
+            if A {
+                // editor_command_dialog()
+            } else if C {
+                vkb.Cx_pressed = true
+                handled = true
             }
         }
         case .Y: {
-            switch {
-            case C: keybind_clipboard_yank(pane)
+            if C {
+                keybind_clipboard_yank(pane)
+                handled = true
             }
         }
         case .SPACE: {
-            switch {
-            case C:
-                bragi.keybinds.key_handled = true
+            if C {
                 set_mark(pane)
+                handled = true
             }
         }
         case .PERIOD: {
-            switch {
-            case AS: end_of_buffer(pane)
+            if AS {
+                end_of_buffer(pane)
+                handled = true
             }
         }
         case .GREATER: {
-            switch {
-            case A: end_of_buffer(pane)
+            if A {
+                end_of_buffer(pane)
+                handled = true
             }
         }
         case .COMMA: {
-            switch {
-            case A && S: beginning_of_buffer(pane)
+            if AS {
+                beginning_of_buffer(pane)
+                handled = true
             }
         }
         case .LESS: {
-            switch {
-            case A: beginning_of_buffer(pane)
+            if A {
+                beginning_of_buffer(pane)
+                handled = true
+            }
+        }
+        case .SLASH: {
+            if CS {
+                redo(pane)
+                handled = true
+            } else if C {
+                undo(pane)
+                handled = true
+            }
+        }
+        case .QUESTION: {
+            if C {
+                redo(pane)
+                handled = true
             }
         }
     }
+
+    return handled
 }
 
-handle_key_down :: proc(key: sdl.Keysym) {
+handle_keydown :: proc(key: sdl.Keysym) -> bool {
+    handled := false
+
     // NOTE: Disallow mod keys as keystrokes
     disallowed_keystrokes := [?]sdl.Keycode{
             .LCTRL, .RCTRL, .LSHIFT, .RSHIFT, .LALT, .RALT, .LGUI, .RGUI,
     }
 
     if slice.contains(disallowed_keystrokes[:], key.sym) {
-        return
+        return handled
     }
 
     bragi.keybinds.last_keystroke = sdl.GetTicks()
 
     // Generic keybindings
-    handle_generic_keybindings(key)
+    handled = handle_generic_keybindings(key)
 
-    //handle_sublime_keybindings(key)
-    handle_emacs_keybindings(key)
+    switch v in bragi.keybinds.variant {
+    case Emacs_Keybinds:
+        handled = handle_global_emacs_keybindings(key)
+    case Sublime_Keybinds:
+        handled = handle_sublime_keybindings(key)
+    }
+
+    return handled
 }
 
 @(private="file")
@@ -287,6 +351,7 @@ keybind_clipboard_yank :: proc(pane: ^Pane) {
     delete(result)
 }
 
+@(private="file")
 keybind_clipboard_copy :: proc(pane: ^Pane, cut: bool) {
     result := kill_region(pane, cut)
     result_cs := strings.clone_to_cstring(result, context.temp_allocator)

@@ -35,6 +35,7 @@ Character_Texture :: struct {
 }
 
 Program_Context :: struct {
+    undo_allocator: runtime.Allocator,
     delta_time   : f32,
     font         : ^ttf.Font,
     characters   : map[rune]Character_Texture,
@@ -79,7 +80,7 @@ destroy_editor :: proc() {
     }
 
     for &b in bragi.buffers {
-        destroy_buffer(&b)
+        destroy_text_buffer(&b)
     }
     delete(bragi.buffers)
     delete(bragi.panes)
@@ -128,8 +129,9 @@ initialize_context :: proc() {
 
     set_characters_textures()
 
-    bragi.ctx.running     = true
-    bragi.ctx.window_size = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
+    bragi.ctx.running        = true
+    bragi.ctx.undo_allocator = context.allocator
+    bragi.ctx.window_size    = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
 }
 
 initialize_settings :: proc() {
@@ -200,6 +202,7 @@ main :: proc() {
     frame_update_timer: f32 = 1
 
     for bragi.ctx.running {
+        input_handled: bool
         e: sdl.Event
 
         for sdl.PollEvent(&e) {
@@ -230,17 +233,14 @@ main :: proc() {
                     // buffer_scroll(int(m.y * -1) * 5)
                 }
                 case .KEYDOWN: {
-                    handle_key_down(e.key.keysym)
+                    input_handled = handle_keydown(e.key.keysym)
                 }
                 case .TEXTINPUT: {
-                    if !bragi.keybinds.key_handled {
+                    if !input_handled {
                         pane := get_focused_pane()
-                        bragi.keybinds.last_keystroke = sdl.GetTicks()
                         input_char := cstring(raw_data(e.text.text[:]))
                         insert_at(pane.buffer, pane.buffer.cursor, string(input_char))
                     }
-
-                    bragi.keybinds.key_handled = false
                 }
             }
         }

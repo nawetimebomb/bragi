@@ -58,6 +58,8 @@ get_focused_pane :: proc() -> ^Pane {
 update_pane :: proc(pane: ^Pane) {
     current_cursor_pos := pane.buffer.cursor
 
+    update_text_buffer_time(pane.buffer)
+
     if pane.caret.prev_buffer_pos != current_cursor_pos {
         x, y: int
         str := entire_buffer_to_string(pane.buffer)

@@ -173,7 +173,22 @@ set_mark :: proc(pane: ^Pane) {
     pane.caret.selection_mode = true
 }
 
+mark_buffer :: proc(pane: ^Pane) {
+    pane.buffer.cursor = 0
+    pane.caret.region_begin = length_of_buffer(pane.buffer)
+    pane.caret.region_enabled = true
+    pane.caret.selection_mode = true
+}
+
 keyboard_quit :: proc(pane: ^Pane) {
     pane.caret.region_enabled = false
     pane.caret.selection_mode = false
+}
+
+undo :: proc(pane: ^Pane) {
+    undo_redo(pane.buffer, &pane.buffer.undo, &pane.buffer.redo)
+}
+
+redo :: proc(pane: ^Pane) {
+    undo_redo(pane.buffer, &pane.buffer.redo, &pane.buffer.undo)
 }

@@ -6,6 +6,7 @@ import     "core:log"
 import     "core:math"
 import     "core:mem"
 import     "core:os"
+import     "core:slice"
 import     "core:strings"
 import     "core:time"
 import     "core:unicode/utf8"
@@ -87,6 +88,9 @@ destroy_editor :: proc() {
         destroy_text_buffer(&b)
     }
     delete(bragi.buffers)
+    for &p in bragi.panes {
+        delete(p.caret.highlights)
+    }
     delete(bragi.panes)
 }
 
@@ -345,18 +349,37 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
     x, y: i32
     str := entire_buffer_to_string(pane.buffer)
     std_char_size := get_standard_character_size()
+    highlight_index := 0
+    current_highlight := -1
+    highlights_len := 0
 
     for c, char_index in str {
         char := bragi.ctx.characters[c]
         column := x * i32(std_char_size.x)
         row := y * i32(std_char_size.y)
+        caret := &pane.caret
 
         // TODO: here I should have the lexer figuring out what color this character is
         sdl.SetTextureColorMod(char.texture, 255, 255, 255)
 
-        if focused {
-            caret := &pane.caret
+        if current_highlight == -1 {
+            if len(caret.highlights) > highlight_index {
+                current_highlight = caret.highlights[highlight_index]
+                highlights_len = caret.highlights_len
+                highlight_index += 1
+            }
+        } else {
+            if current_highlight <= char_index && highlights_len > 0 {
+                sdl.SetTextureColorMod(char.texture, 255, 152, 0)
+                highlights_len -= 1
 
+                if highlights_len == 0 {
+                    current_highlight = -1
+                }
+            }
+        }
+
+        if focused {
             if caret.region_enabled {
                 start_region := min(pane.caret.region_begin, pane.buffer.cursor)
                 end_region   := max(pane.caret.region_begin, pane.buffer.cursor)
@@ -393,11 +416,18 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
     MARGIN :: 20
 
     std_char_size := get_standard_character_size()
+    search_results_format: string
+
+    if pane.caret.search_mode {
+        search_results_format = fmt.tprintf("Results: {0}", len(pane.caret.highlights))
+    }
+
     lmodeline_format := fmt.tprintf(
-        "{0} {1}  ({2}, {3})",
+        "{0} {1}  ({2}, {3}) {4}",
         get_buffer_status(pane.buffer),
         pane.buffer.name,
         pane.caret.position.x, pane.caret.position.y,
+        search_results_format,
     )
     rmodeline_format := fmt.tprintf(
         "{0}", bragi.settings.mm[pane.buffer.major_mode].name,

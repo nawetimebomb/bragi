@@ -9,6 +9,11 @@ CARET_BLINK_TIMER_DEFAULT :: 0.5
 CARET_RESET_TIMEOUT :: 50 * time.Millisecond
 CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
 
+Caret_Highlight :: struct {
+    start: int,
+    length: int,
+}
+
 New_Pane_Position :: enum {
     Right, Bottom, Undefined,
 }
@@ -22,6 +27,9 @@ Caret :: struct {
     region_enabled:      bool,
     region_begin:        int,
     selection_mode:      bool,
+    search_mode:         bool,
+    highlights:          [dynamic]int,
+    highlights_len:      int,
 
     max_x           : int,
 }

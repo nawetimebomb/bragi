@@ -235,6 +235,12 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
                 handled = true
             }
         }
+        case .R: {
+            if C {
+                search_backward(pane)
+                handled = true
+            }
+        }
         case .S: {
             if CX && C {
                 save_buffer(pane.buffer)
@@ -243,7 +249,7 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
                 save_some_buffers()
                 handled = true
             } else if C {
-                fmt.println("Search pressed") //buffer_search_forward()
+                search_forward(pane)
                 handled = true
             }
         }

@@ -164,6 +164,7 @@ mark_buffer :: proc(pane: ^Pane) {
 keyboard_quit :: proc(pane: ^Pane) {
     pane.caret.region_enabled = false
     pane.caret.selection_mode = false
+    clear(&pane.caret.highlights)
 }
 
 undo :: proc(pane: ^Pane) {
@@ -209,5 +210,68 @@ kill_region :: proc(pane: ^Pane, cut: bool, callback: copy_proc) {
         pane.buffer.cursor = start
         keyboard_quit(pane)
         callback(result)
+    }
+}
+
+search_backward :: proc(pane: ^Pane) {
+    // TODO: Query should be set somewhere else
+    query := "im"
+    caret := &pane.caret
+
+    caret.search_mode = true
+
+    if caret.highlights_len != len(query) {
+        clear(&caret.highlights)
+    }
+
+    if len(caret.highlights) == 0 {
+        search_buffer(pane.buffer, query, &caret.highlights)
+        caret.highlights_len = len(query)
+    }
+
+    // TODO: Focus cursor in position of i+len
+    #reverse for found, index in caret.highlights {
+        if pane.buffer.cursor < found + caret.highlights_len {
+            if index == 0 {
+                pane.buffer.cursor = caret.highlights[len(caret.highlights) - 1]
+                break
+            }
+
+            continue
+        }
+
+        pane.buffer.cursor = found
+        break
+    }
+}
+
+search_forward :: proc(pane: ^Pane) {
+    // TODO: Query should be set somewhere else
+    query := "impor"
+    caret := &pane.caret
+
+    caret.search_mode = true
+
+    if caret.highlights_len != len(query) {
+        clear(&caret.highlights)
+    }
+
+    if len(caret.highlights) == 0 {
+        search_buffer(pane.buffer, query, &caret.highlights)
+        caret.highlights_len = len(query)
+    }
+
+    for found, index in caret.highlights {
+        if pane.buffer.cursor > found {
+            if index == len(caret.highlights) - 1 {
+                pane.buffer.cursor = caret.highlights[0] + caret.highlights_len
+                break
+            }
+
+            continue
+        }
+
+        pane.buffer.cursor = found + caret.highlights_len
+        break
     }
 }

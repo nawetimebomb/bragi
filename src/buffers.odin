@@ -289,6 +289,22 @@ save_some_buffers :: proc() {
     // TODO: Implement
 }
 
+search_buffer :: proc(buffer: ^Text_Buffer, query: string, results: ^[dynamic]int) {
+    str := entire_buffer_to_string(buffer)
+    og_str_len := len(str)
+
+    for {
+        index := strings.index(str, query)
+
+        if index == -1 {
+            break
+        }
+
+        append(results, og_str_len - len(str) + index)
+        str = str[index + len(query):]
+    }
+}
+
 update_text_buffer_time :: proc(buffer: ^Text_Buffer) {
     buffer.current_time = time.tick_now()
 }

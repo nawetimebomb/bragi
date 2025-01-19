@@ -6,7 +6,7 @@ import     "core:strings"
 import     "core:time"
 import sdl "vendor:sdl2"
 
-copy_proc  :: #type proc(str: string)
+copy_proc  :: #type proc(string)
 paste_proc :: #type proc() -> string
 
 Emacs_Keybinds :: struct {

@@ -3,6 +3,7 @@ package main
 import     "core:fmt"
 import     "core:slice"
 import     "core:strings"
+import     "core:time"
 import sdl "vendor:sdl2"
 
 copy_proc  :: #type proc(str: string)
@@ -20,8 +21,7 @@ Keybinds_Variant :: union {
 }
 
 Keybinds :: struct {
-    last_keystroke : u32,
-    variant        : Keybinds_Variant,
+    variant: Keybinds_Variant,
 }
 
 KMod :: sdl.KeymodFlag
@@ -60,9 +60,8 @@ load_keybinds :: proc() {
 }
 
 // These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
-handle_generic_keybindings :: proc(key: sdl.Keysym) -> bool {
+handle_generic_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     handled := false
-    pane := get_focused_pane()
 
     A   := check_alt(key.mod)
     AS  := check_alt_shift(key.mod)
@@ -128,9 +127,8 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) -> bool {
     return handled
 }
 
-handle_sublime_keybindings :: proc(key: sdl.Keysym) -> bool {
+handle_sublime_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     handled := false
-    pane := get_focused_pane()
 
     A   := check_alt(key.mod)
     AS  := check_alt_shift(key.mod)
@@ -152,9 +150,8 @@ handle_sublime_keybindings :: proc(key: sdl.Keysym) -> bool {
     return handled
 }
 
-handle_global_emacs_keybindings :: proc(key: sdl.Keysym) -> bool {
+handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     handled := false
-    pane := get_focused_pane()
     vkb := &bragi.keybinds.variant.(Emacs_Keybinds)
 
     A   := check_alt(key.mod)
@@ -329,7 +326,7 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym) -> bool {
     return handled
 }
 
-handle_keydown :: proc(key: sdl.Keysym) -> bool {
+handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     handled := false
 
     // NOTE: Disallow mod keys as keystrokes
@@ -341,16 +338,16 @@ handle_keydown :: proc(key: sdl.Keysym) -> bool {
         return handled
     }
 
-    bragi.keybinds.last_keystroke = sdl.GetTicks()
+    pane.caret.last_keystroke_time = time.tick_now()
 
     // Generic keybindings
-    handled = handle_generic_keybindings(key)
+    handled = handle_generic_keybindings(key, pane)
 
     switch v in bragi.keybinds.variant {
     case Emacs_Keybinds:
-        handled = handle_global_emacs_keybindings(key)
+        handled = handle_global_emacs_keybindings(key, pane)
     case Sublime_Keybinds:
-        handled = handle_sublime_keybindings(key)
+        handled = handle_sublime_keybindings(key, pane)
     }
 
     return handled

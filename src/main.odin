@@ -3,9 +3,11 @@ package main
 import     "base:runtime"
 import     "core:fmt"
 import     "core:log"
+import     "core:math"
 import     "core:mem"
 import     "core:os"
 import     "core:strings"
+import     "core:time"
 import     "core:unicode/utf8"
 import sdl "vendor:sdl2"
 import ttf "vendor:sdl2/ttf"
@@ -19,41 +21,43 @@ DEFAULT_WINDOW_WIDTH  :: 1024
 DEFAULT_WINDOW_HEIGHT :: 768
 DEFAULT_CURSOR_BLINK  :: 1.0
 
+TITLE_TIMEOUT :: 1 * time.Second
+
 Settings :: struct {
     mm: map[Major_Mode]Major_Mode_Settings,
 
-    font_size: i32,
-
-    cursor_blink_delay_in_seconds : f32,
-    remove_trailing_whitespaces   : bool,
-    save_desktop_mode             : bool,
+    cursor_blink_delay_in_seconds: f32,
+    font_size:                     i32,
+    remove_trailing_whitespaces:   bool,
+    save_desktop_mode:             bool,
 }
 
 Character_Texture :: struct {
-    texture : ^sdl.Texture,
-    dest    : sdl.Rect,
+    texture: ^sdl.Texture,
+    dest:    sdl.Rect,
 }
 
 Program_Context :: struct {
+    delta_time:     time.Duration,
     undo_allocator: runtime.Allocator,
-    delta_time   : f32,
-    font         : ^ttf.Font,
-    characters   : map[rune]Character_Texture,
-    running      : bool,
-    renderer     : ^sdl.Renderer,
-    window       : ^sdl.Window,
-    window_size  : Vector2,
+    font:           ^ttf.Font,
+    characters:     map[rune]Character_Texture,
+    running:        bool,
+    renderer:       ^sdl.Renderer,
+    window:         ^sdl.Window,
+    window_size:    Vector2,
+    window_focused: bool,
 }
 
 Bragi :: struct {
-    ctx          : Program_Context,
+    buffers:      [dynamic]Text_Buffer,
+    panes:        [dynamic]Pane,
+    current_pane: ^Pane,
+    last_pane:    ^Pane,
 
-    buffers      : [dynamic]Text_Buffer,
-    panes        : [dynamic]Pane,
-    focused_pane : int,
-    keybinds     : Keybinds,
-
-    settings     : Settings,
+    ctx:          Program_Context,
+    keybinds:     Keybinds,
+    settings:     Settings,
 }
 
 bragi: Bragi
@@ -198,18 +202,30 @@ main :: proc() {
     initialize_context()
     load_keybinds()
 
-    last_update := sdl.GetTicks()
-    frame_update_timer: f32 = 1
+    last_update_time := time.tick_now()
+    previous_frame_time := time.tick_now()
 
     for bragi.ctx.running {
         input_handled: bool
         e: sdl.Event
+
+        frame_start := sdl.GetPerformanceCounter()
 
         for sdl.PollEvent(&e) {
             #partial switch e.type {
                 case .QUIT: bragi.ctx.running = false
                 case .WINDOWEVENT: {
                     w := e.window
+
+                    if w.event == .FOCUS_LOST {
+                        bragi.ctx.window_focused = false
+                        bragi.last_pane    = bragi.current_pane
+                        bragi.current_pane = nil
+                    } else if w.event == .FOCUS_GAINED {
+                        bragi.ctx.window_focused = true
+                        bragi.current_pane = bragi.last_pane
+                        bragi.last_pane    = bragi.current_pane
+                    }
 
                     if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
                         bragi.ctx.window_size = {
@@ -224,39 +240,41 @@ main :: proc() {
                     sdl.RaiseWindow(bragi.ctx.window)
                     delete(e.drop.file)
                 }
-                case .MOUSEBUTTONDOWN: {
+            }
 
-                }
-                case .MOUSEWHEEL: {
-                    m := e.wheel
-                    // TODO: Maybe make scrolling offset configurable
-                    // buffer_scroll(int(m.y * -1) * 5)
-                }
-                case .KEYDOWN: {
-                    input_handled = handle_keydown(e.key.keysym)
-                }
-                case .TEXTINPUT: {
-                    if !input_handled {
-                        pane := get_focused_pane()
-                        input_char := cstring(raw_data(e.text.text[:]))
-                        insert_at(pane.buffer, pane.buffer.cursor, string(input_char))
+            if bragi.current_pane != nil {
+                #partial switch e.type {
+                    case .MOUSEBUTTONDOWN: {
+
+                    }
+                    case .MOUSEWHEEL: {
+                        m := e.wheel
+                        // TODO: Maybe make scrolling offset configurable
+                        // buffer_scroll(int(m.y * -1) * 5)
+                    }
+                    case .KEYDOWN: {
+                        input_handled = handle_keydown(e.key.keysym, bragi.current_pane)
+                    }
+                    case .TEXTINPUT: {
+                        if !input_handled {
+                            pane := bragi.current_pane
+                            input_char := cstring(raw_data(e.text.text[:]))
+                            insert_at(pane.buffer, pane.buffer.cursor, string(input_char))
+                        }
                     }
                 }
             }
         }
 
-        current_update := sdl.GetTicks()
-        bragi.ctx.delta_time = f32(current_update - last_update) / 1000
-        last_update = current_update
-
-        update_pane(get_focused_pane())
+        update_pane(bragi.current_pane)
 
         // Start rendering
         sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
         sdl.RenderClear(bragi.ctx.renderer)
 
-        for &pane, index in bragi.panes {
-            focused := bragi.focused_pane == index
+        for &pane in bragi.panes {
+            focused := &pane == bragi.current_pane
+            render_caret(&pane, focused)
             render_pane_contents(&pane, focused)
             render_modeline(&pane, focused)
         }
@@ -267,17 +285,27 @@ main :: proc() {
 
         free_all(context.temp_allocator)
 
-        frame_update_timer += bragi.ctx.delta_time
+        bragi.ctx.delta_time = time.tick_lap_time(&previous_frame_time)
 
-        if frame_update_timer > 0.5 {
-            frame_update_timer = 0
+        if time.tick_diff(last_update_time, time.tick_now()) > TITLE_TIMEOUT {
+            last_update_time = time.tick_now()
+            flags := sdl.GetWindowFlags(bragi.ctx.window)
 
             window_title := fmt.ctprintf(
-                "Bragi v{0} - {1} fps {2} frametime | {3}kb memory used",
-                VERSION, 1 / bragi.ctx.delta_time, bragi.ctx.delta_time,
+                "Bragi v{0} | frametime: {1} | memory: {2}kb",
+                VERSION, bragi.ctx.delta_time,
                 tracking_allocator.current_memory_allocated / 1024,
             )
             sdl.SetWindowTitle(bragi.ctx.window, window_title)
+        }
+
+        frame_end := sdl.GetPerformanceCounter()
+
+        if !bragi.ctx.window_focused {
+            FRAMETIME_LIMIT :: 50 // 20 FPS
+
+            elapsed := f32(frame_end - frame_start) / f32(sdl.GetPerformanceCounter()) * 1000
+            sdl.Delay(u32(math.floor(FRAMETIME_LIMIT - elapsed)))
         }
     }
 
@@ -292,27 +320,31 @@ main :: proc() {
     mem.tracking_allocator_destroy(&tracking_allocator)
 }
 
+render_caret :: proc(pane: ^Pane, focused: bool) {
+    std_char_size := get_standard_character_size()
+    caret := &pane.caret
+
+    caret_rect := sdl.Rect{
+        i32(caret.position.x * std_char_size.x),
+        i32(caret.position.y * std_char_size.y),
+        i32(std_char_size.x), i32(std_char_size.y),
+    }
+
+    sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
+
+    if !caret.hidden && focused {
+        sdl.RenderFillRect(bragi.ctx.renderer, &caret_rect)
+    } else if !focused {
+        sdl.RenderDrawRect(bragi.ctx.renderer, &caret_rect)
+    }
+
+    sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
+}
+
 render_pane_contents :: proc(pane: ^Pane, focused: bool) {
     x, y: i32
     str := entire_buffer_to_string(pane.buffer)
     std_char_size := get_standard_character_size()
-    pane.caret.animated = focused
-
-    if pane.caret.animated {
-        pane.caret.timer += bragi.ctx.delta_time
-
-        if bragi.keybinds.last_keystroke == sdl.GetTicks() {
-            pane.caret.timer = 0
-            pane.caret.hidden = false
-        }
-
-        if pane.caret.timer > CARET_BLINK_TIMER_DEFAULT {
-            pane.caret.timer = 0
-            pane.caret.hidden = !pane.caret.hidden
-        }
-    } else {
-        pane.caret.hidden = false
-    }
 
     for c, char_index in str {
         char := bragi.ctx.characters[c]
@@ -322,36 +354,26 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
         // TODO: here I should have the lexer figuring out what color this character is
         sdl.SetTextureColorMod(char.texture, 255, 255, 255)
 
-        if pane.caret.region_enabled {
-            start_region := min(pane.caret.region_begin, pane.buffer.cursor)
-            end_region   := max(pane.caret.region_begin, pane.buffer.cursor)
+        if focused {
+            caret := &pane.caret
 
-            if start_region <= char_index && end_region > char_index {
-                sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 52, 63, 255)
-                region_rect := sdl.Rect{
-                    column, row, i32(std_char_size.x), i32(std_char_size.y),
+            if caret.region_enabled {
+                start_region := min(pane.caret.region_begin, pane.buffer.cursor)
+                end_region   := max(pane.caret.region_begin, pane.buffer.cursor)
+
+                if start_region <= char_index && end_region > char_index {
+                    sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 52, 63, 255)
+                    region_rect := sdl.Rect{
+                        column, row, i32(std_char_size.x), i32(std_char_size.y),
+                    }
+                    sdl.RenderFillRect(bragi.ctx.renderer, &region_rect)
+                    sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
                 }
-                sdl.RenderFillRect(bragi.ctx.renderer, &region_rect)
-                sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-            }
-        }
-
-        if !pane.caret.hidden && pane.buffer.cursor == char_index {
-            caret_rect := sdl.Rect{
-                column, row,
-                i32(std_char_size.x), i32(std_char_size.y),
             }
 
-            sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
-
-            if pane.caret.animated {
-                sdl.RenderFillRect(bragi.ctx.renderer, &caret_rect)
+            if !caret.hidden && pane.buffer.cursor == char_index {
                 sdl.SetTextureColorMod(char.texture, 1, 32, 39)
-            } else {
-                sdl.RenderDrawRect(bragi.ctx.renderer, &caret_rect)
             }
-
-            sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
         }
 
         char.dest.x = column

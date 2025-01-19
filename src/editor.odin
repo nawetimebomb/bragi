@@ -5,7 +5,7 @@ Line    :: string
 
 open_file :: proc(filepath: string) {
     buffer_found := false
-    pane := get_focused_pane()
+    pane := bragi.current_pane
 
     for &b in bragi.buffers {
         if b.filepath == filepath {

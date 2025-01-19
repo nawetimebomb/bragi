@@ -2,23 +2,28 @@ package main
 
 import "core:log"
 import "core:mem"
+import "core:time"
 
 CARET_BLINK_TIMER_DEFAULT :: 0.5
+
+CARET_RESET_TIMEOUT :: 50 * time.Millisecond
+CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
 
 New_Pane_Position :: enum {
     Right, Bottom, Undefined,
 }
 
 Caret :: struct {
-    animated        : bool,
-    hidden          : bool,
-    timer           : f32,
+    hidden:              bool,
+    last_keystroke_time: time.Tick,
+    last_update_time:    time.Tick,
+    last_cursor_pos:     int,
+    position:            [2]int,
+    region_enabled:      bool,
+    region_begin:        int,
+    selection_mode:      bool,
+
     max_x           : int,
-    prev_buffer_pos : int,
-    position        : [2]int,
-    region_enabled  : bool,
-    region_begin    : int,
-    selection_mode  : bool,
 }
 
 Pane :: struct {
@@ -48,25 +53,38 @@ create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
     }
 
     append(&bragi.panes, new_pane)
-    bragi.focused_pane = len(bragi.panes) - 1
-}
-
-get_focused_pane :: proc() -> ^Pane {
-    return &bragi.panes[bragi.focused_pane]
+    bragi.current_pane = &bragi.panes[len(bragi.panes) - 1]
+    bragi.last_pane    = bragi.current_pane
 }
 
 update_pane :: proc(pane: ^Pane) {
+    if pane == nil {
+        return
+    }
+
     current_cursor_pos := pane.buffer.cursor
+    caret := &pane.caret
+    now := time.tick_now()
 
     update_text_buffer_time(pane.buffer)
 
-    if pane.caret.prev_buffer_pos != current_cursor_pos {
+    if time.tick_diff(caret.last_keystroke_time, time.tick_now()) < CARET_RESET_TIMEOUT {
+        caret.last_update_time = now
+        caret.hidden = false
+    }
+
+    if time.tick_diff(caret.last_update_time, now) > CARET_BLINK_TIMEOUT {
+        caret.last_update_time = now
+        caret.hidden = !caret.hidden
+    }
+
+    if caret.last_cursor_pos != current_cursor_pos {
         x, y: int
         str := entire_buffer_to_string(pane.buffer)
 
         for c, i in str {
             if current_cursor_pos == i {
-                pane.caret.position = { x, y }
+                caret.position = { x, y }
                 break
             }
 
@@ -79,5 +97,5 @@ update_pane :: proc(pane: ^Pane) {
         }
     }
 
-    pane.caret.prev_buffer_pos = current_cursor_pos
+    caret.last_cursor_pos = current_cursor_pos
 }

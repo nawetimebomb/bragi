@@ -14,27 +14,34 @@ String_Cache_Type :: enum {
     Full,
 }
 
+Gap_Buffer :: struct {
+    allocator : runtime.Allocator,
+    buf       : []u8,
+    gap_end   : int,
+    gap_start : int,
+}
+
 Text_Buffer :: struct {
-    allocator  : runtime.Allocator,
-    cursor     : int,
-    data       : []u8,
-    filepath   : string,
-    gap_start  : int,
-    gap_end    : int,
-    modified   : bool,
-    major_mode : Major_Mode,
-    name       : string,
-    readonly   : bool,
-    str_buffer : strings.Builder,
-    str_cache  : String_Cache_Type,
-    cache_size : int,
+    data_buffer : Gap_Buffer,
+    str_buffer  : strings.Builder,
+    str_cache   : String_Cache_Type,
+    cache_size  : int,
+
+    cursor      : int,
+    filepath    : string,
+    modified    : bool,
+    major_mode  : Major_Mode,
+    name        : string,
+    readonly    : bool,
 }
 
 make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.allocator) -> ^Text_Buffer {
     append(&bragi.buffers, Text_Buffer{
-        allocator  = allocator,
-        data       = make([]u8, bytes_count, allocator),
-        gap_end    = bytes_count,
+        data_buffer = {
+            allocator = allocator,
+            buf       = make([]u8, bytes_count, allocator),
+            gap_end   = bytes_count,
+        },
         major_mode = .Fundamental,
         name       = strings.clone(name),
         str_buffer = strings.builder_make(),
@@ -71,45 +78,57 @@ make_temp_str_buffer :: proc() -> strings.Builder {
     return strings.builder_make(context.temp_allocator)
 }
 
+destroy_buffer :: proc(buffer: ^Text_Buffer) {
+    delete(buffer.name)
+    delete(buffer.data_buffer.buf)
+    delete(buffer.str_buffer.buf)
+}
+
+tag_for_refresh :: proc(buffer: ^Text_Buffer) {
+    buffer.cache_size = 0
+    buffer.str_cache  = .None
+    buffer.modified = true
+}
+
 delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
-    buffer_delete(buffer, cursor, count)
+    buffer_delete(&buffer.data_buffer, cursor, count)
     if count < 0 {
         buffer.cursor = max(0, buffer.cursor + count)
     }
+    tag_for_refresh(buffer)
+}
+
+insert_at :: proc{
+    insert_char_at,
+    insert_str_at,
 }
 
 insert_char_at :: proc(buffer: ^Text_Buffer, cursor: int, char: u8) {
-    buffer_insert_char(buffer, cursor, char)
+    buffer_insert_char(&buffer.data_buffer, cursor, char)
     buffer.cursor += 1
+    tag_for_refresh(buffer)
 }
 
-insert_char_at_point :: proc(buffer: ^Text_Buffer, char: u8) {
-    insert_char_at(buffer, buffer.cursor, char)
-}
-
-insert_at :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
-    buffer_insert(buffer, cursor, str)
+insert_str_at :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
+    buffer_insert(&buffer.data_buffer, cursor, str)
     buffer.cursor += len(str)
-}
-
-insert_at_point :: proc(buffer: ^Text_Buffer, str: string) {
-    insert_at(buffer, buffer.cursor, str)
+    tag_for_refresh(buffer)
 }
 
 insert_whole_file :: proc(buffer: ^Text_Buffer, data: []u8) {
-    buffer_insert(buffer, 0, data)
+    buffer_insert(&buffer.data_buffer, 0, data)
+    tag_for_refresh(buffer)
     buffer.cursor = 0
     buffer.modified = false
 }
 
 length_of_buffer :: proc(buffer: ^Text_Buffer) -> int {
-    gap := buffer.gap_end - buffer.gap_start
-    return len(buffer.data) - gap
+    return buffer_len(&buffer.data_buffer)
 }
 
 rune_at :: proc(buffer: ^Text_Buffer, cursor: int) -> rune {
     cursor := clamp(cursor, 0, length_of_buffer(buffer) - 1)
-    left, right := buffer_get_strings(buffer)
+    left, right := buffer_get_strings(&buffer.data_buffer)
 
     if cursor < len(left) {
         return rune(left[cursor])
@@ -250,7 +269,7 @@ save_some_buffers :: proc() {
 }
 
 flush_buffer_to_custom_string :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder, start, end: int) -> string {
-    buffer_flush(buffer, str_buffer, start, end)
+    buffer_flush(&buffer.data_buffer, str_buffer, start, end)
     return strings.to_string(str_buffer^)
 }
 
@@ -260,7 +279,7 @@ range_buffer_to_string :: proc(buffer: ^Text_Buffer, start, end: int) -> string 
     }
 
     clear(&buffer.str_buffer.buf)
-    buffer_flush(buffer, &buffer.str_buffer, start, end)
+    buffer_flush(&buffer.data_buffer, &buffer.str_buffer, start, end)
     buffer.str_cache = .Range
     buffer.cache_size = start + end
     return strings.to_string(buffer.str_buffer)
@@ -273,7 +292,7 @@ entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
 
     log.debugf("Generating new string for buffer {0}", buffer.name)
     clear(&buffer.str_buffer.buf)
-    buffer_flush_everything(buffer)
+    buffer_flush_everything(&buffer.data_buffer, &buffer.str_buffer)
     buffer.str_cache = .Full
     return strings.to_string(buffer.str_buffer)
 }
@@ -285,10 +304,10 @@ get_buffer_status :: proc(buffer: ^Text_Buffer) -> string {
 }
 
 @(private="file")
-buffer_flush :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder, start, end: int) {
+buffer_flush :: proc(buffer: ^Gap_Buffer, str_buffer: ^strings.Builder, start, end: int) {
     left, right := buffer_get_strings(buffer)
     assert(start >= 0, "invalid cursor start position")
-    assert(end <= length_of_buffer(buffer), "invalid cursor end position")
+    assert(end <= buffer_len(buffer), "invalid cursor end position")
 
     left_len := len(left)
 
@@ -303,22 +322,26 @@ buffer_flush :: proc(buffer: ^Text_Buffer, str_buffer: ^strings.Builder, start, 
 }
 
 @(private="file")
-buffer_flush_everything :: proc(buffer: ^Text_Buffer) {
-    buffer_flush(buffer, &buffer.str_buffer, 0, length_of_buffer(buffer))
+buffer_flush_everything :: proc(buffer: ^Gap_Buffer, str_buffer: ^strings.Builder) {
+    buffer_flush(buffer, str_buffer, 0, buffer_len(buffer))
 }
 
 @(private="file")
-buffer_get_strings :: proc(buffer: ^Text_Buffer) -> (string, string) {
-    left := string(buffer.data[:buffer.gap_start])
-    right := string(buffer.data[buffer.gap_end:])
+buffer_get_strings :: proc(buffer: ^Gap_Buffer) -> (string, string) {
+    left := string(buffer.buf[:buffer.gap_start])
+    right := string(buffer.buf[buffer.gap_end:])
     return left, right
 }
 
 @(private="file")
-buffer_move_gap :: proc(buffer: ^Text_Buffer, cursor: int) {
-    cursor := clamp(cursor, 0, length_of_buffer(buffer))
-    buffer.str_cache = .None
-    buffer.modified = true
+buffer_len :: proc(buffer: ^Gap_Buffer) -> int {
+    gap := buffer.gap_end - buffer.gap_start
+    return len(buffer.buf) - gap
+}
+
+@(private="file")
+buffer_move_gap :: proc(buffer: ^Gap_Buffer, cursor: int) {
+    cursor := clamp(cursor, 0, buffer_len(buffer))
 
     if cursor == buffer.gap_start {
         return
@@ -326,37 +349,37 @@ buffer_move_gap :: proc(buffer: ^Text_Buffer, cursor: int) {
 
     if buffer.gap_start < cursor {
         delta := cursor - buffer.gap_start
-        mem.copy(&buffer.data[buffer.gap_start], &buffer.data[buffer.gap_end], delta)
+        mem.copy(&buffer.buf[buffer.gap_start], &buffer.buf[buffer.gap_end], delta)
         buffer.gap_start += delta
         buffer.gap_end += delta
     } else {
         delta := buffer.gap_start - cursor
-        mem.copy(&buffer.data[buffer.gap_end - delta],
-                 &buffer.data[buffer.gap_start - delta], delta)
+        mem.copy(&buffer.buf[buffer.gap_end - delta],
+                 &buffer.buf[buffer.gap_start - delta], delta)
         buffer.gap_start -= delta
         buffer.gap_end -= delta
     }
 }
 
 @(private="file")
-conditionally_grow_buffer :: proc(buffer: ^Text_Buffer, bytes_count: int) {
+conditionally_grow_buffer :: proc(buffer: ^Gap_Buffer, bytes_count: int) {
     gap_len := buffer.gap_end - buffer.gap_start
 
     if gap_len < bytes_count {
-        required_new_data_array_size := bytes_count + len(buffer.data) - gap_len
-        new_data_len := max(2 * len(buffer.data), required_new_data_array_size)
+        required_new_data_array_size := bytes_count + len(buffer.buf) - gap_len
+        new_data_len := max(2 * len(buffer.buf), required_new_data_array_size)
 
-        buffer_move_gap(buffer, len(buffer.data) - gap_len)
+        buffer_move_gap(buffer, len(buffer.buf) - gap_len)
         new_data_array := make([]u8, new_data_len, buffer.allocator)
-        copy_slice(new_data_array, buffer.data[:buffer.gap_end])
-        delete(buffer.data)
-        buffer.data = new_data_array
+        copy_slice(new_data_array, buffer.buf[:buffer.gap_end])
+        delete(buffer.buf)
+        buffer.buf = new_data_array
         buffer.gap_end = len(new_data_array)
     }
 }
 
 @(private="file")
-buffer_delete :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
+buffer_delete :: proc(buffer: ^Gap_Buffer, cursor: int, count: int) {
     chars_to_delete := abs(count)
     canon_cursor := cursor
 
@@ -365,7 +388,34 @@ buffer_delete :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
     }
 
     buffer_move_gap(buffer, canon_cursor)
-    buffer.gap_end = min(buffer.gap_end + chars_to_delete, len(buffer.data))
+    buffer.gap_end = min(buffer.gap_end + chars_to_delete, len(buffer.buf))
+}
+
+@(private="file")
+buffer_insert_char :: proc(buffer: ^Gap_Buffer, cursor: int, char: u8) {
+    conditionally_grow_buffer(buffer, 1)
+    buffer_move_gap(buffer, cursor)
+    buffer.buf[buffer.gap_start] = char
+    buffer.gap_start += 1
+}
+
+@(private="file")
+buffer_insert_rune :: proc(buffer: ^Gap_Buffer, cursor: int, r: rune) {
+    bytes, _ := utf8.encode_rune(r)
+    buffer_insert_array(buffer, cursor, bytes[:])
+}
+
+@(private="file")
+buffer_insert_array :: proc(buffer: ^Gap_Buffer, cursor: int, array: []u8) {
+    conditionally_grow_buffer(buffer, len(array))
+    buffer_move_gap(buffer, cursor)
+    copy_slice(buffer.buf[buffer.gap_start:], array)
+    buffer.gap_start += len(array)
+}
+
+@(private="file")
+buffer_insert_string :: proc(buffer: ^Gap_Buffer, cursor: int, str: string) {
+    buffer_insert_array(buffer, cursor, transmute([]u8)str)
 }
 
 @(private="file")
@@ -374,33 +424,6 @@ buffer_insert :: proc{
     buffer_insert_rune,
     buffer_insert_array,
     buffer_insert_string,
-}
-
-@(private="file")
-buffer_insert_char :: proc(buffer: ^Text_Buffer, cursor: int, char: u8) {
-    conditionally_grow_buffer(buffer, 1)
-    buffer_move_gap(buffer, cursor)
-    buffer.data[buffer.gap_start] = char
-    buffer.gap_start += 1
-}
-
-@(private="file")
-buffer_insert_rune :: proc(buffer: ^Text_Buffer, cursor: int, r: rune) {
-    bytes, _ := utf8.encode_rune(r)
-    buffer_insert_array(buffer, cursor, bytes[:])
-}
-
-@(private="file")
-buffer_insert_array :: proc(buffer: ^Text_Buffer, cursor: int, array: []u8) {
-    conditionally_grow_buffer(buffer, len(array))
-    buffer_move_gap(buffer, cursor)
-    copy_slice(buffer.data[buffer.gap_start:], array)
-    buffer.gap_start += len(array)
-}
-
-@(private="file")
-buffer_insert_string :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
-    buffer_insert_array(buffer, cursor, transmute([]u8)str)
 }
 
 @(private="file")

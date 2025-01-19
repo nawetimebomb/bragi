@@ -76,7 +76,7 @@ delete_forward_word :: proc(pane: ^Pane) {
 }
 
 newline :: proc(pane: ^Pane) {
-    insert_char_at_point(pane.buffer, '\n')
+    insert_at(pane.buffer, pane.buffer.cursor, '\n')
 }
 
 backward_char :: proc(pane: ^Pane, mark: bool) {
@@ -136,7 +136,7 @@ next_line :: proc(pane: ^Pane, mark: bool) {
 }
 
 yank :: proc(pane: ^Pane, text: string) {
-    insert_at_point(pane.buffer, text)
+    insert_at(pane.buffer, pane.buffer.cursor, text)
 }
 
 kill_region :: proc(pane: ^Pane, cut: bool) -> string {

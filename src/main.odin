@@ -79,9 +79,7 @@ destroy_editor :: proc() {
     }
 
     for &b in bragi.buffers {
-        delete(b.name)
-        delete(b.data)
-        delete(b.str_buffer.buf)
+        destroy_buffer(&b)
     }
     delete(bragi.buffers)
     delete(bragi.panes)
@@ -239,7 +237,7 @@ main :: proc() {
                         pane := get_focused_pane()
                         bragi.keybinds.last_keystroke = sdl.GetTicks()
                         input_char := cstring(raw_data(e.text.text[:]))
-                        insert_at_point(pane.buffer, string(input_char))
+                        insert_at(pane.buffer, pane.buffer.cursor, string(input_char))
                     }
 
                     bragi.keybinds.key_handled = false

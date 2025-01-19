@@ -80,7 +80,7 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
 
     log.debugf("Opening file {0} in buffer {1}", filepath, name)
 
-    parsed_data := buffer_clean_up_carriage_returns(data)
+    parsed_data := buffer_sanitize_file_data(data)
     text_buffer := make_text_buffer(name, len(parsed_data))
 
     insert_whole_file(text_buffer, parsed_data)
@@ -270,6 +270,7 @@ move_cursor_to :: proc(buffer: ^Text_Buffer, from, to: int, break_on_newline: bo
 save_buffer :: proc(buffer: ^Text_Buffer) {
     if buffer.modified {
         log.debugf("Saving {0}", buffer.name)
+        text_buffer_sanitize(buffer)
         str := entire_buffer_to_string(buffer)
         err := os.write_entire_file_or_err(buffer.filepath, transmute([]u8)str)
 
@@ -382,6 +383,34 @@ text_buffer_update :: proc(buffer: ^Text_Buffer) {
     buffer.cache_size = 0
     buffer.str_cache  = .None
     buffer.modified   = true
+}
+
+@(private="file")
+text_buffer_sanitize :: proc(buffer: ^Text_Buffer) {
+    og_cursor_pos := buffer.cursor
+    EOF_LF_COUNT :: 2
+    str := entire_buffer_to_string(buffer)
+    last_char := len(str) - 1
+    line_endings := 0
+    buf_len := buffer_len(&buffer.data_buffer)
+
+    for x := last_char; x > 0; x -= 1 {
+        if str[x] != '\n' {
+            break
+        }
+
+        line_endings += 1
+    }
+
+    if line_endings < EOF_LF_COUNT {
+        for ; line_endings > 0; line_endings -= 1 {
+            insert_at(buffer, buf_len, '\n')
+        }
+    } else {
+        delete_at(buffer, buf_len, EOF_LF_COUNT - line_endings)
+    }
+
+    buffer.cursor = clamp(og_cursor_pos, 0, length_of_buffer(buffer) - 1)
 }
 
 @(private="file")
@@ -508,18 +537,40 @@ buffer_insert :: proc{
 }
 
 @(private="file")
-buffer_clean_up_carriage_returns :: proc(data: []u8) -> []u8 {
+buffer_sanitize_file_data :: proc(data: []u8) -> []u8 {
     parsed_data := slice.clone_to_dynamic(data, context.temp_allocator)
+    count_line_endings := 0
+    last_char := len(parsed_data) - 1
+
     for char, index in parsed_data {
         if char == '\r' {
             ordered_remove(&parsed_data, index)
         }
     }
 
+    for x := last_char; x > 0; x -= 1 {
+        if parsed_data[x] != '\n' {
+            break
+        }
+
+        count_line_endings += 1
+    }
+
+    if count_line_endings < 2 {
+        for ; count_line_endings > 0; count_line_endings -= 1 {
+            append(&parsed_data, '\n')
+        }
+    } else {
+        for count_line_endings > 2 {
+            pop(&parsed_data)
+            count_line_endings -= 1
+        }
+    }
+
     diff_between_buffers := len(data) - len(parsed_data)
 
     if diff_between_buffers > 0 {
-        log.debugf("Cleaned up {0} carriage returns", diff_between_buffers)
+        log.debugf("Cleaned up {0} characters", diff_between_buffers)
     }
 
     return parsed_data[:]

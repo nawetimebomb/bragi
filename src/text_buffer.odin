@@ -148,6 +148,12 @@ line_end :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
     return cursor
 }
 
+line_len :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
+    start := line_start(buffer, cursor)
+    end := line_end(buffer, cursor)
+    return end - start
+}
+
 count_backward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) -> int {
     found, offset: int
     starting_cursor := cursor

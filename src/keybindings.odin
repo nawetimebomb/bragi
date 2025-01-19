@@ -96,25 +96,25 @@ handle_generic_keybindings :: proc(key: sdl.Keysym) {
         case .UP: {
             switch {
             // case C: buffer_backward_paragraph()
-            case  : previous_line(pane)
+            case  : previous_line(pane, S)
             }
         }
         case .DOWN: {
             switch {
             // case C: buffer_forward_paragraph()
-            case  : next_line(pane)
+            case  : next_line(pane, S)
             }
         }
         case .LEFT: {
             switch {
             // case C: buffer_backward_word()
-            case  : backward_char(pane)
+            case  : backward_char(pane, S)
             }
         }
         case .RIGHT: {
             switch {
             // case C: buffer_forward_word()
-            case  : forward_char(pane)
+            case  : forward_char(pane, S)
             }
         }
     }
@@ -158,13 +158,13 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
     #partial switch key.sym {
         case .A: {
             switch {
-            case C: beginning_of_line(pane)
+            case C: beginning_of_line(pane, S)
             }
         }
         case .B: {
             switch {
-            case A: backward_word(pane)
-            case C: backward_char(pane)
+            case A: backward_word(pane, S)
+            case C: backward_char(pane, S)
             }
         }
         case .D: {
@@ -175,13 +175,13 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .E: {
             switch {
-            case C: end_of_line(pane)
+            case C: end_of_line(pane, S)
             }
         }
         case .F: {
             switch {
-            case A: forward_word(pane)
-            case C: forward_char(pane)
+            case A: forward_word(pane, S)
+            case C: forward_char(pane, S)
             }
         }
         case .G: {
@@ -191,12 +191,12 @@ handle_emacs_keybindings :: proc(key: sdl.Keysym) {
         }
         case .N: {
             switch {
-            case C: next_line(pane)
+            case C: next_line(pane, S)
             }
         }
         case .P: {
             switch {
-            case C: previous_line(pane)
+            case C: previous_line(pane, S)
             }
         }
         case .S: {

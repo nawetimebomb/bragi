@@ -6,8 +6,8 @@ import     "core:strings"
 import     "core:time"
 import sdl "vendor:sdl2"
 
-copy_proc  :: #type proc(string)
-paste_proc :: #type proc() -> string
+Copy_Proc  :: #type proc(string)
+Paste_Proc :: #type proc() -> string
 
 Emacs_Keybinds :: struct {
     Cx_pressed: bool,

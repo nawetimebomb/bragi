@@ -153,7 +153,7 @@ initialize_editor :: proc() {
 initialize_settings :: proc() {
     log.debug("Initializing settings")
 
-    if !os.exists(SETTINGS_FILENAME) {
+    if !os.exists(SETTINGS_FILENAME) || true {
         if os.write_entire_file_or_err(SETTINGS_FILENAME, SETTINGS_DATA) != nil {
             log.errorf("Fail to create settings file")
         }
@@ -293,22 +293,7 @@ main :: proc() {
         }
 
         update_pane(bragi.current_pane)
-
-        // Start rendering
-        c_bg := bragi.settings.colors[.default_bg]
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, c_bg.r, c_bg.g, c_bg.b, c_bg.a)
-        sdl.RenderClear(bragi.ctx.renderer)
-
-        for &pane in bragi.panes {
-            focused := &pane == bragi.current_pane
-            render_caret(&pane, focused)
-            render_pane_contents(&pane, focused)
-            render_modeline(&pane, focused)
-        }
-
-        render_message_minibuffer()
-
-        sdl.RenderPresent(bragi.ctx.renderer)
+        render()
 
         free_all(context.temp_allocator)
 
@@ -330,7 +315,8 @@ main :: proc() {
         if !bragi.ctx.window_focused {
             FRAMETIME_LIMIT :: 50 // 20 FPS
 
-            elapsed := f32(frame_end - frame_start) / f32(sdl.GetPerformanceCounter()) * 1000
+            elapsed :=
+                f32(frame_end - frame_start) / f32(sdl.GetPerformanceCounter()) * 1000
             sdl.Delay(u32(math.floor(FRAMETIME_LIMIT - elapsed)))
         }
     }
@@ -344,27 +330,6 @@ main :: proc() {
     }
 
     mem.tracking_allocator_destroy(&tracking_allocator)
-}
-
-render_caret :: proc(pane: ^Pane, focused: bool) {
-    std_char_size := get_standard_character_size()
-    caret := &pane.caret
-
-    caret_rect := sdl.Rect{
-        (caret.position.x - pane.camera.x) * std_char_size.x,
-        (caret.position.y - pane.camera.y) * std_char_size.y,
-        std_char_size.x, std_char_size.y,
-    }
-
-    sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
-
-    if !caret.hidden && focused {
-        sdl.RenderFillRect(bragi.ctx.renderer, &caret_rect)
-    } else if !focused {
-        sdl.RenderDrawRect(bragi.ctx.renderer, &caret_rect)
-    }
-
-    sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
 }
 
 render_pane_contents :: proc(pane: ^Pane, focused: bool) {
@@ -433,85 +398,3 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
         }
     }
 }
-
-render_modeline :: proc(pane: ^Pane, focused: bool) {
-    MARGIN :: 20
-
-    std_char_size := get_standard_character_size()
-    search_results_format: string
-
-    // TODO: This should show the result currently focused
-    if pane.caret.search_mode {
-        search_results_format = fmt.tprintf("Results: {0}", len(pane.caret.highlights))
-    }
-
-    lmodeline_format := fmt.tprintf(
-        "{0} {1}  ({2}, {3}) {4}",
-        get_buffer_status(pane.buffer),
-        pane.buffer.name,
-        pane.caret.position.x, pane.caret.position.y,
-        search_results_format,
-    )
-    rmodeline_format := fmt.tprintf(
-        "{0}", bragi.settings.mm[pane.buffer.major_mode].name,
-    )
-    y := bragi.ctx.window_size.y - std_char_size.y * 2
-    background_rect := sdl.Rect{
-        0, y, bragi.ctx.window_size.x, std_char_size.y,
-    }
-
-    if focused {
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, 0, 86, 98, 255)
-    } else {
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, 0, 16, 23, 255)
-    }
-
-    sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
-
-    if focused {
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, 0, 130, 149, 255)
-        sdl.RenderDrawRect(bragi.ctx.renderer, &background_rect)
-    }
-
-    for c, index in lmodeline_format {
-        char := bragi.ctx.characters[c]
-
-        if focused {
-            sdl.SetTextureColorMod(char.texture, 255, 255, 255)
-        } else {
-            sdl.SetTextureColorMod(char.texture, 132, 132, 132)
-        }
-
-        char.dest.x = MARGIN + char.dest.w * i32(index)
-        char.dest.y = y
-        sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
-    }
-
-    rmdf_padding := i32(len(rmodeline_format)) * std_char_size.x
-    for c, index in rmodeline_format {
-        char := bragi.ctx.characters[c]
-
-        if focused {
-            sdl.SetTextureColorMod(char.texture, 255, 255, 255)
-        } else {
-            sdl.SetTextureColorMod(char.texture, 132, 132, 132)
-        }
-
-        char.dest.x =
-            bragi.ctx.window_size.x - MARGIN - rmdf_padding + char.dest.w * i32(index)
-        char.dest.y = y
-        sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
-    }
-}
-
-render_message_minibuffer :: proc() {
-    std_char_size := get_standard_character_size()
-    y : i32 = bragi.ctx.window_size.y - std_char_size.y
-
-    sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
-    background_rect := sdl.Rect{
-        0, y, bragi.ctx.window_size.x, std_char_size.y,
-    }
-    sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
-}
-

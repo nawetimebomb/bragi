@@ -10,6 +10,12 @@ Color :: distinct [4]u8
 Major_Modes_Map :: map[Major_Mode]Major_Mode_Settings
 Colorscheme :: map[Face]Color
 
+// NOTE:
+//   ^Render_State is .Default, .Keyword, etc
+//   ^string is the buffer string
+//   int is the cursor position
+// Lexer_Proc :: #type proc(^Render_State, ^string, int)
+
 DEFAULT_COLORSCHEME :: #load("../res/config.bragi")
 
 Major_Mode :: enum {
@@ -37,6 +43,9 @@ Face :: enum {
     constant_bg,
     constant_fg,
 
+    cursor_bg,
+    cursor_fg,
+
     default_bg,
     default_fg,
 
@@ -48,6 +57,12 @@ Face :: enum {
 
     match_highlight_bg,
     match_highlight_fg,
+
+    modeline_off_bg,
+    modeline_off_fg,
+
+    modeline_on_bg,
+    modeline_on_fg,
 
     region_bg,
     region_fg,
@@ -197,4 +212,3 @@ major_mode_odin :: proc() -> Major_Mode_Settings {
         word_delimiters   = " .,_-[]():\n",
     }
 }
-

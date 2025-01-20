@@ -146,7 +146,7 @@ next_line :: proc(pane: ^Pane, mark: bool) {
     line_len(pane.buffer, pane.buffer.cursor)
 }
 
-yank :: proc(pane: ^Pane, callback: paste_proc) {
+yank :: proc(pane: ^Pane, callback: Paste_Proc) {
     insert_at(pane.buffer, pane.buffer.cursor, callback())
 }
 
@@ -201,13 +201,13 @@ kill_current_buffer :: proc(pane: ^Pane) {
     pane.buffer = &bragi.buffers[len(bragi.buffers) - 1]
 }
 
-kill_line :: proc(pane: ^Pane, callback: copy_proc) {
+kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
     pane.caret.region_enabled = true
     pane.caret.region_begin = line_end(pane.buffer, pane.buffer.cursor)
     kill_region(pane, true, callback)
 }
 
-kill_region :: proc(pane: ^Pane, cut: bool, callback: copy_proc) {
+kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
     if pane.caret.region_enabled {
         start := min(pane.buffer.cursor, pane.caret.region_begin)
         end   := max(pane.buffer.cursor, pane.caret.region_begin)

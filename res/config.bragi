@@ -1,12 +1,17 @@
 
-default_bg                      ff0000
-default_fg                      dddddd
 builtin_fg                      b39ddb
 comment_fg                      848484
 constant_fg                     b39ddb
+cursor_bg                       64d8cb
+cursor_fg                       012027
+default_bg                      012027
+default_fg                      dddddd
 keyword_fg                      b39ddb
 match_delimiter_fg              ff9800
 match_highlight_fg              ff9800
+modeline_off_bg                 001017
+modeline_off_fg                 848484
+modeline_on_bg                  005662
+modeline_on_fg                  ffffff
 region_bg                       01343f
 string_fg                       90caf9
-

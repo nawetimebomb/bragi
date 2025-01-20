@@ -27,17 +27,18 @@ SETTINGS_FILENAME :: "config.bragi"
 TITLE_TIMEOUT :: 1 * time.Second
 
 Settings :: struct {
-    handle:            os.Handle,
-    last_write_time:   os.File_Time,
-    use_internal_data: bool,
+    handle:                      os.Handle,
+    last_write_time:             os.File_Time,
+    use_internal_data:           bool,
 
-    mm: Major_Modes_Map,
-    colors: Colorscheme,
+    major_modes_table:           Major_Modes_Table,
+    colorscheme_table:           Colorscheme_Table,
 
-    cursor_blink_delay_in_seconds: f32,
-    font_size:                     i32,
-    remove_trailing_whitespaces:   bool,
-    save_desktop_mode:             bool,
+    cursor_blink_timeout:        f32,
+    font_size:                   u32,
+    remove_trailing_whitespaces: bool,
+    save_desktop_mode:           bool,
+    show_line_numbers:           bool,
 }
 
 Character_Texture :: struct {
@@ -104,8 +105,8 @@ destroy_editor :: proc() {
 destroy_settings :: proc() {
     log.debug("Destroying settings")
 
-    delete(bragi.settings.mm)
-    delete(bragi.settings.colors)
+    delete(bragi.settings.major_modes_table)
+    delete(bragi.settings.colorscheme_table)
 }
 
 initialize_context :: proc() {
@@ -146,7 +147,7 @@ initialize_editor :: proc() {
     create_pane()
 
     // TODO: This is a debug only thing
-    filepath := "C:/Code/bragi/src/main.odin"
+    filepath := "C:/Code/bragi/res/config.bragi"
     open_file(filepath)
 }
 
@@ -251,7 +252,6 @@ main :: proc() {
                     } else if w.event == .FOCUS_GAINED {
                         bragi.ctx.window_focused = true
                         bragi.current_pane = bragi.last_pane
-                        bragi.last_pane    = bragi.current_pane
                     }
 
                     if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {

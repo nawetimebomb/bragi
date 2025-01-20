@@ -80,14 +80,14 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
 
     log.debugf("Opening file {0} in buffer {1}", filepath, name)
 
-    parsed_data := buffer_sanitize_file_data(data)
-    text_buffer := make_text_buffer(name, len(parsed_data))
+    // parsed_data := buffer_sanitize_file_data(data)
+    text_buffer := make_text_buffer(name, len(data))
 
-    insert_whole_file(text_buffer, parsed_data)
+    insert_whole_file(text_buffer, data)
     text_buffer.filepath = filepath
     text_buffer.cursor = 0
     text_buffer.major_mode = find_major_mode(extension)
-    text_buffer.modified = len(data) != len(parsed_data)
+    // text_buffer.modified = len(data) != len(parsed_data)
 
     log.debugf("File {0} complete", filepath)
 
@@ -199,7 +199,7 @@ count_backward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) ->
     starting_cursor := cursor
     str := entire_buffer_to_string(buffer)
     word_started := false
-    delimiters := get_word_delimiters(buffer.major_mode)
+    delimiters := settings_get_word_delimiters(buffer.major_mode)
 
     for offset = starting_cursor; offset > 0; offset -= 1 {
         r := rune(str[offset])
@@ -232,7 +232,7 @@ count_forward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) -> 
     starting_cursor := cursor
     str := entire_buffer_to_string(buffer)
     word_started := false
-    delimiters := get_word_delimiters(buffer.major_mode)
+    delimiters := settings_get_word_delimiters(buffer.major_mode)
 
     for offset = starting_cursor; offset < length_of_buffer(buffer) - 1; offset += 1 {
         r := rune(str[offset])

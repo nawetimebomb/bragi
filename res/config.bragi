@@ -1,17 +1,24 @@
+# Comments
+[colors]
+background                      012027
+cursor                          64d8cb
+builtin                         b39ddb
+comment                         848484
+constant                        b39ddb
+default                         dddddd
+highlight                       ff9800
+keyword                         b39ddb
+string                          90caf9
 
-builtin_fg                      b39ddb
-comment_fg                      848484
-constant_fg                     b39ddb
-cursor_bg                       64d8cb
-cursor_fg                       012027
-default_bg                      012027
-default_fg                      dddddd
-keyword_fg                      b39ddb
-match_delimiter_fg              ff9800
-match_highlight_fg              ff9800
 modeline_off_bg                 001017
 modeline_off_fg                 848484
 modeline_on_bg                  005662
 modeline_on_fg                  ffffff
-region_bg                       01343f
-string_fg                       90caf9
+
+
+linen_bg                        001b21
+linen_fg                        848484
+match_delimiter                 ff9800
+
+region                          01343f
+

@@ -3,46 +3,53 @@ package main
 import     "core:fmt"
 import     "core:strings"
 import sdl "vendor:sdl2"
+import     "languages"
 
-get_major_mode_name :: proc(mm: Major_Mode) -> string {
-    return bragi.settings.mm[mm].name
+is_caret_showing :: #force_inline proc(caret: ^Caret, x, y: i32) -> bool {
+    return !caret.hidden && caret.position.x == x && caret.position.y == y
 }
 
-set_bg :: proc(c: Color) {
+set_bg :: #force_inline proc(c: Color) {
     if c.a != 0 {
         sdl.SetRenderDrawColor(bragi.ctx.renderer, c.r, c.g, c.b, c.a)
     }
 }
 
-set_fg :: proc(t: ^sdl.Texture, c: Color) {
+set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
     if c.a != 0 {
         sdl.SetTextureColorMod(t, c.r, c.g, c.b)
     }
 }
 
 render :: proc() {
-    colors := &bragi.settings.colors
+    colors := &bragi.settings.colorscheme_table
     char_size := get_standard_character_size()
     renderer := bragi.ctx.renderer
     window_size := bragi.ctx.window_size
 
     // Colors
-    cursor_bg       := colors[.cursor_bg]
-    cursor_fg       := colors[.cursor_fg]
-    default_bg      := colors[.default_bg]
-    default_fg      := colors[.default_fg]
+    background      := colors[.background]
+    cursor          := colors[.cursor]
+    builtin         := colors[.builtin]
+    comment         := colors[.comment]
+    constant        := colors[.constant]
+    default         := colors[.default]
+    highlight       := colors[.highlight]
+    keyword         := colors[.keyword]
+    string          := colors[.string]
+
     modeline_off_bg := colors[.modeline_off_bg]
     modeline_off_fg := colors[.modeline_off_fg]
     modeline_on_bg  := colors[.modeline_on_bg]
     modeline_on_fg  := colors[.modeline_on_fg]
 
-    set_bg(default_bg)
+    set_bg(background)
     sdl.RenderClear(bragi.ctx.renderer)
 
     for &pane in bragi.panes {
         caret := pane.caret
         camera := pane.camera
-        focused := &pane == bragi.current_pane
+        focused := bragi.current_pane == &pane
 
         { // Start Caret
             dest_rect := sdl.Rect{
@@ -51,7 +58,7 @@ render :: proc() {
                 char_size.x, char_size.y,
             }
 
-            set_bg(cursor_bg)
+            set_bg(cursor)
 
             if focused {
                 if !caret.hidden {
@@ -62,9 +69,13 @@ render :: proc() {
             }
         } // End Caret
 
-        { // Start Buffer
+        { // Start Buffer String
             buffer_str := entire_buffer_to_string(pane.buffer)
             buffer_str_lines := strings.split_lines(buffer_str, context.temp_allocator)
+            mm := pane.buffer.major_mode
+            rs := languages.Render_State{}
+            lexer_enabled := settings_is_lexer_enabled(mm)
+            lex := settings_get_lexer_proc(mm)
 
             for line, y_index in buffer_str_lines {
                 for r, x_index in line {
@@ -76,22 +87,51 @@ render :: proc() {
                     c.dest.x = column
                     c.dest.y = row
 
-                    // TODO: Add lexing here so it should render by state
-                    set_fg(c.texture, default_fg)
+                    if lexer_enabled {
+                        rs.cursor = x_index
+                        rs.current_rune = r
+                        rs.line = line
+                        rs.end_of_line = len(line)
 
-                    if focused {
-                        // TODO: Add Mark Mode
-                        // TODO: Add Search Mode
+                        rs.length -= 1
+
+                        if rs.length <= 0 {
+                            lex(&rs)
+                        }
+
+                        switch rs.state {
+                        case .Default:
+                            set_fg(c.texture, default)
+                        case .Builtin:
+                            set_fg(c.texture, builtin)
+                        case .Comment:
+                            set_fg(c.texture, comment)
+                        case .Constant:
+                            set_fg(c.texture, constant)
+                        case .Keyword:
+                            set_fg(c.texture, keyword)
+                        case .Highlight:
+                            set_fg(c.texture, highlight)
+                        case .String:
+                            set_fg(c.texture, string)
+                        }
+                    } else {
+                        set_fg(c.texture, default)
                     }
 
-                    if !caret.hidden && caret.position.x == x && caret.position.y == y {
-                        set_fg(c.texture, cursor_fg)
+                    if focused {
+                        if is_caret_showing(&caret, x, y) {
+                            set_fg(c.texture, background)
+                        } else {
+                            // TODO: Add Mark Mode
+                            // TODO: Add Search Mode
+                        }
                     }
 
                     sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
                 }
             }
-        } // End Buffer
+        } // End Buffer String
 
         { // Start Modeline
             PADDING :: 20
@@ -105,7 +145,7 @@ render :: proc() {
             )
             rml_fmt := fmt.tprintf(
                 "{0}",
-                get_major_mode_name(pane.buffer.major_mode),
+                settings_get_major_mode_name(pane.buffer.major_mode),
             )
             rml_fmt_size := i32(len(rml_fmt)) * char_size.x
             row := window_size.y - char_size.y * 2
@@ -147,7 +187,7 @@ render :: proc() {
     { // Start Message Minibuffer
         row := window_size.y - char_size.y
         dest_rect := sdl.Rect{ 0, row, window_size.x, char_size.y }
-        set_bg(default_bg)
+        set_bg(background)
         sdl.RenderFillRect(renderer, &dest_rect)
     } // End Message Minibuffer
 

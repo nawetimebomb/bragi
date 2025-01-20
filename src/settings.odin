@@ -5,16 +5,17 @@ import "core:os"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
+import "languages"
 
 Color :: distinct [4]u8
-Major_Modes_Map :: map[Major_Mode]Major_Mode_Settings
-Colorscheme :: map[Face]Color
+Major_Modes_Table :: map[Major_Mode]Major_Mode_Settings
+Colorscheme_Table :: map[Face]Color
 
 // NOTE:
 //   ^Render_State is .Default, .Keyword, etc
 //   ^string is the buffer string
 //   int is the cursor position
-// Lexer_Proc :: #type proc(^Render_State, ^string, int)
+Lexer_Proc :: #type proc(^languages.Render_State)
 
 DEFAULT_COLORSCHEME :: #load("../res/config.bragi")
 
@@ -34,66 +35,42 @@ Indentation_Char :: enum { Space, Tab, }
 Auto_Indentation_Type  :: enum { Off, Relaxed, Electric, }
 
 Face :: enum {
-    builtin_bg,
-    builtin_fg,
-
-    comment_bg,
-    comment_fg,
-
-    constant_bg,
-    constant_fg,
-
-    cursor_bg,
-    cursor_fg,
-
-    default_bg,
-    default_fg,
-
-    keyword_bg,
-    keyword_fg,
-
-    match_delimiter_bg,
-    match_delimiter_fg,
-
-    match_highlight_bg,
-    match_highlight_fg,
+    background,
+    cursor,
+    builtin,
+    comment,
+    constant,
+    default,
+    highlight,
+    keyword,
+    string,
 
     modeline_off_bg,
     modeline_off_fg,
-
     modeline_on_bg,
     modeline_on_fg,
-
-    region_bg,
-    region_fg,
-
-    string_bg,
-    string_fg,
 }
 
 Major_Mode_Settings :: struct {
     enable_lexer:       bool,
+    lexer_proc:         Lexer_Proc,
     name:               string,
     file_extensions:    string,
-    keywords:           []string,
-    types:              []string,
-    comment_delimiters: string,
     word_delimiters:    string,
-    string_delimiters:  string,
     auto_indent_type:   Auto_Indentation_Type,
     indentation_width:  int,
     indentation_char:   Indentation_Char,
 }
 
 set_major_modes_settings :: proc() {
-    bragi.settings.mm[.Fundamental] = major_mode_fundamental()
-    bragi.settings.mm[.Bragi]       = major_mode_bragi()
-    bragi.settings.mm[.Odin]        = major_mode_odin()
+    bragi.settings.major_modes_table[.Fundamental] = major_mode_fundamental()
+    bragi.settings.major_modes_table[.Bragi]       = major_mode_bragi()
+    bragi.settings.major_modes_table[.Odin]        = major_mode_odin()
 }
 
 find_major_mode :: proc(file_ext: string) -> Major_Mode {
     if len(file_ext) > 0 {
-        for key, value in bragi.settings.mm {
+        for key, value in bragi.settings.major_modes_table {
             if strings.contains(value.file_extensions, file_ext) {
                 return key
             }
@@ -103,8 +80,20 @@ find_major_mode :: proc(file_ext: string) -> Major_Mode {
     return .Fundamental
 }
 
-get_word_delimiters :: proc(mode: Major_Mode) -> string {
-    return bragi.settings.mm[mode].word_delimiters
+settings_get_word_delimiters :: proc(mode: Major_Mode) -> string {
+    return bragi.settings.major_modes_table[mode].word_delimiters
+}
+
+settings_get_major_mode_name :: proc(mm: Major_Mode) -> string {
+    return bragi.settings.major_modes_table[mm].name
+}
+
+settings_is_lexer_enabled :: proc(mm: Major_Mode) -> bool {
+    return bragi.settings.major_modes_table[mm].enable_lexer
+}
+
+settings_get_lexer_proc :: proc(mm: Major_Mode) -> Lexer_Proc {
+    return bragi.settings.major_modes_table[mm].lexer_proc
 }
 
 load_settings_from_internal_data :: proc() {
@@ -136,12 +125,16 @@ load_settings :: proc(data: []u8) {
 
     settings_str := string(data)
     for line in strings.split_lines_iterator(&settings_str) {
+        if strings.starts_with(line, "#") || line == "[colors]" {
+            continue
+        }
+
         s := strings.split(line, " ", context.temp_allocator)
         key := strings.trim_space(s[0])
         value := strings.trim_space(s[len(s) - 1])
 
         if face, ok := reflect.enum_from_name(Face, key); ok {
-            bragi.settings.colors[face] = hex_to_color(value)
+            bragi.settings.colorscheme_table[face] = hex_to_color(value)
         }
     }
 }
@@ -180,6 +173,7 @@ major_mode_bragi :: proc() -> Major_Mode_Settings {
     return {
         auto_indent_type  = .Relaxed,
         enable_lexer      = true,
+        lexer_proc        = languages.bragi_lexer,
         file_extensions   = "bragi",
         indentation_char  = .Space,
         indentation_width = 0,
@@ -204,7 +198,7 @@ major_mode_fundamental :: proc() -> Major_Mode_Settings {
 major_mode_odin :: proc() -> Major_Mode_Settings {
     return {
         auto_indent_type  = .Electric,
-        enable_lexer      = true,
+        enable_lexer      = false,
         file_extensions   = "odin",
         indentation_char  = .Space,
         indentation_width = 4,

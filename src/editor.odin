@@ -8,18 +8,14 @@ open_file :: proc(filepath: string) {
 
     for &b in bragi.buffers {
         if b.filepath == filepath {
-            bragi.current_pane.buffer = &b
+            bragi.last_pane.buffer = &b
             buffer_found = true
             break
         }
     }
 
     if !buffer_found {
-        if bragi.current_pane == nil {
-            bragi.last_pane.buffer = make_text_buffer_from_file(filepath)
-        } else {
-            bragi.current_pane.buffer = make_text_buffer_from_file(filepath)
-        }
+        bragi.last_pane.buffer = make_text_buffer_from_file(filepath)
     }
 }
 

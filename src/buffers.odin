@@ -89,6 +89,7 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
     text_buffer.major_mode = find_major_mode(extension)
     text_buffer.modified = len(data) != len(parsed_data)
 
+    log.debugf("File {0} complete", filepath)
 
     delete(data)
     return text_buffer
@@ -556,7 +557,6 @@ buffer_insert :: proc{
 buffer_sanitize_file_data :: proc(data: []u8) -> []u8 {
     parsed_data := slice.clone_to_dynamic(data, context.temp_allocator)
     count_line_endings := 0
-    last_char := len(parsed_data) - 1
 
     for char, index in parsed_data {
         if char == '\r' {
@@ -564,7 +564,7 @@ buffer_sanitize_file_data :: proc(data: []u8) -> []u8 {
         }
     }
 
-    for x := last_char; x > 0; x -= 1 {
+    for x := len(parsed_data) - 1; x > 0; x -= 1 {
         if parsed_data[x] != '\n' {
             break
         }

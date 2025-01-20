@@ -5,18 +5,21 @@ Line    :: string
 
 open_file :: proc(filepath: string) {
     buffer_found := false
-    pane := bragi.current_pane
 
     for &b in bragi.buffers {
         if b.filepath == filepath {
-            pane.buffer = &b
+            bragi.current_pane.buffer = &b
             buffer_found = true
             break
         }
     }
 
     if !buffer_found {
-        pane.buffer = make_text_buffer_from_file(filepath)
+        if bragi.current_pane == nil {
+            bragi.last_pane.buffer = make_text_buffer_from_file(filepath)
+        } else {
+            bragi.current_pane.buffer = make_text_buffer_from_file(filepath)
+        }
     }
 }
 

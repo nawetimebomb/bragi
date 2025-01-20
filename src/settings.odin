@@ -2,6 +2,8 @@ package main
 
 import "core:strings"
 
+Major_Modes_Map :: map[Major_Mode]Major_Mode_Settings
+
 Major_Mode :: enum {
     Fundamental,
     Odin,

@@ -25,7 +25,8 @@ DEFAULT_CURSOR_BLINK  :: 1.0
 TITLE_TIMEOUT :: 1 * time.Second
 
 Settings :: struct {
-    mm: map[Major_Mode]Major_Mode_Settings,
+    mm: Major_Modes_Map,
+    cs: Colorscheme,
 
     cursor_blink_delay_in_seconds: f32,
     font_size:                     i32,
@@ -98,6 +99,7 @@ destroy_settings :: proc() {
     log.debug("Destroying settings")
 
     delete(bragi.settings.mm)
+    delete(bragi.settings.cs.colors)
 }
 
 initialize_editor :: proc() {
@@ -146,6 +148,8 @@ initialize_settings :: proc() {
     log.debug("Initializing settings")
 
     set_major_modes_settings()
+    register_colorscheme(DEFAULT_COLORSCHEME)
+    fmt.println(bragi.settings.cs)
 }
 
 // NOTE: This function should run every time the user changes the font
@@ -239,9 +243,9 @@ main :: proc() {
                     }
                 }
                 case .DROPFILE: {
+                    sdl.RaiseWindow(bragi.ctx.window)
                     filepath := string(e.drop.file)
                     open_file(filepath)
-                    sdl.RaiseWindow(bragi.ctx.window)
                     delete(e.drop.file)
                 }
             }
@@ -273,7 +277,8 @@ main :: proc() {
         update_pane(bragi.current_pane)
 
         // Start rendering
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
+        c_bg := bragi.settings.cs.colors[.background]
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, c_bg.r, c_bg.g, c_bg.b, 255)
         sdl.RenderClear(bragi.ctx.renderer)
 
         for &pane in bragi.panes {
@@ -301,6 +306,7 @@ main :: proc() {
                 tracking_allocator.current_memory_allocated / 1024,
             )
             sdl.SetWindowTitle(bragi.ctx.window, window_title)
+            reload_theme()
         }
 
         frame_end := sdl.GetPerformanceCounter()
@@ -418,6 +424,7 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
     std_char_size := get_standard_character_size()
     search_results_format: string
 
+    // TODO: This should show the result currently focused
     if pane.caret.search_mode {
         search_results_format = fmt.tprintf("Results: {0}", len(pane.caret.highlights))
     }

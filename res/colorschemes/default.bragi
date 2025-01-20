@@ -1,0 +1,13 @@
+name:              Default
+background:        012027
+foreground:        dddddd
+builtin:           b39ddb
+comment:           848484
+constant:          b39ddb
+function_name:     dddddd
+keyword:           b39ddb
+match_delimiter:   ff9800
+match_highlight:   ff9800
+region:            01343f
+string:            90caf9
+variable_name:     c5e1a5

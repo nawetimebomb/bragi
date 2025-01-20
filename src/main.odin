@@ -17,16 +17,22 @@ TITLE   :: "Bragi"
 VERSION :: 0
 
 DEFAULT_FONT_DATA     :: #load("../res/font/firacode.ttf")
-DEFAULT_FONT_SIZE     :: 22
+DEFAULT_FONT_SIZE     :: 24
 DEFAULT_WINDOW_WIDTH  :: 1024
 DEFAULT_WINDOW_HEIGHT :: 768
-DEFAULT_CURSOR_BLINK  :: 1.0
+
+SETTINGS_DATA     :: #load("../res/config.bragi")
+SETTINGS_FILENAME :: "config.bragi"
 
 TITLE_TIMEOUT :: 1 * time.Second
 
 Settings :: struct {
+    handle:            os.Handle,
+    last_write_time:   os.File_Time,
+    use_internal_data: bool,
+
     mm: Major_Modes_Map,
-    cs: Colorscheme,
+    colors: Colorscheme,
 
     cursor_blink_delay_in_seconds: f32,
     font_size:                     i32,
@@ -99,20 +105,7 @@ destroy_settings :: proc() {
     log.debug("Destroying settings")
 
     delete(bragi.settings.mm)
-    delete(bragi.settings.cs.colors)
-}
-
-initialize_editor :: proc() {
-    log.debug("Initializing editor")
-
-    bragi.buffers = make([dynamic]Text_Buffer, 0, 10)
-    bragi.panes   = make([dynamic]Pane, 0, 2)
-
-    create_pane()
-
-    // TODO: This is a debug only thing
-    filepath := "C:/Code/bragi/demo/hello.odin"
-    open_file(filepath)
+    delete(bragi.settings.colors)
 }
 
 initialize_context :: proc() {
@@ -144,12 +137,39 @@ initialize_context :: proc() {
     bragi.ctx.window_size    = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
 }
 
+initialize_editor :: proc() {
+    log.debug("Initializing editor")
+
+    bragi.buffers = make([dynamic]Text_Buffer, 0, 10)
+    bragi.panes   = make([dynamic]Pane, 0, 2)
+
+    create_pane()
+
+    // TODO: This is a debug only thing
+    filepath := "C:/Code/bragi/demo/hello.odin"
+    open_file(filepath)
+}
+
 initialize_settings :: proc() {
     log.debug("Initializing settings")
 
-    set_major_modes_settings()
-    register_colorscheme(DEFAULT_COLORSCHEME)
-    fmt.println(bragi.settings.cs)
+    if !os.exists(SETTINGS_FILENAME) {
+        if os.write_entire_file_or_err(SETTINGS_FILENAME, SETTINGS_DATA) != nil {
+            log.errorf("Fail to create settings file")
+        }
+    }
+
+    if handle, err := os.open(SETTINGS_FILENAME); err == nil {
+        if last_write_time, err := os.last_write_time(handle); err == nil {
+            bragi.settings.handle = handle
+            bragi.settings.last_write_time = last_write_time
+            load_settings_from_file()
+            return
+        }
+    }
+
+    log.errorf("Fail to load settings from file")
+    load_settings_from_internal_data()
 }
 
 // NOTE: This function should run every time the user changes the font
@@ -277,8 +297,8 @@ main :: proc() {
         update_pane(bragi.current_pane)
 
         // Start rendering
-        c_bg := bragi.settings.cs.colors[.background]
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, c_bg.r, c_bg.g, c_bg.b, 255)
+        c_bg := bragi.settings.colors[.default_bg]
+        sdl.SetRenderDrawColor(bragi.ctx.renderer, c_bg.r, c_bg.g, c_bg.b, c_bg.a)
         sdl.RenderClear(bragi.ctx.renderer)
 
         for &pane in bragi.panes {
@@ -298,16 +318,14 @@ main :: proc() {
 
         if time.tick_diff(last_update_time, time.tick_now()) > TITLE_TIMEOUT {
             last_update_time = time.tick_now()
-            flags := sdl.GetWindowFlags(bragi.ctx.window)
+            reload_settings()
 
             window_title := fmt.ctprintf(
                 "Bragi v{0} | frametime: {1} | memory: {2}kb",
                 VERSION, bragi.ctx.delta_time,
                 tracking_allocator.current_memory_allocated / 1024,
             )
-            sdl.SetWindowTitle(bragi.ctx.window, window_title)
-            reload_theme()
-        }
+            sdl.SetWindowTitle(bragi.ctx.window, window_title)        }
 
         frame_end := sdl.GetPerformanceCounter()
 

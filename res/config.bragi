@@ -1,0 +1,12 @@
+
+default_bg                      ff0000
+default_fg                      dddddd
+builtin_fg                      b39ddb
+comment_fg                      848484
+constant_fg                     b39ddb
+keyword_fg                      b39ddb
+match_delimiter_fg              ff9800
+match_highlight_fg              ff9800
+region_bg                       01343f
+string_fg                       90caf9
+

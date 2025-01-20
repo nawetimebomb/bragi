@@ -105,7 +105,8 @@ forward_word :: proc(pane: ^Pane, mark: bool) {
     if mark { toggle_mark_on(pane) }
 
     offset := count_forward_words_offset(pane.buffer, pane.buffer.cursor, 1)
-    pane.buffer.cursor = min(pane.buffer.cursor + offset, length_of_buffer(pane.buffer) - 1)
+    pane.buffer.cursor =
+        min(pane.buffer.cursor + offset, length_of_buffer(pane.buffer) - 1)
 }
 
 previous_line :: proc(pane: ^Pane, mark: bool) {
@@ -113,12 +114,19 @@ previous_line :: proc(pane: ^Pane, mark: bool) {
 
     start_of_line := line_start(pane.buffer, pane.buffer.cursor)
     start_of_prev_line := line_start(pane.buffer, start_of_line - 1)
-    x_offset := max(pane.caret.max_x, pane.buffer.cursor - start_of_line)
-    str := entire_buffer_to_string(pane.buffer)
-    move_cursor_to(pane.buffer, start_of_prev_line, start_of_prev_line + x_offset, true)
 
-    if x_offset > pane.caret.max_x {
-        pane.caret.max_x = x_offset
+    if start_of_line == 0 {
+        pane.buffer.cursor = 0
+    } else {
+        x_offset := max(pane.caret.max_x, pane.buffer.cursor - start_of_line)
+        str := entire_buffer_to_string(pane.buffer)
+
+        move_cursor_to(pane.buffer, start_of_prev_line,
+                       start_of_prev_line + x_offset, true)
+
+        if x_offset > pane.caret.max_x {
+            pane.caret.max_x = x_offset
+        }
     }
 }
 

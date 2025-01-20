@@ -197,3 +197,4 @@ major_mode_odin :: proc() -> Major_Mode_Settings {
         word_delimiters   = " .,_-[]():\n",
     }
 }
+

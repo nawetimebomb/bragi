@@ -41,8 +41,8 @@ Settings :: struct {
 }
 
 Character_Texture :: struct {
-    texture: ^sdl.Texture,
     dest:    sdl.Rect,
+    texture: ^sdl.Texture,
 }
 
 Program_Context :: struct {
@@ -53,7 +53,7 @@ Program_Context :: struct {
     running:        bool,
     renderer:       ^sdl.Renderer,
     window:         ^sdl.Window,
-    window_size:    Vector2,
+    window_size:    [2]i32,
     window_focused: bool,
 }
 
@@ -146,7 +146,7 @@ initialize_editor :: proc() {
     create_pane()
 
     // TODO: This is a debug only thing
-    filepath := "C:/Code/bragi/demo/hello.odin"
+    filepath := "C:/Code/bragi/src/main.odin"
     open_file(filepath)
 }
 
@@ -190,8 +190,8 @@ set_characters_textures :: proc() {
         ttf.SizeUTF8(bragi.ctx.font, cstr, &dest_rect.w, &dest_rect.h)
 
         bragi.ctx.characters[c] = Character_Texture{
-            texture = texture,
             dest    = dest_rect,
+            texture = texture,
         }
 
         sdl.FreeSurface(surface)
@@ -199,10 +199,9 @@ set_characters_textures :: proc() {
     }
 }
 
-get_standard_character_size :: proc() -> Vector2 {
+get_standard_character_size :: proc() -> [2]i32 {
     M_char_rect := bragi.ctx.characters['M'].dest
-
-    return Vector2{ int(M_char_rect.w), int(M_char_rect.h) }
+    return { M_char_rect.w, M_char_rect.h }
 }
 
 main :: proc() {
@@ -257,8 +256,7 @@ main :: proc() {
 
                     if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
                         bragi.ctx.window_size = {
-                            int(e.window.data1),
-                            int(e.window.data2),
+                            e.window.data1, e.window.data2,
                         }
                     }
                 }
@@ -353,9 +351,9 @@ render_caret :: proc(pane: ^Pane, focused: bool) {
     caret := &pane.caret
 
     caret_rect := sdl.Rect{
-        i32(caret.position.x * std_char_size.x),
-        i32(caret.position.y * std_char_size.y),
-        i32(std_char_size.x), i32(std_char_size.y),
+        (caret.position.x - pane.camera.x) * std_char_size.x,
+        (caret.position.y - pane.camera.y) * std_char_size.y,
+        std_char_size.x, std_char_size.y,
     }
 
     sdl.SetRenderDrawColor(bragi.ctx.renderer, 100, 216, 203, 255)
@@ -379,8 +377,8 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
 
     for c, char_index in str {
         char := bragi.ctx.characters[c]
-        column := x * i32(std_char_size.x)
-        row := y * i32(std_char_size.y)
+        column := (x - pane.camera.x) * std_char_size.x
+        row := (y - pane.camera.y) * std_char_size.y
         caret := &pane.caret
 
         // TODO: here I should have the lexer figuring out what color this character is
@@ -411,7 +409,7 @@ render_pane_contents :: proc(pane: ^Pane, focused: bool) {
                 if start_region <= char_index && end_region > char_index {
                     sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 52, 63, 255)
                     region_rect := sdl.Rect{
-                        column, row, i32(std_char_size.x), i32(std_char_size.y),
+                        column, row, std_char_size.x, std_char_size.y,
                     }
                     sdl.RenderFillRect(bragi.ctx.renderer, &region_rect)
                     sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
@@ -457,9 +455,9 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
     rmodeline_format := fmt.tprintf(
         "{0}", bragi.settings.mm[pane.buffer.major_mode].name,
     )
-    y := i32(bragi.ctx.window_size.y - std_char_size.y * 2)
+    y := bragi.ctx.window_size.y - std_char_size.y * 2
     background_rect := sdl.Rect{
-        0, y, i32(bragi.ctx.window_size.x), i32(std_char_size.y),
+        0, y, bragi.ctx.window_size.x, std_char_size.y,
     }
 
     if focused {
@@ -489,7 +487,7 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
         sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
     }
 
-    rmdf_padding := i32(len(rmodeline_format) * std_char_size.x)
+    rmdf_padding := i32(len(rmodeline_format)) * std_char_size.x
     for c, index in rmodeline_format {
         char := bragi.ctx.characters[c]
 
@@ -500,7 +498,7 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
         }
 
         char.dest.x =
-            i32(bragi.ctx.window_size.x) - MARGIN - rmdf_padding + char.dest.w * i32(index)
+            bragi.ctx.window_size.x - MARGIN - rmdf_padding + char.dest.w * i32(index)
         char.dest.y = y
         sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
     }
@@ -508,11 +506,12 @@ render_modeline :: proc(pane: ^Pane, focused: bool) {
 
 render_message_minibuffer :: proc() {
     std_char_size := get_standard_character_size()
-    y : i32 = auto_cast (bragi.ctx.window_size.y - std_char_size.y)
+    y : i32 = bragi.ctx.window_size.y - std_char_size.y
 
     sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 32, 39, 255)
     background_rect := sdl.Rect{
-        0, y, i32(bragi.ctx.window_size.x), i32(std_char_size.y),
+        0, y, bragi.ctx.window_size.x, std_char_size.y,
     }
     sdl.RenderFillRect(bragi.ctx.renderer, &background_rect)
 }
+

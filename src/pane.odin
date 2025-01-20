@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:log"
 import "core:mem"
 import "core:time"
@@ -23,7 +24,7 @@ Caret :: struct {
     last_keystroke_time: time.Tick,
     last_update_time:    time.Tick,
     last_cursor_pos:     int,
-    position:            [2]int,
+    position:            [2]i32,
     region_enabled:      bool,
     region_begin:        int,
     selection_mode:      bool,
@@ -34,12 +35,24 @@ Caret :: struct {
     max_x           : int,
 }
 
+Mark_Mode :: struct {}
+
+Search_Mode :: struct {
+    query: string,
+}
+
+Pane_State :: union {
+    Mark_Mode,
+    Search_Mode,
+}
+
 Pane :: struct {
-    buffer          : ^Text_Buffer,
-    camera          : Vector2,
-    caret           : Caret,
-    dimensions      : Vector2,
-    origin          : Vector2,
+    buffer:     ^Text_Buffer,
+    camera:     [2]i32,
+    caret:      Caret,
+    dimensions: [2]i32,
+    origin:     Vector2,
+    state:      Pane_State,
 }
 
 // TODO: Calculate new buffer dimensions and origin
@@ -70,9 +83,17 @@ update_pane :: proc(pane: ^Pane) {
         return
     }
 
+    // TODO: This should update every time create_pane is called
+    pane.dimensions = {
+        bragi.ctx.window_size.x, bragi.ctx.window_size.y,
+    }
+
+    std_char_size := get_standard_character_size()
     current_cursor_pos := pane.buffer.cursor
     caret := &pane.caret
     now := time.tick_now()
+    page_size_x := pane.dimensions.x / i32(std_char_size.x) - 3
+    page_size_y := pane.dimensions.y / i32(std_char_size.y) - 3
 
     update_text_buffer_time(pane.buffer)
 
@@ -87,12 +108,25 @@ update_pane :: proc(pane: ^Pane) {
     }
 
     if caret.last_cursor_pos != current_cursor_pos {
-        x, y: int
+        x, y: i32
         str := entire_buffer_to_string(pane.buffer)
 
         for c, i in str {
             if current_cursor_pos == i {
                 caret.position = { x, y }
+
+                if x > pane.camera.x + page_size_x {
+                    pane.camera.x = x - page_size_x
+                } else if x < pane.camera.x {
+                    pane.camera.x = x
+                }
+
+                if y > pane.camera.y + page_size_y {
+                    pane.camera.y = y - page_size_y
+                } else if y < pane.camera.y {
+                    pane.camera.y = y
+                }
+
                 break
             }
 

@@ -15,7 +15,7 @@ Colorscheme_Table :: map[Face]Color
 //   ^Render_State is .Default, .Keyword, etc
 //   ^string is the buffer string
 //   int is the cursor position
-Lexer_Proc :: #type proc(^languages.Render_State)
+Lexer_Proc :: #type proc(^languages.Lexer)
 
 DEFAULT_COLORSCHEME :: #load("../res/config.bragi")
 
@@ -198,7 +198,8 @@ major_mode_fundamental :: proc() -> Major_Mode_Settings {
 major_mode_odin :: proc() -> Major_Mode_Settings {
     return {
         auto_indent_type  = .Electric,
-        enable_lexer      = false,
+        enable_lexer      = true,
+        lexer_proc        = languages.odin_lexer,
         file_extensions   = "odin",
         indentation_char  = .Space,
         indentation_width = 4,

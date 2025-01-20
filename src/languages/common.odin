@@ -3,7 +3,7 @@ package languages
 import "core:strings"
 import "core:slice"
 
-Render_State_Face :: enum {
+Current_Face :: enum {
     Default,
 
     Builtin,
@@ -14,13 +14,13 @@ Render_State_Face :: enum {
     String,
 }
 
-Render_State :: struct {
+Lexer :: struct {
     cursor:       int,
     end_of_line:  int,
     line:         string,
     length:       int,
     current_rune: rune,
-    state:        Render_State_Face,
+    state:        Current_Face,
 }
 
 ASCII_CHARS :: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -59,4 +59,8 @@ match_words :: proc(str: string, start_pos: int, words: []string) -> (length: in
     }
 
     return
+}
+
+rest_of_line :: proc(lexer: ^Lexer) -> int {
+    return lexer.end_of_line - lexer.cursor
 }

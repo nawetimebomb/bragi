@@ -73,7 +73,7 @@ render :: proc() {
             buffer_str := entire_buffer_to_string(pane.buffer)
             buffer_str_lines := strings.split_lines(buffer_str, context.temp_allocator)
             mm := pane.buffer.major_mode
-            rs := languages.Render_State{}
+            lexer := languages.Lexer{}
             lexer_enabled := settings_is_lexer_enabled(mm)
             lex := settings_get_lexer_proc(mm)
 
@@ -88,18 +88,18 @@ render :: proc() {
                     c.dest.y = row
 
                     if lexer_enabled {
-                        rs.cursor = x_index
-                        rs.current_rune = r
-                        rs.line = line
-                        rs.end_of_line = len(line)
+                        lexer.cursor = x_index
+                        lexer.current_rune = r
+                        lexer.line = line
+                        lexer.end_of_line = len(line)
 
-                        rs.length -= 1
+                        lexer.length -= 1
 
-                        if rs.length <= 0 {
-                            lex(&rs)
+                        if lexer.length <= 0 {
+                            lex(&lexer)
                         }
 
-                        switch rs.state {
+                        switch lexer.state {
                         case .Default:
                             set_fg(c.texture, default)
                         case .Builtin:

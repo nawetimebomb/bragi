@@ -147,7 +147,7 @@ initialize_editor :: proc() {
     create_pane()
 
     // TODO: This is a debug only thing
-    filepath := "C:/Code/bragi/res/config.bragi"
+    filepath := "C:/Code/bragi/src/main.odin"
     open_file(filepath)
 }
 

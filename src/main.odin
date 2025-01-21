@@ -118,6 +118,9 @@ initialize_context :: proc() {
 
     set_characters_textures()
 
+    cursor := sdl.CreateSystemCursor(.IBEAM)
+    sdl.SetCursor(cursor)
+
     bragi.ctx.running        = true
     bragi.ctx.undo_allocator = context.allocator
     bragi.ctx.window_size    = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
@@ -262,19 +265,23 @@ main :: proc() {
                         if mouse.button == 1 {
                             switch mouse.clicks {
                             case 1:
-                                focus_clicked_pane(mouse.x, mouse.y)
-                                mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
+                                if clicks_on_pane_contents(mouse.x, mouse.y) {
+                                    mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
+                                }
                             case 2:
-                                mouse_drag_word(bragi.current_pane, mouse.x, mouse.y)
+                                if clicks_on_pane_contents(mouse.x, mouse.y) {
+                                    mouse_drag_word(bragi.current_pane, mouse.x, mouse.y)
+                                }
                             case 3:
-                                mouse_drag_line(bragi.current_pane, mouse.x, mouse.y)
+                                if clicks_on_pane_contents(mouse.x, mouse.y) {
+                                    mouse_drag_line(bragi.current_pane, mouse.x, mouse.y)
+                                }
                             }
                         }
                     }
                     case .MOUSEWHEEL: {
-                        m := e.wheel
-                        // TODO: Maybe make scrolling offset configurable
-                        // buffer_scroll(int(m.y * -1) * 5)
+                        wheel := e.wheel
+                        scroll(bragi.current_pane, wheel.y * -1 * 5)
                     }
                     case .KEYDOWN: {
                         input_handled = handle_keydown(e.key.keysym, bragi.current_pane)

@@ -162,14 +162,16 @@ refresh_panes :: proc() {
     }
 }
 
-focus_clicked_pane :: proc(x, y: i32) {
+clicks_on_pane_contents :: proc(x, y: i32) -> bool {
     for &pane in bragi.panes {
         origin := pane.origin
         dims := pane.dimensions
 
         if origin.x <= x && dims.x > x && origin.y <= y && dims.y > y {
             bragi.current_pane = &pane
-            break
+            return true
         }
     }
+
+    return false
 }

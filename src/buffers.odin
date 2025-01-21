@@ -162,63 +162,74 @@ rune_at_point :: proc(buffer: ^Text_Buffer) -> rune {
     return rune_at(buffer, buffer.cursor)
 }
 
-line_start :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
+line_boundaries :: proc(buffer: ^Text_Buffer, cursor: int) -> (begin, end: int) {
+    begin = cursor; end = cursor
     str := entire_buffer_to_string(buffer)
-    cursor := clamp(cursor, 0, length_of_buffer(buffer) - 1)
 
-    for x := cursor - 1; x > 0; x -= 1 {
-        if str[x] == '\n' {
-            return x + 1
+    for {
+        begin_found, end_found: bool
+
+        if begin > 0 && str[begin - 1] != '\n' {
+            begin -= 1
+        } else {
+            begin_found = true
+        }
+
+        if end < len(str) - 1 && str[end] != '\n' {
+            end += 1
+        } else {
+            end_found = true
+        }
+
+        if begin_found && end_found {
+            return
         }
     }
-
-    return 0
 }
 
+@(deprecated="Use line_boundaries")
+line_start :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
+    sol, _ := line_boundaries(buffer, cursor)
+    return sol
+}
+
+@(deprecated="Use line_boundaries")
 line_end :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
-    cursor := clamp(cursor, 0, length_of_buffer(buffer) - 1)
-    str := entire_buffer_to_string(buffer)
-
-    for x := cursor; x < len(str); x += 1 {
-        if str[x] == '\n' {
-            return x
-        }
-    }
-
-    return cursor
+    _, eol := line_boundaries(buffer, cursor)
+    return eol
 }
 
 line_len :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
-    start := line_start(buffer, cursor)
-    end := line_end(buffer, cursor)
-    return end - start
+    sol, eol := line_boundaries(buffer, cursor)
+    return eol - sol
 }
 
-word_at_pos :: proc(buffer: ^Text_Buffer, cursor: int) -> (string, int, int) {
-    start, end: int
+word_boundaries :: proc(buffer: ^Text_Buffer, cursor: int) -> (begin, end: int) {
+    begin = cursor; end = cursor
     str := entire_buffer_to_string(buffer)
     delimiters := settings_get_word_delimiters(buffer.major_mode)
-    left, right: int
 
-    for left = cursor; left > 0; left -= 1 {
-        r := rune(str[left])
-        if strings.contains_rune(delimiters, r) {
-            left += 1
-            break
+    for {
+        begin_found, end_found: bool
+        begin_rune := rune(str[begin - 1])
+        end_rune   := rune(str[end])
+
+        if begin > 0 && !strings.contains_rune(delimiters, begin_rune) {
+            begin -= 1
+        } else {
+            begin_found = true
+        }
+
+        if end < len(str) - 1 && !strings.contains_rune(delimiters, end_rune) {
+            end += 1
+        } else {
+            end_found = true
+        }
+
+        if begin_found && end_found {
+            return
         }
     }
-
-    for right = cursor; right < len(str); right += 1 {
-        r := rune(str[right])
-        if strings.contains_rune(delimiters, r) {
-            break
-        }
-    }
-
-    start = min(left, right)
-    end = max(left, right)
-
-    return str[start:end], start, end
 }
 
 count_backward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) -> int {
@@ -389,22 +400,18 @@ undo_redo :: proc(buffer: ^Text_Buffer, undo, redo: ^[dynamic]Text_Buffer_State)
     }
 }
 
-canonicalize_mouse_to_buffer :: proc(buffer: ^Text_Buffer, x, y: i32) {
-    char_size := get_standard_character_size()
-    rel_x := x / char_size.x
-    rel_y := y / char_size.y
+canonicalize_mouse_to_buffer :: proc(buffer: ^Text_Buffer, x, y: int) {
     buffer_str := entire_buffer_to_string(buffer)
-    local_x, local_y: i32
+    local_x, local_y: int
 
     for r, index in buffer_str {
-        if local_y == rel_y {
-            length_of_line := line_len(buffer, index)
+        if local_y == y {
+            bol, eol := line_boundaries(buffer, index)
+            length := eol - bol
 
-            if length_of_line > int(rel_x) {
-                sol := line_start(buffer, index)
-                buffer.cursor = sol + int(rel_x)
+            if length > x {
+                buffer.cursor = bol + x
             } else {
-                eol := line_end(buffer, index)
                 buffer.cursor = eol
             }
 

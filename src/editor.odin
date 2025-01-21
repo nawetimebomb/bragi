@@ -1,5 +1,7 @@
 package main
 
+import "core:fmt"
+
 Vector2 :: distinct [2]int
 Line    :: string
 
@@ -26,18 +28,17 @@ beginning_of_buffer :: proc(pane: ^Pane) {
 beginning_of_line :: proc(pane: ^Pane, mark: bool) {
     if mark { toggle_mark_on(pane) }
 
-    sol := line_start(pane.buffer, pane.buffer.cursor)
-    eol := line_end(pane.buffer, pane.buffer.cursor)
-    new_cursor_position := sol
+    bol, eol := line_boundaries(pane.buffer, pane.buffer.cursor)
+    new_cursor_position := bol
 
-    if pane.buffer.cursor == sol {
+    if pane.buffer.cursor == bol {
         temp_buffer := make_temp_str_buffer()
 
-        str := flush_buffer_to_custom_string(pane.buffer, &temp_buffer, sol, eol)
+        str := flush_buffer_to_custom_string(pane.buffer, &temp_buffer, bol, eol)
 
         for x := 0; x < len(str); x += 1 {
             if str[x] != '\t' && str[x] != ' ' {
-                new_cursor_position = sol + x
+                new_cursor_position = bol + x
                 break
             }
         }
@@ -52,7 +53,6 @@ end_of_buffer :: proc(pane: ^Pane) {
 
 end_of_line :: proc(pane: ^Pane, mark: bool) {
     if mark { toggle_mark_on(pane) }
-
     pane.buffer.cursor = line_end(pane.buffer, pane.buffer.cursor)
 }
 
@@ -288,26 +288,33 @@ search_forward :: proc(pane: ^Pane) {
 
 mouse_set_point :: proc(pane: ^Pane, x, y: i32) {
     set_pane_mode(pane, Edit_Mode{})
-    canonicalize_mouse_to_buffer(pane.buffer, x, y)
+    char_size := get_standard_character_size()
+    rel_x := int(x / char_size.x + pane.camera.x)
+    rel_y := int(y / char_size.y + pane.camera.y)
+    canonicalize_mouse_to_buffer(pane.buffer, rel_x, rel_y)
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
     mouse_set_point(pane, x, y)
-    _, start, end := word_at_pos(pane.buffer, pane.buffer.cursor)
+    bow, eow := word_boundaries(pane.buffer, pane.buffer.cursor)
 
-    pane.buffer.cursor = end
+    pane.buffer.cursor = eow
     set_pane_mode(pane, Mark_Mode{
-        begin = start,
+        begin = bow,
     })
 }
 
 mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
     mouse_set_point(pane, x, y)
-    sol := line_start(pane.buffer, pane.buffer.cursor)
+    bol := line_start(pane.buffer, pane.buffer.cursor)
     eol := line_end(pane.buffer, pane.buffer.cursor)
 
     pane.buffer.cursor = eol
     set_pane_mode(pane, Mark_Mode{
-        begin = sol,
+        begin = bol,
     })
+}
+
+scroll :: proc(pane: ^Pane, offset: i32) {
+    pane.camera.y += offset
 }

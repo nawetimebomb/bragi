@@ -359,6 +359,114 @@ handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     return handled
 }
 
+update_input :: proc() {
+    e: sdl.Event
+    input_handled := false
+
+    for sdl.PollEvent(&e) {
+        #partial switch e.type {
+            case .QUIT: {
+                bragi.ctx.running = false
+                return
+            }
+            case .WINDOWEVENT: {
+                w := e.window
+
+                if w.event == .FOCUS_LOST {
+                    bragi.ctx.window_focused = false
+                    bragi.last_pane    = bragi.current_pane
+                    bragi.current_pane = nil
+                } else if w.event == .FOCUS_GAINED {
+                    bragi.ctx.window_focused = true
+                    bragi.current_pane = bragi.last_pane
+                }
+
+                if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
+                    bragi.ctx.window_size = {
+                        e.window.data1, e.window.data2,
+                    }
+                    refresh_panes()
+                }
+                return
+            }
+            case .DROPFILE: {
+                sdl.RaiseWindow(bragi.ctx.window)
+                filepath := string(e.drop.file)
+                open_file(filepath)
+                delete(e.drop.file)
+                return
+            }
+        }
+
+        if bragi.current_pane != nil {
+            #partial switch e.type {
+                case .MOUSEBUTTONDOWN: {
+                    mouse := e.button
+
+                    if mouse.button == 1 {
+                        switch mouse.clicks {
+                        case 1:
+                            if clicks_on_pane_contents(mouse.x, mouse.y) {
+                                mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
+                            }
+                        case 2:
+                            if clicks_on_pane_contents(mouse.x, mouse.y) {
+                                mouse_drag_word(bragi.current_pane, mouse.x, mouse.y)
+                            }
+                        case 3:
+                            if clicks_on_pane_contents(mouse.x, mouse.y) {
+                                mouse_drag_line(bragi.current_pane, mouse.x, mouse.y)
+                            }
+                        }
+                    }
+
+                    return
+                }
+                case .MOUSEWHEEL: {
+                    wheel := e.wheel
+                    scroll(bragi.current_pane, wheel.y * -1 * 5)
+                    return
+                }
+                case .KEYDOWN: {
+                    input_handled = handle_keydown(e.key.keysym, bragi.current_pane)
+                }
+                case .TEXTINPUT: {
+                    if !input_handled {
+                        pane := bragi.current_pane
+                        search_mode, search_enabled := pane.mode.(Search_Mode)
+                        mark_mode, mark_enabled := pane.mode.(Mark_Mode)
+                        input_char := cstring(raw_data(e.text.text[:]))
+                        str := string(input_char)
+
+                        switch {
+                        case mark_enabled:
+                            start  := min(mark_mode.begin, pane.buffer.cursor)
+                            end    := max(mark_mode.begin, pane.buffer.cursor)
+                            length := end - start
+                            pane.buffer.cursor = start
+
+                            delete_at(pane.buffer, pane.buffer.cursor, length)
+                            set_pane_mode(pane, Edit_Mode{})
+                            insert_at(pane.buffer, pane.buffer.cursor, str)
+                        case search_enabled:
+                            insert_at(search_mode.buffer, search_mode.buffer.cursor, str)
+
+                            if search_mode.direction == .Forward {
+                                search_forward(pane)
+                            } else {
+                                search_backward(pane)
+                            }
+                        case :
+                            insert_at(pane.buffer, pane.buffer.cursor, str)
+                        }
+                    }
+                    return
+                }
+            }
+        }
+    }
+}
+
 @(private="file")
 handle_copy :: proc(str: string) {
     result := strings.clone_to_cstring(str, context.temp_allocator)

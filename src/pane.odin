@@ -36,8 +36,13 @@ Mark_Mode :: struct {
     marking: bool,
 }
 
+Search_Mode_Direction :: enum {
+    Backward, Forward,
+}
+
 Search_Mode :: struct {
-    query:     string,
+    buffer:    ^Text_Buffer,
+    direction: Search_Mode_Direction,
     query_len: int,
     results:   [dynamic]int,
 }
@@ -58,11 +63,12 @@ Pane :: struct {
 }
 
 set_pane_mode :: proc(pane: ^Pane, new_mode: Pane_Mode) {
-    switch mode in pane.mode {
+    switch &mode in pane.mode {
     case Edit_Mode:
     case Mark_Mode:
     case Search_Mode:
         delete(mode.results)
+        destroy_text_buffer(mode.buffer)
     }
 
     pane.mode = new_mode

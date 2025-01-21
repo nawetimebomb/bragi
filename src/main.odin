@@ -17,7 +17,7 @@ TITLE   :: "Bragi"
 VERSION :: 0
 
 DEFAULT_FONT_DATA     :: #load("../res/font/firacode.ttf")
-DEFAULT_FONT_SIZE     :: 24
+DEFAULT_FONT_SIZE     :: 22
 DEFAULT_WINDOW_WIDTH  :: 1024
 DEFAULT_WINDOW_HEIGHT :: 768
 
@@ -222,81 +222,9 @@ main :: proc() {
     previous_frame_time := time.tick_now()
 
     for bragi.ctx.running {
-        input_handled: bool
-        e: sdl.Event
-
         frame_start := sdl.GetPerformanceCounter()
 
-        for sdl.PollEvent(&e) {
-            #partial switch e.type {
-                case .QUIT: bragi.ctx.running = false
-                case .WINDOWEVENT: {
-                    w := e.window
-
-                    if w.event == .FOCUS_LOST {
-                        bragi.ctx.window_focused = false
-                        bragi.last_pane    = bragi.current_pane
-                        bragi.current_pane = nil
-                    } else if w.event == .FOCUS_GAINED {
-                        bragi.ctx.window_focused = true
-                        bragi.current_pane = bragi.last_pane
-                    }
-
-                    if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
-                        bragi.ctx.window_size = {
-                            e.window.data1, e.window.data2,
-                        }
-                        refresh_panes()
-                    }
-                }
-                case .DROPFILE: {
-                    sdl.RaiseWindow(bragi.ctx.window)
-                    filepath := string(e.drop.file)
-                    open_file(filepath)
-                    delete(e.drop.file)
-                }
-            }
-
-            if bragi.current_pane != nil {
-                #partial switch e.type {
-                    case .MOUSEBUTTONDOWN: {
-                        mouse := e.button
-
-                        if mouse.button == 1 {
-                            switch mouse.clicks {
-                            case 1:
-                                if clicks_on_pane_contents(mouse.x, mouse.y) {
-                                    mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
-                                }
-                            case 2:
-                                if clicks_on_pane_contents(mouse.x, mouse.y) {
-                                    mouse_drag_word(bragi.current_pane, mouse.x, mouse.y)
-                                }
-                            case 3:
-                                if clicks_on_pane_contents(mouse.x, mouse.y) {
-                                    mouse_drag_line(bragi.current_pane, mouse.x, mouse.y)
-                                }
-                            }
-                        }
-                    }
-                    case .MOUSEWHEEL: {
-                        wheel := e.wheel
-                        scroll(bragi.current_pane, wheel.y * -1 * 5)
-                    }
-                    case .KEYDOWN: {
-                        input_handled = handle_keydown(e.key.keysym, bragi.current_pane)
-                    }
-                    case .TEXTINPUT: {
-                        if !input_handled {
-                            pane := bragi.current_pane
-                            input_char := cstring(raw_data(e.text.text[:]))
-                            insert_at(pane.buffer, pane.buffer.cursor, string(input_char))
-                        }
-                    }
-                }
-            }
-        }
-
+        update_input()
         update_pane(bragi.current_pane)
         render()
 

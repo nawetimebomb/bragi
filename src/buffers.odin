@@ -1,5 +1,11 @@
 package main
 
+/*
+ * Buffers should be certainly smarter... Maybe the way to do it is not
+ * to use a gap buffer, but the string buffer instead.
+ * https://github.com/odin-lang/Odin/blob/master/core/text/edit/text_edit.odin#L348
+ */
+
 import "base:runtime"
 import "core:log"
 import "core:mem"
@@ -9,7 +15,6 @@ import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
 
-UNDO_TIMEOUT :: 300 * time.Millisecond
 
 String_Cache_Type :: enum {
     None,
@@ -29,7 +34,7 @@ Text_Buffer_State :: struct {
     data:      []u8,
     gap_end:   int,
     gap_start: int,
-    modified:  bool,
+    dirty:     bool,
 }
 
 Text_Buffer :: struct {
@@ -45,10 +50,10 @@ Text_Buffer :: struct {
     current_time:   time.Tick,
 
     filepath:       string,
-    modified:       bool,
     major_mode:     Major_Mode,
     name:           string,
     readonly:       bool,
+    dirty:          bool,
 }
 
 make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.allocator) -> ^Text_Buffer {
@@ -66,8 +71,7 @@ make_text_buffer :: proc(name: string, bytes_count: int, allocator := context.al
         name       = strings.clone(name),
         str_buffer = strings.builder_make(),
     })
-    text_buffer := &bragi.buffers[len(bragi.buffers) - 1]
-    return text_buffer
+    return &bragi.buffers[len(bragi.buffers) - 1]
 }
 
 make_text_buffer_from_file :: proc(filepath: string, allocator := context.allocator) -> ^Text_Buffer {
@@ -80,14 +84,12 @@ make_text_buffer_from_file :: proc(filepath: string, allocator := context.alloca
 
     log.debugf("Opening file {0} in buffer {1}", filepath, name)
 
-    // parsed_data := buffer_sanitize_file_data(data)
     text_buffer := make_text_buffer(name, len(data))
 
     insert_whole_file(text_buffer, data)
     text_buffer.filepath = filepath
     text_buffer.cursor = 0
     text_buffer.major_mode = find_major_mode(extension)
-    // text_buffer.modified = len(data) != len(parsed_data)
 
     log.debugf("File {0} complete", filepath)
 
@@ -115,51 +117,36 @@ delete_at :: proc(buffer: ^Text_Buffer, cursor: int, count: int) {
     if count < 0 {
         buffer.cursor = max(0, buffer.cursor + count)
     }
-    text_buffer_update(buffer)
+    simple_text_buffer_update(buffer)
 }
 
-insert_char_at :: proc(buffer: ^Text_Buffer, cursor: int, char: u8) {
+insert_char_to_text_buffer :: proc(buffer: ^Text_Buffer, cursor: int, char: u8) {
     text_buffer_undo_check(buffer)
-    buffer_insert_char(&buffer.data_buffer, cursor, char)
+    buffer_insert(&buffer.data_buffer, cursor, char)
     buffer.cursor += 1
-    text_buffer_update(buffer)
+    simple_text_buffer_update(buffer)
 }
 
-insert_str_at :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
+insert_str_to_text_buffer :: proc(buffer: ^Text_Buffer, cursor: int, str: string) {
     text_buffer_undo_check(buffer)
     buffer_insert(&buffer.data_buffer, cursor, str)
     buffer.cursor += len(str)
-    text_buffer_update(buffer)
+    simple_text_buffer_update(buffer)
 }
 
 insert_at :: proc{
-    insert_char_at,
-    insert_str_at,
+    insert_char_to_text_buffer,
+    insert_str_to_text_buffer,
 }
 
 insert_whole_file :: proc(buffer: ^Text_Buffer, data: []u8) {
     buffer_insert(&buffer.data_buffer, 0, data)
     buffer.cursor = 0
-    buffer.modified = false
+    buffer.dirty  = false
 }
 
 length_of_buffer :: proc(buffer: ^Text_Buffer) -> int {
     return buffer_len(&buffer.data_buffer)
-}
-
-rune_at :: proc(buffer: ^Text_Buffer, cursor: int) -> rune {
-    cursor := clamp(cursor, 0, length_of_buffer(buffer) - 1)
-    left, right := buffer_get_strings(&buffer.data_buffer)
-
-    if cursor < len(left) {
-        return rune(left[cursor])
-    } else {
-        return rune(right[cursor - len(left)])
-    }
-}
-
-rune_at_point :: proc(buffer: ^Text_Buffer) -> rune {
-    return rune_at(buffer, buffer.cursor)
 }
 
 line_boundaries :: proc(buffer: ^Text_Buffer, cursor: int) -> (begin, end: int) {
@@ -307,7 +294,7 @@ move_cursor_to :: proc(buffer: ^Text_Buffer, from, to: int, break_on_newline: bo
 }
 
 save_buffer :: proc(buffer: ^Text_Buffer) {
-    if buffer.modified {
+    if buffer.dirty {
         log.debugf("Saving {0}", buffer.name)
         text_buffer_sanitize(buffer)
         str := entire_buffer_to_string(buffer)
@@ -316,7 +303,7 @@ save_buffer :: proc(buffer: ^Text_Buffer) {
         if err != nil {
             log.errorf("Error saving buffer {0}\nError: {1}", buffer.name, err)
         } else {
-            buffer.modified = false
+            buffer.dirty = false
         }
     } else {
         log.debugf("Nothing to save in {0}", buffer.name)
@@ -370,7 +357,6 @@ entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
         return strings.to_string(buffer.str_buffer)
     }
 
-    log.debugf("Generating new string for buffer {0}", buffer.name)
     strings.builder_reset(&buffer.str_buffer)
     buffer_flush_everything(&buffer.data_buffer, &buffer.str_buffer)
     buffer.str_cache = .Full
@@ -379,7 +365,7 @@ entire_buffer_to_string :: proc(buffer: ^Text_Buffer) -> string {
 
 get_buffer_status :: proc(buffer: ^Text_Buffer) -> string {
     temp_buffer := make_temp_str_buffer()
-    strings.write_string(&temp_buffer, buffer.modified ? "*" : "-")
+    strings.write_string(&temp_buffer, buffer.dirty ? "*" : "-")
     return strings.to_string(temp_buffer)
 }
 
@@ -391,12 +377,12 @@ undo_redo :: proc(buffer: ^Text_Buffer, undo, redo: ^[dynamic]Text_Buffer_State)
         buffer.cursor                = item.cursor
         buffer.data_buffer.gap_end   = item.gap_end
         buffer.data_buffer.gap_start = item.gap_start
-        buffer.modified              = item.modified
+        buffer.dirty                 = item.dirty
 
         delete(buffer.data_buffer.buf)
         buffer.data_buffer.buf = slice.clone(item.data, buffer.data_buffer.allocator)
         delete(item.data)
-        text_buffer_update(buffer)
+        simple_text_buffer_update(buffer)
     }
 }
 
@@ -444,7 +430,7 @@ text_buffer_state_push :: proc(buffer: ^Text_Buffer, undo: ^[dynamic]Text_Buffer
         data      = slice.clone(buffer.data_buffer.buf, bragi.ctx.undo_allocator),
         gap_end   = buffer.data_buffer.gap_end,
         gap_start = buffer.data_buffer.gap_start,
-        modified  = buffer.modified,
+        dirty     = buffer.dirty,
     }
 
     append(undo, item) or_return
@@ -461,10 +447,10 @@ text_buffer_undo_clear :: proc(undo: ^[dynamic]Text_Buffer_State) {
 }
 
 @(private="file")
-text_buffer_update :: proc(buffer: ^Text_Buffer) {
+simple_text_buffer_update :: proc(buffer: ^Text_Buffer) {
     buffer.cache_size = 0
     buffer.str_cache  = .None
-    buffer.modified   = true
+    buffer.dirty      = true
 }
 
 @(private="file")

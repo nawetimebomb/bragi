@@ -201,10 +201,16 @@ kill_current_buffer :: proc(pane: ^Pane) {
 }
 
 kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
-    set_pane_mode(pane, Mark_Mode{
-        begin = line_end(pane.buffer, pane.buffer.cursor),
-    })
-    kill_region(pane, true, callback)
+    line_length := line_len(pane.buffer, pane.buffer.cursor)
+
+    if line_length > 0 {
+        set_pane_mode(pane, Mark_Mode{
+            begin = line_end(pane.buffer, pane.buffer.cursor),
+        })
+        kill_region(pane, true, callback)
+    } else {
+        delete_forward_char(pane)
+    }
 }
 
 kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
@@ -228,62 +234,70 @@ kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
 }
 
 search_backward :: proc(pane: ^Pane) {
-    search, ok := pane.mode.(Search_Mode)
+    // search, ok := pane.mode.(Search_Mode)
 
-    if !ok {
-        query := "impor"
-        search = Search_Mode{
-            query     = query,
-            query_len = len(query),
-        }
+    // if !ok {
+    //     query := "impor"
+    //     search = Search_Mode{
+    //         query     = query,
+    //         query_len = len(query),
+    //     }
 
-        search_buffer(pane.buffer, query, &search.results)
-        set_pane_mode(pane, search)
+    //     search_buffer(pane.buffer, query, &search.results)
+    //     set_pane_mode(pane, search)
+    // }
+
+    // #reverse for found, index in search.results {
+    //     if pane.buffer.cursor < found + search.query_len {
+    //         if index == 0 {
+    //             pane.buffer.cursor = search.results[len(search.results) - 1]
+    //             break
+    //         }
+
+    //         continue
+    //     }
+
+    //     pane.buffer.cursor = found
+    //     break
+    // }
+}
+
+search_forward :: proc(pane: ^Pane) {
+    search_mode, search_enabled := pane.mode.(Search_Mode)
+
+    if !search_enabled {
+        start_search(pane, .Forward)
+        return
     }
 
-    #reverse for found, index in search.results {
-        if pane.buffer.cursor < found + search.query_len {
-            if index == 0 {
-                pane.buffer.cursor = search.results[len(search.results) - 1]
+    query := entire_buffer_to_string(search_mode.buffer)
+
+    if search_mode.query_len != len(query) {
+        search_mode.query_len = len(query)
+        clear(&search_mode.results)
+        search_buffer(pane.buffer, query, &search_mode.results)
+    }
+
+    for found, index in search_mode.results {
+        if pane.buffer.cursor > found {
+            if index == len(search_mode.results) - 1 {
+                pane.buffer.cursor = search_mode.results[0] + search_mode.query_len
                 break
             }
 
             continue
         }
 
-        pane.buffer.cursor = found
+        pane.buffer.cursor = found + search_mode.query_len
         break
     }
 }
 
-search_forward :: proc(pane: ^Pane) {
-    search, ok := pane.mode.(Search_Mode)
-
-    // TODO: Query should be set somewhere else
-    if !ok {
-        query := "impor"
-        search = Search_Mode{
-            query     = query,
-            query_len = len(query),
-        }
-
-        search_buffer(pane.buffer, query, &search.results)
-        set_pane_mode(pane, search)
-    }
-
-    for found, index in search.results {
-        if pane.buffer.cursor > found {
-            if index == len(search.results) - 1 {
-                pane.buffer.cursor = search.results[0] + search.query_len
-                break
-            }
-
-            continue
-        }
-
-        pane.buffer.cursor = found + search.query_len
-        break
-    }
+start_search :: proc(pane: ^Pane, direction: Search_Mode_Direction = .Forward) {
+    set_pane_mode(pane, Search_Mode{
+        buffer    = make_text_buffer("*search*", 32),
+        direction = direction,
+    })
 }
 
 mouse_set_point :: proc(pane: ^Pane, x, y: i32) {

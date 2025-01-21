@@ -256,14 +256,43 @@ render :: proc() {
                 sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
             }
         } // End Modeline
-    }
 
-    { // Start Message Minibuffer
-        row := window_size.y - char_size.y
-        dest_rect := sdl.Rect{ 0, row, window_size.x, char_size.y }
-        set_bg(background)
-        sdl.RenderFillRect(renderer, &dest_rect)
-    } // End Message Minibuffer
+        { // Start Message Minibuffer
+            row := window_size.y - char_size.y
+            dest_rect := sdl.Rect{ 0, row, window_size.x, char_size.y }
+            search_mode, search_enabled := pane.mode.(Search_Mode)
+            mb_fmt := ""
+            set_bg(background)
+            sdl.RenderFillRect(renderer, &dest_rect)
+
+            if search_enabled {
+                str := entire_buffer_to_string(search_mode.buffer)
+                mb_fmt = fmt.tprintf("Search: {0}", str)
+
+                dest_rect := sdl.Rect{
+                    i32(len(mb_fmt)) * char_size.x, row,
+                    char_size.x, char_size.y,
+                }
+
+                set_bg(cursor)
+
+                if !caret.hidden {
+                    sdl.RenderFillRect(renderer, &dest_rect)
+                }
+
+                sdl.RenderDrawRect(renderer, &dest_rect)
+            }
+
+            for r, index in mb_fmt {
+                c := bragi.ctx.characters[r]
+                c.dest.x = c.dest.w * i32(index)
+                c.dest.y = row
+
+                set_fg(c.texture, search_enabled ? highlight : default)
+                sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+            }
+        } // End Message Minibuffer
+    }
 
     sdl.RenderPresent(bragi.ctx.renderer)
 }

@@ -285,3 +285,29 @@ search_forward :: proc(pane: ^Pane) {
         break
     }
 }
+
+mouse_set_point :: proc(pane: ^Pane, x, y: i32) {
+    set_pane_mode(pane, Edit_Mode{})
+    canonicalize_mouse_to_buffer(pane.buffer, x, y)
+}
+
+mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
+    mouse_set_point(pane, x, y)
+    _, start, end := word_at_pos(pane.buffer, pane.buffer.cursor)
+
+    pane.buffer.cursor = end
+    set_pane_mode(pane, Mark_Mode{
+        begin = start,
+    })
+}
+
+mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
+    mouse_set_point(pane, x, y)
+    sol := line_start(pane.buffer, pane.buffer.cursor)
+    eol := line_end(pane.buffer, pane.buffer.cursor)
+
+    pane.buffer.cursor = eol
+    set_pane_mode(pane, Mark_Mode{
+        begin = sol,
+    })
+}

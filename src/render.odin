@@ -214,8 +214,8 @@ render :: proc() {
                 "{0} {1}  Ln: {2} Col: {3}",
                 get_buffer_status(pane.buffer),
                 pane.buffer.name,
-                pane.caret.position.x,
                 pane.caret.position.y,
+                pane.caret.position.x,
             )
             rml_fmt := fmt.tprintf(
                 "{0}",
@@ -224,7 +224,7 @@ render :: proc() {
             rml_fmt_size := i32(len(rml_fmt)) * char_size.x
             row := window_size.y - char_size.y * 2
             dest_rect := sdl.Rect{
-                0, row, window_size.x, char_size.y,
+                0, row, pane.dimensions.x, char_size.y,
             }
 
             left_start_column  :: PADDING

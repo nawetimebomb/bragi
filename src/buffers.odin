@@ -194,6 +194,33 @@ line_len :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
     return end - start
 }
 
+word_at_pos :: proc(buffer: ^Text_Buffer, cursor: int) -> (string, int, int) {
+    start, end: int
+    str := entire_buffer_to_string(buffer)
+    delimiters := settings_get_word_delimiters(buffer.major_mode)
+    left, right: int
+
+    for left = cursor; left > 0; left -= 1 {
+        r := rune(str[left])
+        if strings.contains_rune(delimiters, r) {
+            left += 1
+            break
+        }
+    }
+
+    for right = cursor; right < len(str); right += 1 {
+        r := rune(str[right])
+        if strings.contains_rune(delimiters, r) {
+            break
+        }
+    }
+
+    start = min(left, right)
+    end = max(left, right)
+
+    return str[start:end], start, end
+}
+
 count_backward_words_offset :: proc(buffer: ^Text_Buffer, cursor, count: int) -> int {
     found, offset: int
     starting_cursor := cursor
@@ -359,6 +386,37 @@ undo_redo :: proc(buffer: ^Text_Buffer, undo, redo: ^[dynamic]Text_Buffer_State)
         buffer.data_buffer.buf = slice.clone(item.data, buffer.data_buffer.allocator)
         delete(item.data)
         text_buffer_update(buffer)
+    }
+}
+
+canonicalize_mouse_to_buffer :: proc(buffer: ^Text_Buffer, x, y: i32) {
+    char_size := get_standard_character_size()
+    rel_x := x / char_size.x
+    rel_y := y / char_size.y
+    buffer_str := entire_buffer_to_string(buffer)
+    local_x, local_y: i32
+
+    for r, index in buffer_str {
+        if local_y == rel_y {
+            length_of_line := line_len(buffer, index)
+
+            if length_of_line > int(rel_x) {
+                sol := line_start(buffer, index)
+                buffer.cursor = sol + int(rel_x)
+            } else {
+                eol := line_end(buffer, index)
+                buffer.cursor = eol
+            }
+
+            return
+        }
+
+        local_x += 1
+
+        if r == '\n' {
+            local_x = 0
+            local_y += 1
+        }
     }
 }
 

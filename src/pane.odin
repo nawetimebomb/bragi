@@ -53,7 +53,7 @@ Pane :: struct {
     camera:     [2]i32,
     caret:      Caret,
     dimensions: [2]i32,
-    origin:     Vector2,
+    origin:     [2]i32,
     mode:       Pane_Mode,
 }
 
@@ -91,22 +91,23 @@ create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
     bragi.last_pane    = bragi.current_pane
 }
 
-update_pane :: proc(pane: ^Pane) {
+update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
     if pane == nil {
         return
-    }
-
-    // TODO: This should update every time create_pane is called
-    pane.dimensions = {
-        bragi.ctx.window_size.x, bragi.ctx.window_size.y,
     }
 
     std_char_size := get_standard_character_size()
     current_cursor_pos := pane.buffer.cursor
     caret := &pane.caret
     now := time.tick_now()
-    page_size_x := pane.dimensions.x / i32(std_char_size.x) - 3
-    page_size_y := pane.dimensions.y / i32(std_char_size.y) - 3
+
+    // TODO: This should update every time create_pane is called
+    pane.dimensions = {
+        bragi.ctx.window_size.x, bragi.ctx.window_size.y - std_char_size.y * 2,
+    }
+
+    page_size_x := pane.dimensions.x / i32(std_char_size.x) - 1
+    page_size_y := pane.dimensions.y / i32(std_char_size.y) - 1
 
     update_text_buffer_time(pane.buffer)
 
@@ -120,11 +121,11 @@ update_pane :: proc(pane: ^Pane) {
         caret.hidden = !caret.hidden
     }
 
-    if caret.last_cursor_pos != current_cursor_pos {
+    if force_cursor_update || caret.last_cursor_pos != current_cursor_pos {
         x, y: i32
-        str := entire_buffer_to_string(pane.buffer)
+        buffer_str := entire_buffer_to_string(pane.buffer)
 
-        for c, i in str {
+        for c, i in buffer_str {
             if current_cursor_pos == i {
                 caret.position = { x, y }
 
@@ -153,4 +154,22 @@ update_pane :: proc(pane: ^Pane) {
     }
 
     caret.last_cursor_pos = current_cursor_pos
+}
+
+refresh_panes :: proc() {
+    for &pane in bragi.panes {
+        update_pane(&pane, true)
+    }
+}
+
+focus_clicked_pane :: proc(x, y: i32) {
+    for &pane in bragi.panes {
+        origin := pane.origin
+        dims := pane.dimensions
+
+        if origin.x <= x && dims.x > x && origin.y <= y && dims.y > y {
+            bragi.current_pane = &pane
+            break
+        }
+    }
 }

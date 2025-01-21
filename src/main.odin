@@ -243,6 +243,7 @@ main :: proc() {
                         bragi.ctx.window_size = {
                             e.window.data1, e.window.data2,
                         }
+                        refresh_panes()
                     }
                 }
                 case .DROPFILE: {
@@ -256,7 +257,19 @@ main :: proc() {
             if bragi.current_pane != nil {
                 #partial switch e.type {
                     case .MOUSEBUTTONDOWN: {
+                        mouse := e.button
 
+                        if mouse.button == 1 {
+                            switch mouse.clicks {
+                            case 1:
+                                focus_clicked_pane(mouse.x, mouse.y)
+                                mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
+                            case 2:
+                                mouse_drag_word(bragi.current_pane, mouse.x, mouse.y)
+                            case 3:
+                                mouse_drag_line(bragi.current_pane, mouse.x, mouse.y)
+                            }
+                        }
                     }
                     case .MOUSEWHEEL: {
                         m := e.wheel
@@ -293,12 +306,13 @@ main :: proc() {
                 VERSION, bragi.ctx.delta_time,
                 tracking_allocator.current_memory_allocated / 1024,
             )
-            sdl.SetWindowTitle(bragi.ctx.window, window_title)        }
+            sdl.SetWindowTitle(bragi.ctx.window, window_title)
+        }
 
         frame_end := sdl.GetPerformanceCounter()
 
         if !bragi.ctx.window_focused {
-            FRAMETIME_LIMIT :: 50 // 20 FPS
+            FRAMETIME_LIMIT :: 100 // 10 FPS
 
             elapsed :=
                 f32(frame_end - frame_start) / f32(sdl.GetPerformanceCounter()) * 1000

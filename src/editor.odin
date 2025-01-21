@@ -147,31 +147,34 @@ yank :: proc(pane: ^Pane, callback: Paste_Proc) {
 }
 
 toggle_mark_on :: proc(pane: ^Pane) {
-    if !pane.caret.region_enabled {
-        pane.caret.region_begin = pane.buffer.cursor
+    if type_of(pane.mode) != Mark_Mode {
+        set_pane_mode(pane, Mark_Mode{
+            begin = pane.buffer.cursor,
+        })
     }
-
-    pane.caret.region_enabled = true
-    pane.caret.selection_mode = false
 }
 
 set_mark :: proc(pane: ^Pane) {
-    pane.caret.region_begin = pane.buffer.cursor
-    pane.caret.region_enabled = true
-    pane.caret.selection_mode = true
+    if type_of(pane.mode) != Mark_Mode {
+        set_pane_mode(pane, Mark_Mode{
+            begin   = pane.buffer.cursor,
+            marking = true,
+        })
+    } else {
+        set_pane_mode(pane, Edit_Mode{})
+    }
 }
 
 mark_buffer :: proc(pane: ^Pane) {
     pane.buffer.cursor = 0
-    pane.caret.region_begin = length_of_buffer(pane.buffer)
-    pane.caret.region_enabled = true
-    pane.caret.selection_mode = true
+    set_pane_mode(pane, Mark_Mode{
+        begin   = length_of_buffer(pane.buffer),
+        marking = true,
+    })
 }
 
 keyboard_quit :: proc(pane: ^Pane) {
-    pane.caret.region_enabled = false
-    pane.caret.selection_mode = false
-    clear(&pane.caret.highlights)
+    set_pane_mode(pane, Edit_Mode{})
 }
 
 undo :: proc(pane: ^Pane) {
@@ -198,15 +201,19 @@ kill_current_buffer :: proc(pane: ^Pane) {
 }
 
 kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
-    pane.caret.region_enabled = true
-    pane.caret.region_begin = line_end(pane.buffer, pane.buffer.cursor)
+    set_pane_mode(pane, Mark_Mode{
+        begin = line_end(pane.buffer, pane.buffer.cursor),
+    })
     kill_region(pane, true, callback)
 }
 
 kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
-    if pane.caret.region_enabled {
-        start := min(pane.buffer.cursor, pane.caret.region_begin)
-        end   := max(pane.buffer.cursor, pane.caret.region_begin)
+    marker, ok := pane.mode.(Mark_Mode)
+
+    if ok {
+        marker := pane.mode.(Mark_Mode)
+        start := min(pane.buffer.cursor, marker.begin)
+        end   := max(pane.buffer.cursor, marker.begin)
         temp_buffer := make_temp_str_buffer()
         result := flush_buffer_to_custom_string(pane.buffer, &temp_buffer, start, end)
 
@@ -215,32 +222,29 @@ kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
         }
 
         pane.buffer.cursor = start
-        keyboard_quit(pane)
         callback(result)
+        keyboard_quit(pane)
     }
 }
 
 search_backward :: proc(pane: ^Pane) {
-    // TODO: Query should be set somewhere else
-    query := "im"
-    caret := &pane.caret
+    search, ok := pane.mode.(Search_Mode)
 
-    caret.search_mode = true
+    if !ok {
+        query := "impor"
+        search = Search_Mode{
+            query     = query,
+            query_len = len(query),
+        }
 
-    if caret.highlights_len != len(query) {
-        clear(&caret.highlights)
+        search_buffer(pane.buffer, query, &search.results)
+        set_pane_mode(pane, search)
     }
 
-    if len(caret.highlights) == 0 {
-        search_buffer(pane.buffer, query, &caret.highlights)
-        caret.highlights_len = len(query)
-    }
-
-    // TODO: Focus cursor in position of i+len
-    #reverse for found, index in caret.highlights {
-        if pane.buffer.cursor < found + caret.highlights_len {
+    #reverse for found, index in search.results {
+        if pane.buffer.cursor < found + search.query_len {
             if index == 0 {
-                pane.buffer.cursor = caret.highlights[len(caret.highlights) - 1]
+                pane.buffer.cursor = search.results[len(search.results) - 1]
                 break
             }
 
@@ -253,32 +257,31 @@ search_backward :: proc(pane: ^Pane) {
 }
 
 search_forward :: proc(pane: ^Pane) {
+    search, ok := pane.mode.(Search_Mode)
+
     // TODO: Query should be set somewhere else
-    query := "impor"
-    caret := &pane.caret
+    if !ok {
+        query := "impor"
+        search = Search_Mode{
+            query     = query,
+            query_len = len(query),
+        }
 
-    caret.search_mode = true
-
-    if caret.highlights_len != len(query) {
-        clear(&caret.highlights)
+        search_buffer(pane.buffer, query, &search.results)
+        set_pane_mode(pane, search)
     }
 
-    if len(caret.highlights) == 0 {
-        search_buffer(pane.buffer, query, &caret.highlights)
-        caret.highlights_len = len(query)
-    }
-
-    for found, index in caret.highlights {
+    for found, index in search.results {
         if pane.buffer.cursor > found {
-            if index == len(caret.highlights) - 1 {
-                pane.buffer.cursor = caret.highlights[0] + caret.highlights_len
+            if index == len(search.results) - 1 {
+                pane.buffer.cursor = search.results[0] + search.query_len
                 break
             }
 
             continue
         }
 
-        pane.buffer.cursor = found + caret.highlights_len
+        pane.buffer.cursor = found + search.query_len
         break
     }
 }

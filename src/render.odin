@@ -36,6 +36,7 @@ render :: proc() {
     default         := colors[.default]
     highlight       := colors[.highlight]
     keyword         := colors[.keyword]
+    region          := colors[.region]
     string          := colors[.string]
 
     modeline_off_bg := colors[.modeline_off_bg]
@@ -76,61 +77,134 @@ render :: proc() {
             lexer := languages.Lexer{}
             lexer_enabled := settings_is_lexer_enabled(mm)
             lex := settings_get_lexer_proc(mm)
+            x, y: i32
 
-            for line, y_index in buffer_str_lines {
-                for r, x_index in line {
-                    x := i32(x_index)
-                    y := i32(y_index)
-                    column := (x - camera.x) * char_size.x
-                    row := (y - camera.y) * char_size.y
-                    c := bragi.ctx.characters[r]
-                    c.dest.x = column
-                    c.dest.y = row
+            for r, index in buffer_str {
+                column := (x - camera.x) * char_size.x
+                row := (y - camera.y) * char_size.y
+                c := bragi.ctx.characters[r]
+                c.dest.x = column
+                c.dest.y = row
 
-                    if lexer_enabled {
-                        lexer.cursor = x_index
-                        lexer.current_rune = r
-                        lexer.line = line
-                        lexer.end_of_line = len(line)
-
-                        lexer.length -= 1
-
-                        if lexer.length <= 0 {
-                            lex(&lexer)
-                        }
-
-                        switch lexer.state {
-                        case .Default:
-                            set_fg(c.texture, default)
-                        case .Builtin:
-                            set_fg(c.texture, builtin)
-                        case .Comment:
-                            set_fg(c.texture, comment)
-                        case .Constant:
-                            set_fg(c.texture, constant)
-                        case .Keyword:
-                            set_fg(c.texture, keyword)
-                        case .Highlight:
-                            set_fg(c.texture, highlight)
-                        case .String:
-                            set_fg(c.texture, string)
-                        }
-                    } else {
+                if lexer_enabled {
+                    switch lexer.state {
+                    case .Default:
                         set_fg(c.texture, default)
+                    case .Builtin:
+                        set_fg(c.texture, builtin)
+                    case .Comment:
+                        set_fg(c.texture, comment)
+                    case .Constant:
+                        set_fg(c.texture, constant)
+                    case .Keyword:
+                        set_fg(c.texture, keyword)
+                    case .Highlight:
+                        set_fg(c.texture, highlight)
+                    case .String:
+                        set_fg(c.texture, string)
                     }
+                } else {
+                    set_fg(c.texture, default)
+                }
 
-                    if focused {
-                        if is_caret_showing(&caret, x, y) {
-                            set_fg(c.texture, background)
-                        } else {
-                            // TODO: Add Mark Mode
-                            // TODO: Add Search Mode
+                if focused {
+                    if is_caret_showing(&caret, x, y) {
+                        set_fg(c.texture, background)
+                    } else {
+                        switch mode in pane.mode {
+                        case Edit_Mode:
+
+                        case Mark_Mode:
+                            start := min(mode.begin, pane.buffer.cursor)
+                            end   := max(mode.begin, pane.buffer.cursor)
+
+                            if start <= index && end > index {
+                                set_bg(region)
+                                dest_rect := sdl.Rect{
+                                    column, row, char_size.x, char_size.y,
+                                }
+                                sdl.RenderFillRect(renderer, &dest_rect)
+                            }
+                            // Handle selection
+                        case Search_Mode:
+                            if len(mode.results) > 0 {
+                                current := 0
+
+                                for v in mode.results {
+                                    if v <= index && v + mode.query_len > index {
+                                        set_fg(c.texture, highlight)
+                                        break
+                                    }
+                                }
+                            }
                         }
                     }
-
-                    sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
                 }
+
+                sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+
+                x += 1
+                if r == '\n' {
+                    x = 0
+                    y += 1
+                }
+
             }
+
+            // for line, y_index in buffer_str_lines {
+            //     for r, x_index in line {
+            //         x := i32(x_index)
+            //         y := i32(y_index)
+            //         column := (x - camera.x) * char_size.x
+            //         row := (y - camera.y) * char_size.y
+            //         c := bragi.ctx.characters[r]
+            //         c.dest.x = column
+            //         c.dest.y = row
+
+            //         if lexer_enabled {
+            //             lexer.cursor = x_index
+            //             lexer.current_rune = r
+            //             lexer.line = line
+            //             lexer.end_of_line = len(line)
+
+            //             lexer.length -= 1
+
+            //             if lexer.length <= 0 {
+            //                 lex(&lexer)
+            //             }
+
+            //             switch lexer.state {
+            //             case .Default:
+            //                 set_fg(c.texture, default)
+            //             case .Builtin:
+            //                 set_fg(c.texture, builtin)
+            //             case .Comment:
+            //                 set_fg(c.texture, comment)
+            //             case .Constant:
+            //                 set_fg(c.texture, constant)
+            //             case .Keyword:
+            //                 set_fg(c.texture, keyword)
+            //             case .Highlight:
+            //                 set_fg(c.texture, highlight)
+            //             case .String:
+            //                 set_fg(c.texture, string)
+            //             }
+            //         } else {
+            //             set_fg(c.texture, default)
+            //         }
+
+            //         if focused {
+            //             if is_caret_showing(&caret, x, y) {
+            //                 set_fg(c.texture, background)
+            //             } else {
+            //                 // TODO: Add Mark Mode
+            //                 // TODO: Add Search Mode
+            //             }
+            //         }
+
+            //         sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+            //     }
+            // }
         } // End Buffer String
 
         { // Start Modeline

@@ -1,13 +1,14 @@
 # Comments
 [colors]
 background                      012027
-cursor                          64d8cb
 builtin                         b39ddb
 comment                         848484
 constant                        b39ddb
+cursor                          64d8cb
 default                         dddddd
 highlight                       ff9800
 keyword                         b39ddb
+region                          01343f
 string                          90caf9
 
 modeline_off_bg                 001017
@@ -19,6 +20,3 @@ modeline_on_fg                  ffffff
 linen_bg                        001b21
 linen_fg                        848484
 match_delimiter                 ff9800
-
-region                          01343f
-

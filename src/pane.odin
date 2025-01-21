@@ -25,23 +25,25 @@ Caret :: struct {
     last_update_time:    time.Tick,
     last_cursor_pos:     int,
     position:            [2]i32,
-    region_enabled:      bool,
-    region_begin:        int,
-    selection_mode:      bool,
-    search_mode:         bool,
-    highlights:          [dynamic]int,
-    highlights_len:      int,
 
     max_x           : int,
 }
 
-Mark_Mode :: struct {}
+Edit_Mode :: struct {}
 
-Search_Mode :: struct {
-    query: string,
+Mark_Mode :: struct {
+    begin:   int,
+    marking: bool,
 }
 
-Pane_State :: union {
+Search_Mode :: struct {
+    query:     string,
+    query_len: int,
+    results:   [dynamic]int,
+}
+
+Pane_Mode :: union #no_nil {
+    Edit_Mode,
     Mark_Mode,
     Search_Mode,
 }
@@ -52,7 +54,18 @@ Pane :: struct {
     caret:      Caret,
     dimensions: [2]i32,
     origin:     Vector2,
-    state:      Pane_State,
+    mode:       Pane_Mode,
+}
+
+set_pane_mode :: proc(pane: ^Pane, new_mode: Pane_Mode) {
+    switch mode in pane.mode {
+    case Edit_Mode:
+    case Mark_Mode:
+    case Search_Mode:
+        delete(mode.results)
+    }
+
+    pane.mode = new_mode
 }
 
 // TODO: Calculate new buffer dimensions and origin

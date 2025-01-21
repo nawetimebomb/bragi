@@ -26,21 +26,6 @@ SETTINGS_FILENAME :: "config.bragi"
 
 TITLE_TIMEOUT :: 1 * time.Second
 
-Settings :: struct {
-    handle:                      os.Handle,
-    last_write_time:             os.File_Time,
-    use_internal_data:           bool,
-
-    major_modes_table:           Major_Modes_Table,
-    colorscheme_table:           Colorscheme_Table,
-
-    cursor_blink_timeout:        f32,
-    font_size:                   u32,
-    remove_trailing_whitespaces: bool,
-    save_desktop_mode:           bool,
-    show_line_numbers:           bool,
-}
-
 Character_Texture :: struct {
     dest:    sdl.Rect,
     texture: ^sdl.Texture,
@@ -95,10 +80,10 @@ destroy_editor :: proc() {
     for &b in bragi.buffers {
         destroy_text_buffer(&b)
     }
-    delete(bragi.buffers)
     for &p in bragi.panes {
-        delete(p.caret.highlights)
+        set_pane_mode(&p, Edit_Mode{})
     }
+    delete(bragi.buffers)
     delete(bragi.panes)
 }
 
@@ -330,71 +315,4 @@ main :: proc() {
     }
 
     mem.tracking_allocator_destroy(&tracking_allocator)
-}
-
-render_pane_contents :: proc(pane: ^Pane, focused: bool) {
-    x, y: i32
-    str := entire_buffer_to_string(pane.buffer)
-    std_char_size := get_standard_character_size()
-    highlight_index := 0
-    current_highlight := -1
-    highlights_len := 0
-
-    for c, char_index in str {
-        char := bragi.ctx.characters[c]
-        column := (x - pane.camera.x) * std_char_size.x
-        row := (y - pane.camera.y) * std_char_size.y
-        caret := &pane.caret
-
-        // TODO: here I should have the lexer figuring out what color this character is
-        sdl.SetTextureColorMod(char.texture, 255, 255, 255)
-
-        if current_highlight == -1 {
-            if len(caret.highlights) > highlight_index {
-                current_highlight = caret.highlights[highlight_index]
-                highlights_len = caret.highlights_len
-                highlight_index += 1
-            }
-        } else {
-            if current_highlight <= char_index && highlights_len > 0 {
-                sdl.SetTextureColorMod(char.texture, 255, 152, 0)
-                highlights_len -= 1
-
-                if highlights_len == 0 {
-                    current_highlight = -1
-                }
-            }
-        }
-
-        if focused {
-            if caret.region_enabled {
-                start_region := min(pane.caret.region_begin, pane.buffer.cursor)
-                end_region   := max(pane.caret.region_begin, pane.buffer.cursor)
-
-                if start_region <= char_index && end_region > char_index {
-                    sdl.SetRenderDrawColor(bragi.ctx.renderer, 1, 52, 63, 255)
-                    region_rect := sdl.Rect{
-                        column, row, std_char_size.x, std_char_size.y,
-                    }
-                    sdl.RenderFillRect(bragi.ctx.renderer, &region_rect)
-                    sdl.SetRenderDrawColor(bragi.ctx.renderer, 255, 255, 255, 255)
-                }
-            }
-
-            if !caret.hidden && pane.buffer.cursor == char_index {
-                sdl.SetTextureColorMod(char.texture, 1, 32, 39)
-            }
-        }
-
-        char.dest.x = column
-        char.dest.y = row
-        sdl.RenderCopy(bragi.ctx.renderer, char.texture, nil, &char.dest)
-
-        x += 1
-
-        if c == '\n' {
-            x = 0
-            y += 1
-        }
-    }
 }

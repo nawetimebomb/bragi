@@ -6,6 +6,7 @@ import "core:reflect"
 import "core:strconv"
 import "core:strings"
 import "languages"
+import "tokenizer"
 
 Color :: distinct [4]u8
 Major_Modes_Table :: map[Major_Mode]Major_Mode_Settings
@@ -16,6 +17,7 @@ Colorscheme_Table :: map[Face]Color
 //   ^string is the buffer string
 //   int is the cursor position
 Lexer_Proc :: #type proc(^languages.Lexer)
+Tokenization_Proc :: #type proc(^tokenizer.Tokenizer)
 
 DEFAULT_COLORSCHEME :: #load("../res/config.bragi")
 
@@ -43,6 +45,7 @@ Face :: enum {
     default,
     highlight,
     keyword,
+    region,
     string,
 
     modeline_off_bg,
@@ -51,9 +54,25 @@ Face :: enum {
     modeline_on_fg,
 }
 
+Settings :: struct {
+    handle:                      os.Handle,
+    last_write_time:             os.File_Time,
+    use_internal_data:           bool,
+
+    major_modes_table:           Major_Modes_Table,
+    colorscheme_table:           Colorscheme_Table,
+
+    cursor_blink_timeout:        f32,
+    font_size:                   u32,
+    remove_trailing_whitespaces: bool,
+    save_desktop_mode:           bool,
+    show_line_numbers:           bool,
+}
+
 Major_Mode_Settings :: struct {
     enable_lexer:       bool,
     lexer_proc:         Lexer_Proc,
+    tokenization_proc:  Tokenization_Proc,
     name:               string,
     file_extensions:    string,
     word_delimiters:    string,
@@ -174,6 +193,7 @@ major_mode_bragi :: proc() -> Major_Mode_Settings {
         auto_indent_type  = .Relaxed,
         enable_lexer      = true,
         lexer_proc        = languages.bragi_lexer,
+        tokenization_proc = tokenizer.tokenize_bragi,
         file_extensions   = "bragi",
         indentation_char  = .Space,
         indentation_width = 0,
@@ -200,6 +220,7 @@ major_mode_odin :: proc() -> Major_Mode_Settings {
         auto_indent_type  = .Electric,
         enable_lexer      = true,
         lexer_proc        = languages.odin_lexer,
+        tokenization_proc = tokenizer.tokenize_odin,
         file_extensions   = "odin",
         indentation_char  = .Space,
         indentation_width = 4,

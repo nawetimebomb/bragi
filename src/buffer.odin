@@ -108,9 +108,7 @@ begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
 
     if buffer.was_dirty || len(builder.buf) == 0 {
         buffer.was_dirty = false
-        strings.builder_reset(builder)
-        strings.builder_init_len_cap(builder, buffer_len(buffer), len(buffer.data))
-        flush_entire_buffer(buffer)
+        rebuild_string_buffer(buffer)
     }
 }
 
@@ -138,6 +136,16 @@ destroy_buffer :: proc(buffer: ^Buffer) {
     delete(buffer.redo)
     delete(buffer.undo)
     buffer.builder = nil
+}
+
+_get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
+    switch {
+    case buffer.modified: status = "*"
+    case buffer.readonly: status = "%"
+    case                : status = " "
+    }
+
+    return
 }
 
 get_line_boundaries :: proc(buffer: ^Buffer, pos: int) -> (begin, end: int) {
@@ -174,6 +182,21 @@ get_word_boundaries :: proc(buffer: ^Buffer, pos: int) -> (begin, end: int) {
     }
 }
 
+buffer_search :: proc(buffer: ^Buffer, query: string) -> []int {
+    results := make([dynamic]int, 0, 10, context.temp_allocator)
+    str := string(buffer.builder.buf[:])
+    initial_length := len(str)
+
+    for {
+        index := strings.index(str, query)
+        if index == -1 { break }
+        append(&results, initial_length - len(str) + index)
+        str = str[index + len(query):]
+    }
+
+    return slice.clone(results[:])
+}
+
 clear_history :: proc(history: ^[dynamic]History_State) {
     for len(history) > 0 {
         item := pop(history)
@@ -207,6 +230,62 @@ check_buffer_history_state :: proc(buffer: ^Buffer) {
     buffer.last_edit_time = buffer.current_time
 }
 
+buffer_save :: proc(buffer: ^Buffer) {
+    if buffer.modified {
+        log.debugf("Saving {0}", buffer.name)
+        changed := sanitize_buffer(buffer)
+        str := string(buffer.builder.buf[:])
+        err := os.write_entire_file_or_err(buffer.filepath, transmute([]u8)str)
+
+        if err != nil {
+            log.errorf("Error saving buffer {0}", buffer.name)
+            return
+        }
+
+        buffer.dirty = changed
+    } else {
+        log.debugf("Nothing to save in {0}", buffer.name)
+    }
+}
+
+sanitize_buffer :: proc(buffer: ^Buffer) -> (changed: bool) {
+    assert(buffer.builder != nil)
+
+    LF_COUNT :: 2
+    initial_cursor_pos := buffer.cursor
+    str := string(buffer.builder.buf[:])
+    counting_line_endings := true
+    line_endings := 0
+    changed = false
+
+    #reverse for r, index in str {
+        if counting_line_endings && r == '\n' {
+            line_endings += 1
+        } else {
+            counting_line_endings = false
+        }
+
+        if r == '\r' {
+            remove(buffer, index, 1)
+            changed = true
+        }
+    }
+
+    if line_endings < LF_COUNT {
+        for ; line_endings > 0; line_endings -= 1 {
+            insert(buffer, buffer_len(buffer), rune('\n'))
+            changed = true
+        }
+    } else {
+        remove(buffer, buffer_len(buffer), LF_COUNT - line_endings)
+        changed = true
+    }
+
+    buffer.cursor = clamp(initial_cursor_pos, 0, buffer_len(buffer) - 1)
+    rebuild_string_buffer(buffer)
+    return
+}
+
 flush_entire_buffer :: proc(buffer: ^Buffer) {
     flush_range(buffer, 0, buffer_len(buffer))
 }
@@ -232,6 +311,12 @@ get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
     left = string(buffer.data[:buffer.gap_start])
     right = string(buffer.data[buffer.gap_end:])
     return
+}
+
+rebuild_string_buffer :: proc(buffer: ^Buffer) {
+    strings.builder_reset(buffer.builder)
+    strings.builder_init_len_cap(buffer.builder, buffer_len(buffer), len(buffer.data))
+    flush_entire_buffer(buffer)
 }
 
 // Deletes X characters. If positive, deletes forward

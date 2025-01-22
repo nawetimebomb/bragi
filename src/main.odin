@@ -45,6 +45,7 @@ Program_Context :: struct {
 
 Bragi :: struct {
     buffers:      [dynamic]Text_Buffer,
+    _buffers:     [dynamic]Buffer,
     panes:        [dynamic]Pane,
     current_pane: ^Pane,
     last_pane:    ^Pane,

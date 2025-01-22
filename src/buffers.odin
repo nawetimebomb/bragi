@@ -174,13 +174,13 @@ line_boundaries :: proc(buffer: ^Text_Buffer, cursor: int) -> (begin, end: int) 
     }
 }
 
-@(deprecated="Use line_boundaries")
+// @(deprecated="Use line_boundaries")
 line_start :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
     sol, _ := line_boundaries(buffer, cursor)
     return sol
 }
 
-@(deprecated="Use line_boundaries")
+// @(deprecated="Use line_boundaries")
 line_end :: proc(buffer: ^Text_Buffer, cursor: int) -> int {
     _, eol := line_boundaries(buffer, cursor)
     return eol
@@ -416,7 +416,7 @@ canonicalize_mouse_to_buffer :: proc(buffer: ^Text_Buffer, x, y: int) {
 @(private="file")
 text_buffer_undo_check :: proc(buffer: ^Text_Buffer) {
     text_buffer_undo_clear(&buffer.redo)
-    if time.tick_diff(buffer.last_edit_time, buffer.current_time) > UNDO_TIMEOUT {
+    if time.tick_diff(buffer.last_edit_time, buffer.current_time) > UNDO_DEFAULT_TIMEOUT {
         log.debug("Pushing a new UNDO state")
         text_buffer_state_push(buffer, &buffer.undo)
     }

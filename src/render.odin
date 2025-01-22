@@ -71,15 +71,14 @@ render :: proc() {
         } // End Caret
 
         { // Start Buffer String
-            buffer_str := entire_buffer_to_string(pane.buffer)
-            buffer_str_lines := strings.split_lines(buffer_str, context.temp_allocator)
+            str := strings.to_string(pane.builder)
             mm := pane.buffer.major_mode
             lexer := languages.Lexer{}
             lexer_enabled := settings_is_lexer_enabled(mm)
             lex := settings_get_lexer_proc(mm)
             x, y: i32
 
-            for r, index in buffer_str {
+            for r, index in str {
                 column := (x - camera.x) * char_size.x
                 row := (y - camera.y) * char_size.y
                 c := bragi.ctx.characters[r]
@@ -115,17 +114,17 @@ render :: proc() {
                         case Edit_Mode:
 
                         case Mark_Mode:
-                            start := min(mode.begin, pane.buffer.cursor)
-                            end   := max(mode.begin, pane.buffer.cursor)
+                            // TODO: Handle selection
+                            // start := min(mode.begin, pane.buffer.cursor)
+                            // end   := max(mode.begin, pane.buffer.cursor)
 
-                            if start <= index && end > index {
-                                set_bg(region)
-                                dest_rect := sdl.Rect{
-                                    column, row, char_size.x, char_size.y,
-                                }
-                                sdl.RenderFillRect(renderer, &dest_rect)
-                            }
-                            // Handle selection
+                            // if start <= index && end > index {
+                            //     set_bg(region)
+                            //     dest_rect := sdl.Rect{
+                            //         column, row, char_size.x, char_size.y,
+                            //     }
+                            //     sdl.RenderFillRect(renderer, &dest_rect)
+                            // }
                         case Search_Mode:
                             if len(mode.results) > 0 {
                                 current := 0
@@ -266,7 +265,7 @@ render :: proc() {
             sdl.RenderFillRect(renderer, &dest_rect)
 
             if search_enabled {
-                str := entire_buffer_to_string(search_mode.buffer)
+                str := strings.to_string(search_mode.builder)
                 mb_fmt = fmt.tprintf("Search: {0}", str)
 
                 dest_rect := sdl.Rect{

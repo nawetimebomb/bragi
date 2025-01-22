@@ -141,7 +141,7 @@ handle_sublime_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     #partial switch key.sym {
         case .S: {
             if C {
-                save_buffer(pane.buffer)
+                save_buffer(pane)
                 handled = true
             }
         }
@@ -243,11 +243,12 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
         }
         case .S: {
             if CX && C {
-                save_buffer(pane.buffer)
+                save_buffer(pane)
                 handled = true
             } else if CX {
-                save_some_buffers()
-                handled = true
+                // TODO: Save more than one buffer
+                // save_some_buffers()
+                // handled = true
             } else if C {
                 search_forward(pane)
                 handled = true
@@ -445,11 +446,11 @@ update_input :: proc() {
                             length := end - start
                             pane.buffer.cursor = start
 
-                            delete_at(pane.buffer, pane.buffer.cursor, length)
+                            remove(pane.buffer, pane.buffer.cursor, length)
                             set_pane_mode(pane, Edit_Mode{})
-                            insert_at(pane.buffer, pane.buffer.cursor, str)
+                            insert(pane.buffer, pane.buffer.cursor, str)
                         case search_enabled:
-                            insert_at(search_mode.buffer, search_mode.buffer.cursor, str)
+                            insert(search_mode.buffer, search_mode.buffer.cursor, str)
 
                             if search_mode.direction == .Forward {
                                 search_forward(pane)
@@ -457,7 +458,7 @@ update_input :: proc() {
                                 search_backward(pane)
                             }
                         case :
-                            insert_at(pane.buffer, pane.buffer.cursor, str)
+                            insert(pane.buffer, pane.buffer.cursor, str)
                         }
                     }
                     return

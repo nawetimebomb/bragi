@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:log"
 import "core:mem"
 import "core:time"
+import "core:strings"
 
 CARET_BLINK_TIMER_DEFAULT :: 0.5
 
@@ -41,10 +42,11 @@ Search_Mode_Direction :: enum {
 }
 
 Search_Mode :: struct {
-    buffer:    ^Text_Buffer,
+    buffer:    ^Buffer,
+    builder:   strings.Builder,
     direction: Search_Mode_Direction,
     query_len: int,
-    results:   [dynamic]int,
+    results:   []int,
 }
 
 Pane_Mode :: union #no_nil {
@@ -54,7 +56,8 @@ Pane_Mode :: union #no_nil {
 }
 
 Pane :: struct {
-    buffer:     ^Text_Buffer,
+    buffer:     ^Buffer,
+    builder:    strings.Builder,
     camera:     [2]i32,
     caret:      Caret,
     dimensions: [2]i32,
@@ -63,12 +66,22 @@ Pane :: struct {
 }
 
 set_pane_mode :: proc(pane: ^Pane, new_mode: Pane_Mode) {
+    // Make sure to clean-up all allocations when changing state
     switch &mode in pane.mode {
     case Edit_Mode:
     case Mark_Mode:
     case Search_Mode:
         delete(mode.results)
-        destroy_text_buffer(mode.buffer)
+        destroy_buffer(mode.buffer)
+        strings.builder_destroy(&mode.builder)
+    }
+
+    // And then initialize the new ones
+    switch &mode in new_mode {
+    case Edit_Mode:
+    case Mark_Mode:
+    case Search_Mode:
+        mode.builder = strings.builder_make()
     }
 
     pane.mode = new_mode
@@ -76,14 +89,12 @@ set_pane_mode :: proc(pane: ^Pane, new_mode: Pane_Mode) {
 
 // TODO: Calculate new buffer dimensions and origin
 create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
-    new_pane := Pane{}
+    new_pane := Pane{
+        builder = strings.builder_make(),
+    }
 
     if from == nil {
-        if len(bragi.buffers) == 0 {
-            make_text_buffer("*notes*", 0)
-        }
-
-        new_pane.buffer = &bragi.buffers[0]
+        new_pane.buffer = get_or_create_buffer("*notes*", 0)
     } else {
         if pos == .Undefined {
             log.errorf("Should define a position for the new pane")
@@ -98,24 +109,20 @@ create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
 }
 
 update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
-    if pane == nil {
-        return
-    }
+    if pane == nil { return }
 
+    str := strings.to_string(pane.builder)
     std_char_size := get_standard_character_size()
-    current_cursor_pos := pane.buffer.cursor
     caret := &pane.caret
     now := time.tick_now()
 
     // TODO: This should update every time create_pane is called
     pane.dimensions = {
-        bragi.ctx.window_size.x, bragi.ctx.window_size.y - std_char_size.y * 2,
+        bragi.ctx.window_size.x, bragi.ctx.window_size.y - std_char_size.y,
     }
 
     page_size_x := pane.dimensions.x / i32(std_char_size.x) - 1
     page_size_y := pane.dimensions.y / i32(std_char_size.y) - 1
-
-    update_text_buffer_time(pane.buffer)
 
     if time.tick_diff(caret.last_keystroke_time, time.tick_now()) < CARET_RESET_TIMEOUT {
         caret.last_update_time = now
@@ -127,39 +134,30 @@ update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
         caret.hidden = !caret.hidden
     }
 
-    if force_cursor_update || caret.last_cursor_pos != current_cursor_pos {
-        x, y: i32
-        buffer_str := entire_buffer_to_string(pane.buffer)
+    x, y: i32
 
-        for c, i in buffer_str {
-            if current_cursor_pos == i {
-                caret.position = { x, y }
+    for c, i in str {
+        if pane.buffer.cursor == i {
+            caret.position = { x, y }
 
-                if x > pane.camera.x + page_size_x {
-                    pane.camera.x = x - page_size_x
-                } else if x < pane.camera.x {
-                    pane.camera.x = x
-                }
-
-                if y > pane.camera.y + page_size_y {
-                    pane.camera.y = y - page_size_y
-                } else if y < pane.camera.y {
-                    pane.camera.y = y
-                }
-
-                break
+            if x > pane.camera.x + page_size_x {
+                pane.camera.x = x - page_size_x
+            } else if x < pane.camera.x {
+                pane.camera.x = x
             }
 
-            x += 1
-
-            if c == '\n' {
-                x = 0
-                y += 1
+            if y > pane.camera.y + page_size_y {
+                pane.camera.y = y - page_size_y
+            } else if y < pane.camera.y {
+                pane.camera.y = y
             }
+
+            break
         }
-    }
 
-    caret.last_cursor_pos = current_cursor_pos
+        x = c == '\n' ? 0 : x + 1
+        y = c == '\n' ? y + 1 : y
+    }
 }
 
 refresh_panes :: proc() {

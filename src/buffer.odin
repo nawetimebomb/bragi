@@ -54,9 +54,10 @@ create_buffer :: proc(
     undo_timeout := UNDO_DEFAULT_TIMEOUT,
     allocator := context.allocator,
 ) -> ^Buffer {
-    append(&bragi._buffers, Buffer{
+    append(&bragi.buffers, Buffer{
         allocator    = allocator,
         data         = make([]u8, bytes, allocator),
+        dirty        = false,
         gap_end      = bytes,
         major_mode   = .Fundamental,
         name         = strings.clone(name),
@@ -65,7 +66,7 @@ create_buffer :: proc(
         undo_timeout = undo_timeout,
     })
 
-    result := &bragi._buffers[len(bragi._buffers) - 1]
+    result := &bragi.buffers[len(bragi.buffers) - 1]
 
     result.undo.allocator = allocator
     result.redo.allocator = allocator
@@ -96,13 +97,31 @@ create_buffer_from_file :: proc(
 
     insert(result, 0, data)
     result.cursor = 0
+    result.dirty = false
+    result.modified = false
+    result.was_dirty = true
 
     return result
 }
 
+get_or_create_buffer :: proc(
+    name: string,
+    bytes: int,
+    undo_timeout := UNDO_DEFAULT_TIMEOUT,
+    allocator := context.allocator,
+) -> ^Buffer {
+    for &b in bragi.buffers {
+        if b.name == name {
+            return &b
+        }
+    }
+
+    return create_buffer(name, bytes, undo_timeout, allocator)
+}
+
 begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
     assert(builder != nil)
-    assert(!buffer.dirty)
+    assert(buffer.dirty == false)
     buffer.builder = builder
     update_buffer_time(buffer)
 
@@ -138,11 +157,31 @@ destroy_buffer :: proc(buffer: ^Buffer) {
     buffer.builder = nil
 }
 
-_get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
+canonicalize_coords_to_cursor :: proc(buffer: ^Buffer, x, y: int) {
+    assert(buffer.builder != nil)
+    str := strings.to_string(buffer.builder^)
+    local_x, local_y: int
+
+    for r, index in str {
+        if local_y == y {
+            bol, eol := get_line_boundaries(buffer, index)
+            length := eol - bol
+            buffer.cursor = length > x ? bol + x : eol
+            return
+        }
+        local_x += 1
+        if r == '\n' {
+            local_x = 0
+            local_y += 1
+        }
+    }
+}
+
+get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
     switch {
     case buffer.modified: status = "*"
     case buffer.readonly: status = "%"
-    case                : status = " "
+    case                : status = "-"
     }
 
     return
@@ -168,23 +207,96 @@ get_line_length :: proc(buffer: ^Buffer, pos: int) -> int {
 
 get_word_boundaries :: proc(buffer: ^Buffer, pos: int) -> (begin, end: int) {
     begin = pos; end = pos
-    data := string(buffer.builder.buf[:])
+    str := strings.to_string(buffer.builder^)
     delimiters := settings_get_word_delimiters(buffer.major_mode)
 
     for {
-        brune := utf8.rune_at(data, begin - 1)
-        erune := utf8.rune_at(data, end)
+        brune := utf8.rune_at(str, begin - 1)
+        erune := utf8.rune_at(str, end)
         bsearch := begin > 0 && !strings.contains_rune(delimiters, brune)
-        esearch := end < len(data) - 1 && !strings.contains_rune(delimiters, erune)
+        esearch := end < len(str) - 1 && !strings.contains_rune(delimiters, erune)
         if bsearch { begin -= 1 }
         if esearch { end += 1 }
         if !bsearch && !esearch { return }
     }
 }
 
+// TODO: Refactor this
+count_backward_words_offset :: proc(buffer: ^Buffer, cursor, count: int) -> int {
+    found, offset: int
+    starting_cursor := cursor
+    str := strings.to_string(buffer.builder^)
+    word_started := false
+    delimiters := settings_get_word_delimiters(buffer.major_mode)
+
+    for offset = starting_cursor; offset > 0; offset -= 1 {
+        r := rune(str[offset])
+
+        if !word_started {
+            if !strings.contains_rune(delimiters, r) {
+                word_started = true
+            }
+        } else {
+            if strings.contains_rune(delimiters, r) {
+                // NOTE: adjustment for better feeling when trying to find
+                // or delete a previous word, since we don't need to get
+                // stuck on the end of a line
+                if r == '\n' { offset -= 1 }
+                word_started = false
+                found += 1
+            }
+        }
+
+        if found == count {
+            break
+        }
+    }
+
+    return max(0, starting_cursor - offset)
+}
+
+// TODO: Refactor this
+count_forward_words_offset :: proc(buffer: ^Buffer, cursor, count: int) -> int {
+    found, offset: int
+    starting_cursor := cursor
+    str := strings.to_string(buffer.builder^)
+    word_started := false
+    delimiters := settings_get_word_delimiters(buffer.major_mode)
+
+    for offset = starting_cursor; offset < buffer_len(buffer) - 1; offset += 1 {
+        r := rune(str[offset])
+
+        if !word_started {
+            if !strings.contains_rune(delimiters, r) {
+                word_started = true
+            }
+        } else {
+            if strings.contains_rune(delimiters, r) {
+                word_started = false
+                found += 1
+            }
+        }
+
+        if found == count {
+            break
+        }
+    }
+
+    return max(0, offset - starting_cursor)
+}
+
+move_cursor :: proc(buffer: ^Buffer, from, to: int, break_on_newline: bool) {
+    str := strings.to_string(buffer.builder^)
+
+    for x := from; x < len(str); x += 1 {
+        buffer.cursor = x
+        if x == to || (break_on_newline && str[x] == '\n') { break }
+    }
+}
+
 buffer_search :: proc(buffer: ^Buffer, query: string) -> []int {
     results := make([dynamic]int, 0, 10, context.temp_allocator)
-    str := string(buffer.builder.buf[:])
+    str := strings.to_string(buffer.builder^)
     initial_length := len(str)
 
     for {
@@ -203,6 +315,22 @@ clear_history :: proc(history: ^[dynamic]History_State) {
         delete(item.data)
     }
     clear(history)
+}
+
+undo_redo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]History_State) {
+    if len(undo) > 0 {
+        push_history_state(buffer, redo)
+        item := pop(undo)
+
+        buffer.cursor    = item.cursor
+        buffer.gap_end   = item.gap_end
+        buffer.gap_start = item.gap_start
+
+        delete(buffer.data)
+        buffer.data = slice.clone(item.data, buffer.allocator)
+        delete(item.data)
+        buffer.dirty = true
+    }
 }
 
 push_history_state :: proc(
@@ -233,8 +361,8 @@ check_buffer_history_state :: proc(buffer: ^Buffer) {
 buffer_save :: proc(buffer: ^Buffer) {
     if buffer.modified {
         log.debugf("Saving {0}", buffer.name)
-        changed := sanitize_buffer(buffer)
-        str := string(buffer.builder.buf[:])
+        // sanitize_buffer(buffer)
+        str := strings.to_string(buffer.builder^)
         err := os.write_entire_file_or_err(buffer.filepath, transmute([]u8)str)
 
         if err != nil {
@@ -242,48 +370,41 @@ buffer_save :: proc(buffer: ^Buffer) {
             return
         }
 
-        buffer.dirty = changed
+        // buffer.dirty = changed
+        buffer.modified = false
     } else {
         log.debugf("Nothing to save in {0}", buffer.name)
     }
 }
 
-sanitize_buffer :: proc(buffer: ^Buffer) -> (changed: bool) {
+sanitize_buffer :: proc(buffer: ^Buffer) {
     assert(buffer.builder != nil)
 
-    LF_COUNT :: 2
+    LF_COUNT :: 1
     initial_cursor_pos := buffer.cursor
-    str := string(buffer.builder.buf[:])
-    counting_line_endings := true
     line_endings := 0
-    changed = false
+    changed := false
 
-    #reverse for r, index in str {
-        if counting_line_endings && r == '\n' {
-            line_endings += 1
-        } else {
-            counting_line_endings = false
-        }
-
-        if r == '\r' {
-            remove(buffer, index, 1)
-            changed = true
-        }
+    for x := len(buffer.data) - 1; x > 0; x -= 1 {
+        if buffer.data[x] != '\n' { break }
+        line_endings += 1
     }
 
     if line_endings < LF_COUNT {
         for ; line_endings > 0; line_endings -= 1 {
-            insert(buffer, buffer_len(buffer), rune('\n'))
+            insert_char(buffer, buffer_len(buffer), '\n')
             changed = true
         }
-    } else {
+    } else if line_endings > LF_COUNT {
         remove(buffer, buffer_len(buffer), LF_COUNT - line_endings)
         changed = true
     }
 
     buffer.cursor = clamp(initial_cursor_pos, 0, buffer_len(buffer) - 1)
-    rebuild_string_buffer(buffer)
-    return
+
+    if changed {
+        rebuild_string_buffer(buffer)
+    }
 }
 
 flush_entire_buffer :: proc(buffer: ^Buffer) {
@@ -291,7 +412,7 @@ flush_entire_buffer :: proc(buffer: ^Buffer) {
 }
 
 flush_range :: proc(buffer: ^Buffer, start, end: int) {
-    left, right := get_strings(buffer)
+    left, right := buffer_get_strings(buffer)
     assert(start >= 0, "invalid start position")
     assert(end <= buffer_len(buffer), "invalud end position")
 
@@ -307,15 +428,14 @@ flush_range :: proc(buffer: ^Buffer, start, end: int) {
     }
 }
 
-get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
-    left = string(buffer.data[:buffer.gap_start])
+buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
+    left  = string(buffer.data[:buffer.gap_start])
     right = string(buffer.data[buffer.gap_end:])
     return
 }
 
 rebuild_string_buffer :: proc(buffer: ^Buffer) {
     strings.builder_reset(buffer.builder)
-    strings.builder_init_len_cap(buffer.builder, buffer_len(buffer), len(buffer.data))
     flush_entire_buffer(buffer)
 }
 
@@ -331,7 +451,9 @@ remove :: proc(buffer: ^Buffer, pos: int, count: int) {
     }
 
     move_gap(buffer, effective_pos)
+    buffer.gap_end = min(buffer.gap_end + chars_to_remove, buffer_len(buffer))
     buffer.dirty = true
+    buffer.modified = true
 }
 
 insert :: proc{
@@ -350,6 +472,7 @@ insert_char :: proc(buffer: ^Buffer, pos: int, char: u8) {
     buffer.gap_start += 1
     buffer.cursor += 1
     buffer.dirty = true
+    buffer.modified = true
 }
 
 // Inserts array at pos
@@ -361,6 +484,7 @@ insert_array :: proc(buffer: ^Buffer, pos: int, array: []u8) {
     buffer.gap_start += len(array)
     buffer.cursor += len(array)
     buffer.dirty = true
+    buffer.modified = true
 }
 
 // Inserts rune (unicode char) at pos

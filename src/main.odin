@@ -44,8 +44,8 @@ Program_Context :: struct {
 }
 
 Bragi :: struct {
-    buffers:      [dynamic]Text_Buffer,
-    _buffers:     [dynamic]Buffer,
+    // buffers:      [dynamic]Text_Buffer,
+    buffers:     [dynamic]Buffer,
     panes:        [dynamic]Pane,
     current_pane: ^Pane,
     last_pane:    ^Pane,
@@ -79,10 +79,11 @@ destroy_editor :: proc() {
     }
 
     for &b in bragi.buffers {
-        destroy_text_buffer(&b)
+        destroy_buffer(&b)
     }
     for &p in bragi.panes {
         set_pane_mode(&p, Edit_Mode{})
+        strings.builder_destroy(&p.builder)
     }
     delete(bragi.buffers)
     delete(bragi.panes)
@@ -130,13 +131,13 @@ initialize_context :: proc() {
 initialize_editor :: proc() {
     log.debug("Initializing editor")
 
-    bragi.buffers = make([dynamic]Text_Buffer, 0, 10)
+    bragi.buffers = make([dynamic]Buffer, 0, 10)
     bragi.panes   = make([dynamic]Pane, 0, 2)
 
     create_pane()
 
     // TODO: This is a debug only thing
-    filepath := "C:/Code/bragi/src/main.odin"
+    filepath := "C:/Code/bragi/demo/hello.odin"
     open_file(filepath)
 }
 
@@ -225,9 +226,17 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
+        for &pane in bragi.panes {
+            begin_buffer(pane.buffer, &pane.builder)
+        }
+
         update_input()
         update_pane(bragi.current_pane)
         render()
+
+        for &pane in bragi.panes {
+            end_buffer(pane.buffer)
+        }
 
         free_all(context.temp_allocator)
 

@@ -22,12 +22,11 @@ New_Pane_Position :: enum {
 
 Caret :: struct {
     hidden:              bool,
+    max_offset:          int,
     last_keystroke_time: time.Tick,
     last_update_time:    time.Tick,
     last_cursor_pos:     int,
     position:            [2]i32,
-
-    max_x           : int,
 }
 
 Edit_Mode :: struct {}
@@ -110,6 +109,7 @@ create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
 
 update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
     if pane == nil { return }
+    begin_buffer(pane.buffer, &pane.builder)
 
     str := strings.to_string(pane.builder)
     std_char_size := get_standard_character_size()
@@ -158,6 +158,8 @@ update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
         x = c == '\n' ? 0 : x + 1
         y = c == '\n' ? y + 1 : y
     }
+
+    end_buffer(pane.buffer)
 }
 
 refresh_panes :: proc() {

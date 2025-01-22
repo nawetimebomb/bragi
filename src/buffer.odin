@@ -1,6 +1,7 @@
 package main
 
 import "base:runtime"
+import "core:fmt"
 import "core:log"
 import "core:mem"
 import "core:os"
@@ -95,6 +96,8 @@ create_buffer_from_file :: proc(
     result.filepath = filepath
     result.major_mode = find_major_mode(extension)
 
+    fmt.println(data)
+
     insert(result, 0, data)
     result.cursor = 0
     result.dirty = false
@@ -121,13 +124,14 @@ get_or_create_buffer :: proc(
 
 begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
     assert(builder != nil)
-    assert(buffer.dirty == false)
+    buffer.cursor = clamp(buffer.cursor, 0, buffer_len(buffer) - 1)
     buffer.builder = builder
     update_buffer_time(buffer)
 
-    if buffer.was_dirty || len(builder.buf) == 0 {
+    if buffer.dirty || buffer.was_dirty || len(builder.buf) == 0 {
+        buffer.dirty = false
         buffer.was_dirty = false
-        rebuild_string_buffer(buffer)
+        refresh_string_buffer(buffer)
     }
 }
 
@@ -157,26 +161,6 @@ destroy_buffer :: proc(buffer: ^Buffer) {
     buffer.builder = nil
 }
 
-canonicalize_coords_to_cursor :: proc(buffer: ^Buffer, x, y: int) {
-    assert(buffer.builder != nil)
-    str := strings.to_string(buffer.builder^)
-    local_x, local_y: int
-
-    for r, index in str {
-        if local_y == y {
-            bol, eol := get_line_boundaries(buffer, index)
-            length := eol - bol
-            buffer.cursor = length > x ? bol + x : eol
-            return
-        }
-        local_x += 1
-        if r == '\n' {
-            local_x = 0
-            local_y += 1
-        }
-    }
-}
-
 get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
     switch {
     case buffer.modified: status = "*"
@@ -185,40 +169,6 @@ get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
     }
 
     return
-}
-
-get_line_boundaries :: proc(buffer: ^Buffer, pos: int) -> (begin, end: int) {
-    begin = pos; end = pos
-    data := buffer.builder.buf
-
-    for {
-        bsearch := begin > 0 && data[begin - 1] != '\n'
-        esearch := end < len(data) - 1 && data[end] != '\n'
-        if bsearch { begin -= 1 }
-        if esearch { end += 1 }
-        if !bsearch && !esearch { return }
-    }
-}
-
-get_line_length :: proc(buffer: ^Buffer, pos: int) -> int {
-    bol, eol := get_line_boundaries(buffer, pos)
-    return eol - bol
-}
-
-get_word_boundaries :: proc(buffer: ^Buffer, pos: int) -> (begin, end: int) {
-    begin = pos; end = pos
-    str := strings.to_string(buffer.builder^)
-    delimiters := settings_get_word_delimiters(buffer.major_mode)
-
-    for {
-        brune := utf8.rune_at(str, begin - 1)
-        erune := utf8.rune_at(str, end)
-        bsearch := begin > 0 && !strings.contains_rune(delimiters, brune)
-        esearch := end < len(str) - 1 && !strings.contains_rune(delimiters, erune)
-        if bsearch { begin -= 1 }
-        if esearch { end += 1 }
-        if !bsearch && !esearch { return }
-    }
 }
 
 // TODO: Refactor this
@@ -358,12 +308,11 @@ check_buffer_history_state :: proc(buffer: ^Buffer) {
     buffer.last_edit_time = buffer.current_time
 }
 
-buffer_save :: proc(buffer: ^Buffer) {
+buffer_save :: proc(buffer: ^Buffer, data: []u8) {
     if buffer.modified {
         log.debugf("Saving {0}", buffer.name)
         // sanitize_buffer(buffer)
-        str := strings.to_string(buffer.builder^)
-        err := os.write_entire_file_or_err(buffer.filepath, transmute([]u8)str)
+        err := os.write_entire_file_or_err(buffer.filepath, data)
 
         if err != nil {
             log.errorf("Error saving buffer {0}", buffer.name)
@@ -403,7 +352,7 @@ sanitize_buffer :: proc(buffer: ^Buffer) {
     buffer.cursor = clamp(initial_cursor_pos, 0, buffer_len(buffer) - 1)
 
     if changed {
-        rebuild_string_buffer(buffer)
+        refresh_string_buffer(buffer)
     }
 }
 
@@ -415,6 +364,7 @@ flush_range :: proc(buffer: ^Buffer, start, end: int) {
     left, right := buffer_get_strings(buffer)
     assert(start >= 0, "invalid start position")
     assert(end <= buffer_len(buffer), "invalud end position")
+    assert(buffer.builder != nil)
 
     left_len := len(left)
 
@@ -434,12 +384,53 @@ buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
     return
 }
 
-rebuild_string_buffer :: proc(buffer: ^Buffer) {
-    strings.builder_reset(buffer.builder)
+refresh_string_buffer :: proc(buffer: ^Buffer) {
+    clear(&buffer.builder.buf)
     flush_entire_buffer(buffer)
 }
 
 // Deletes X characters. If positive, deletes forward
+// TODO: Support UTF8
+// remove :: proc(buffer: ^Buffer, pos: int, count: int) {
+//     check_buffer_history_state(buffer)
+//     removed_bytes := 0
+//     result_pos := pos
+//     byte_rel_pos := buffer.cursor
+
+//     if count < 0 {
+//         for index in 0..<abs(count) {
+//             byte_rel_pos -= 1
+//             removed_bytes += 1
+
+//             for byte_rel_pos > 0 &&
+//                 is_continuation_byte(buffer.data[byte_rel_pos]) {
+//                 byte_rel_pos -= 1
+//                 removed_bytes += 1
+//             }
+//         }
+
+//         result_pos = max(0, result_pos - removed_bytes)
+//     } else {
+//         for index in 0..<count {
+//             byte_rel_pos += 1
+//             removed_bytes += 1
+
+//             for byte_rel_pos < buffer_len(buffer) &&
+//                 is_continuation_byte(buffer.data[byte_rel_pos]) {
+//                     byte_rel_pos += 1
+//                     removed_bytes += 1
+//             }
+//         }
+//     }
+
+//     move_gap(buffer, result_pos)
+//     buffer.cursor = result_pos
+//     fmt.println(buffer.gap_end)
+//     buffer.gap_end = min(buffer.gap_end + removed_bytes, buffer_len(buffer))
+//     fmt.println(buffer.gap_end)
+//     buffer.dirty = true
+//     buffer.modified = true
+// }
 remove :: proc(buffer: ^Buffer, pos: int, count: int) {
     check_buffer_history_state(buffer)
     chars_to_remove := abs(count)
@@ -447,11 +438,11 @@ remove :: proc(buffer: ^Buffer, pos: int, count: int) {
 
     if count < 0 {
         effective_pos = max(0, effective_pos - chars_to_remove)
-        buffer.cursor = max(0, buffer.cursor - chars_to_remove)
+        buffer.cursor = effective_pos
     }
 
     move_gap(buffer, effective_pos)
-    buffer.gap_end = min(buffer.gap_end + chars_to_remove, buffer_len(buffer))
+    buffer.gap_end = min(buffer.gap_end + chars_to_remove, len(buffer.data))
     buffer.dirty = true
     buffer.modified = true
 }
@@ -504,11 +495,10 @@ buffer_len :: proc(buffer: ^Buffer) -> int {
 }
 
 move_gap :: proc(buffer: ^Buffer, pos: int) {
-    pos := clamp(pos, 0, buffer_len(buffer))
+    gap_len := buffer.gap_end - buffer.gap_start
+    pos := clamp(pos, 0, len(buffer.data) - gap_len)
 
-    if pos == buffer.gap_start {
-        return
-    }
+    if pos == buffer.gap_start { return }
 
     if buffer.gap_start < pos {
         delta := pos - buffer.gap_start
@@ -536,6 +526,6 @@ conditionally_grow_buffer :: proc(buffer: ^Buffer, count: int) {
         copy_slice(new_data_array, buffer.data[:buffer.gap_end])
         delete(buffer.data)
         buffer.data = new_data_array
-        buffer.gap_end = len(new_data_array)
+        buffer.gap_end = len(buffer.data)
     }
 }

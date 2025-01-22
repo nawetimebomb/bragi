@@ -17,7 +17,7 @@ TITLE   :: "Bragi"
 VERSION :: 0
 
 DEFAULT_FONT_DATA     :: #load("../res/font/firacode.ttf")
-DEFAULT_FONT_SIZE     :: 22
+DEFAULT_FONT_SIZE     :: 24
 DEFAULT_WINDOW_WIDTH  :: 1024
 DEFAULT_WINDOW_HEIGHT :: 768
 
@@ -166,7 +166,7 @@ initialize_settings :: proc() {
 // NOTE: This function should run every time the user changes the font
 set_characters_textures :: proc() {
     COLOR_WHITE : sdl.Color : { 255, 255, 255, 255 }
-    ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~á"
+    ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~áéíóúÁÉÍÓÚ"
 
     clear(&bragi.ctx.characters)
     log.debug("Generating new character textures")
@@ -226,17 +226,9 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
-        for &pane in bragi.panes {
-            begin_buffer(pane.buffer, &pane.builder)
-        }
-
         update_input()
         update_pane(bragi.current_pane)
         render()
-
-        for &pane in bragi.panes {
-            end_buffer(pane.buffer)
-        }
 
         free_all(context.temp_allocator)
 

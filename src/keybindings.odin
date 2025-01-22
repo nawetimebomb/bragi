@@ -107,19 +107,19 @@ handle_generic_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
             // buffer_scroll(buffer_page_size().y)
         }
         case .UP: {
-            previous_line(pane, S)
+            translate(pane, .previous_line, S)
             handled = true
         }
         case .DOWN: {
-            next_line(pane, S)
+            translate(pane, .next_line, S)
             handled = true
         }
         case .LEFT: {
-            backward_char(pane, S)
+            translate(pane, .backward_char, S)
             handled = true
         }
         case .RIGHT: {
-            forward_char(pane, S)
+            translate(pane, .forward_char, S)
             handled = true
         }
     }
@@ -168,16 +168,16 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     #partial switch key.sym {
         case .A: {
             if C {
-                beginning_of_line(pane, S)
+                translate(pane, .beginning_of_line, S)
                 handled = true
             }
         }
         case .B: {
             if A {
-                backward_word(pane, S)
+                translate(pane, .backward_word, S)
                 handled = true
             } else if C {
-                backward_char(pane, S)
+                translate(pane, .backward_char, S)
                 handled = true
             }
         }
@@ -192,16 +192,16 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
         }
         case .E: {
             if C {
-                end_of_line(pane, S)
+                translate(pane, .end_of_line, S)
                 handled = true
             }
         }
         case .F: {
             if A {
-                forward_word(pane, S)
+                translate(pane, .forward_word, S)
                 handled = true
             } else if C {
-                forward_char(pane, S)
+                translate(pane, .forward_char, S)
                 handled = true
             }
         }
@@ -222,7 +222,7 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
         }
         case .N: {
             if C {
-                next_line(pane, S)
+                translate(pane, .next_line, S)
                 handled = true
             }
         }
@@ -231,7 +231,7 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
                 mark_buffer(pane)
                 handled = true
             } else if C {
-                previous_line(pane, S)
+                translate(pane, .previous_line, S)
                 handled = true
             }
         }
@@ -291,25 +291,25 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
         }
         case .PERIOD: {
             if AS {
-                end_of_buffer(pane)
+                translate(pane, .end_of_buffer)
                 handled = true
             }
         }
         case .GREATER: {
             if A {
-                end_of_buffer(pane)
+                translate(pane, .end_of_buffer)
                 handled = true
             }
         }
         case .COMMA: {
             if AS {
-                beginning_of_buffer(pane)
+                translate(pane, .beginning_of_buffer)
                 handled = true
             }
         }
         case .LESS: {
             if A {
-                beginning_of_buffer(pane)
+                translate(pane, .beginning_of_buffer)
                 handled = true
             }
         }

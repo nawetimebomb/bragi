@@ -1,10 +1,10 @@
 package main
 
+import "core:fmt"
 import "core:slice"
 import "core:strings"
 
 Vector2 :: distinct [2]int
-Line    :: string
 
 open_file :: proc(filepath: string) {
     buffer_found := false
@@ -22,38 +22,73 @@ open_file :: proc(filepath: string) {
     }
 }
 
-beginning_of_buffer :: proc(pane: ^Pane) {
-    pane.buffer.cursor = 0
+Translation :: enum {
+    beginning_of_buffer,
+    beginning_of_line,
+    backward_char,
+    backward_word,
+    forward_char,
+    forward_word,
+    previous_line,
+    next_line,
+    end_of_buffer,
+    end_of_line,
 }
 
-beginning_of_line :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
+translate :: proc(p: ^Pane, t: Translation, mark := false) {
+    pos := p.buffer.cursor
+    buf := p.builder.buf[:]
 
-    bol, eol := get_line_boundaries(pane.buffer, pane.buffer.cursor)
-    new_cursor_position := bol
+    // TODO: Check for delimiters
 
-    if pane.buffer.cursor == bol {
-        str := string(pane.builder.buf[bol:eol])
-
-        for x := 0; x < len(str); x += 1 {
-            if str[x] != '\t' && str[x] != ' ' {
-                new_cursor_position = bol + x
-                break
-            }
-        }
+    if mark {
+        toggle_mark_on(p)
     }
 
-    pane.buffer.cursor = new_cursor_position
-}
+    switch t {
+    case .beginning_of_buffer:
+        pos = 0
+    case .beginning_of_line:
+        for pos > 0 && !is_newline(buf[pos - 1]) { pos -= 1 }
 
-end_of_buffer :: proc(pane: ^Pane) {
-    pane.buffer.cursor = buffer_len(pane.buffer) - 1
-}
+        if pos == p.buffer.cursor {
+            for pos < len(buf) && is_whitespace(buf[pos]) { pos += 1 }
+        }
+    case .backward_char:
+        pos -= 1
+        for pos > 0 && is_continuation_byte(buf[pos]) { pos -= 1 }
+    case .backward_word:
+        for pos > 0 && !is_whitespace(buf[pos - 1]) { pos -= 1 }
+        for pos > 0 && is_whitespace(buf[pos - 1])  { pos -= 1 }
+    case .forward_char:
+        pos += 1
+        for pos < len(buf) && is_continuation_byte(buf[pos]) { pos += 1 }
+    case .forward_word:
+        for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
+        for pos < len(buf) && is_whitespace(buf[pos])  { pos += 1 }
+    case .previous_line:
+        prev_line_index := get_previous_line_start_index(buf, pos)
+        offset := max(get_current_line_offset(buf, pos), p.caret.max_offset)
+        pos = move_to(buf, prev_line_index, offset)
 
-end_of_line :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
-    _, eol := get_line_boundaries(pane.buffer, pane.buffer.cursor)
-    pane.buffer.cursor = eol
+        if offset > p.caret.max_offset {
+            p.caret.max_offset = offset
+        }
+    case .next_line:
+        next_line_index := get_next_line_start_index(buf, pos)
+        offset := max(get_current_line_offset(buf, pos), p.caret.max_offset)
+        pos = move_to(buf, next_line_index, offset)
+
+        if offset > p.caret.max_offset {
+            p.caret.max_offset = offset
+        }
+    case .end_of_buffer:
+        pos = buffer_len(p.buffer)
+    case .end_of_line:
+        for pos < len(buf) && !is_newline(buf[pos]) { pos += 1 }
+    }
+
+    p.buffer.cursor = pos
 }
 
 delete_backward_char :: proc(pane: ^Pane) {
@@ -61,8 +96,9 @@ delete_backward_char :: proc(pane: ^Pane) {
 }
 
 delete_backward_word :: proc(pane: ^Pane) {
-    offset := count_backward_words_offset(pane.buffer, pane.buffer.cursor, 1)
-    remove(pane.buffer, pane.buffer.cursor, -offset)
+    remove(pane.buffer, pane.buffer.cursor, scan_through_similar_runes(
+        strings.to_string(pane.builder), .right, pane.buffer.cursor,
+    ))
 }
 
 delete_forward_char :: proc(pane: ^Pane) {
@@ -70,80 +106,23 @@ delete_forward_char :: proc(pane: ^Pane) {
 }
 
 delete_forward_word :: proc(pane: ^Pane) {
-    offset := count_forward_words_offset(pane.buffer, pane.buffer.cursor, 1)
-    remove(pane.buffer, pane.buffer.cursor, offset)
+    remove(pane.buffer, pane.buffer.cursor, scan_through_similar_runes(
+        strings.to_string(pane.builder), .right, pane.buffer.cursor,
+    ))
 }
 
 newline :: proc(pane: ^Pane) {
-    insert(pane.buffer, pane.buffer.cursor, u8('\n'))
-}
-
-backward_char :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
-
-    pane.buffer.cursor = max(pane.buffer.cursor - 1, 0)
-}
-
-backward_word :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
-
-    offset := count_backward_words_offset(pane.buffer, pane.buffer.cursor, 1)
-    pane.buffer.cursor = max(0, pane.buffer.cursor - offset)
-}
-
-forward_char :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
-
-    pane.buffer.cursor = min(pane.buffer.cursor + 1, buffer_len(pane.buffer) - 1)
-}
-
-forward_word :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
-
-    offset := count_forward_words_offset(pane.buffer, pane.buffer.cursor, 1)
-    pane.buffer.cursor =
-        min(pane.buffer.cursor + offset, buffer_len(pane.buffer) - 1)
-}
-
-previous_line :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
-
-    bol, _ := get_line_boundaries(pane.buffer, pane.buffer.cursor)
-
-    if bol == 0 {
-        pane.buffer.cursor = 0
-    } else {
-        prev_bol, _ := get_line_boundaries(pane.buffer, bol - 1)
-        x_offset := max(pane.caret.max_x, pane.buffer.cursor - bol)
-        move_cursor(pane.buffer, prev_bol, prev_bol + x_offset, true)
-
-        if x_offset > pane.caret.max_x {
-            pane.caret.max_x = x_offset
-        }
-    }
-}
-
-next_line :: proc(pane: ^Pane, mark: bool) {
-    if mark { toggle_mark_on(pane) }
-
-    bol, eol := get_line_boundaries(pane.buffer, pane.buffer.cursor)
-    next_bol, _ := get_line_boundaries(pane.buffer, eol + 1)
-    x_offset := max(pane.caret.max_x, pane.buffer.cursor - bol)
-    move_cursor(pane.buffer, next_bol, next_bol + x_offset, true)
-
-    if x_offset > pane.caret.max_x {
-        pane.caret.max_x = x_offset
-    }
+    insert(pane.buffer, pane.buffer.cursor, byte('\n'))
 }
 
 yank :: proc(pane: ^Pane, callback: Paste_Proc) {
     insert(pane.buffer, pane.buffer.cursor, callback())
 }
 
-toggle_mark_on :: proc(pane: ^Pane) {
-    if type_of(pane.mode) != Mark_Mode {
-        set_pane_mode(pane, Mark_Mode{
-            begin = pane.buffer.cursor,
+toggle_mark_on :: proc(p: ^Pane) {
+    if _, ok := p.mode.(Mark_Mode); !ok {
+        set_pane_mode(p, Mark_Mode{
+            begin = p.buffer.cursor,
         })
     }
 }
@@ -192,7 +171,7 @@ kill_current_buffer :: proc(pane: ^Pane) {
 }
 
 kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
-    bol, eol := get_line_boundaries(pane.buffer, pane.buffer.cursor)
+    bol, eol := get_line_boundaries(strings.to_string(pane.builder), pane.buffer.cursor)
     line_length := eol - bol
 
     if line_length > 0 {
@@ -294,14 +273,15 @@ start_search :: proc(pane: ^Pane, direction: Search_Mode_Direction = .Forward) {
 mouse_set_point :: proc(pane: ^Pane, x, y: i32) {
     set_pane_mode(pane, Edit_Mode{})
     char_size := get_standard_character_size()
+    s := strings.to_string(pane.builder)
     rel_x := int(x / char_size.x + pane.camera.x)
     rel_y := int(y / char_size.y + pane.camera.y)
-    canonicalize_coords_to_cursor(pane.buffer, rel_x, rel_y)
+    pane.buffer.cursor = canonicalize_coords(s, rel_x, rel_y)
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
     mouse_set_point(pane, x, y)
-    bow, eow := get_word_boundaries(pane.buffer, pane.buffer.cursor)
+    bow, eow := get_word_boundaries(strings.to_string(pane.builder), pane.buffer.cursor)
 
     pane.buffer.cursor = eow
     set_pane_mode(pane, Mark_Mode{
@@ -311,7 +291,7 @@ mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
 
 mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
     mouse_set_point(pane, x, y)
-    bol, eol := get_line_boundaries(pane.buffer, pane.buffer.cursor)
+    bol, eol := get_line_boundaries(strings.to_string(pane.builder), pane.buffer.cursor)
 
     pane.buffer.cursor = eol
     set_pane_mode(pane, Mark_Mode{
@@ -323,6 +303,6 @@ scroll :: proc(pane: ^Pane, offset: i32) {
     pane.camera.y += offset
 }
 
-save_buffer :: proc(pane: ^Pane) {
-    buffer_save(pane.buffer)
+save_buffer :: proc(p: ^Pane) {
+    buffer_save(p.buffer, p.builder.buf[:])
 }

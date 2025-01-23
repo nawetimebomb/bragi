@@ -43,12 +43,24 @@ Program_Context :: struct {
     window_focused: bool,
 }
 
+Global_State_None :: struct {}
+Global_State_Search :: struct {
+    target: ^Pane,
+}
+
+Global_State :: union {
+    Global_State_None,
+    Global_State_Search,
+}
+
 Bragi :: struct {
-    // buffers:      [dynamic]Text_Buffer,
-    buffers:     [dynamic]Buffer,
+    buffers:      [dynamic]Buffer,
     panes:        [dynamic]Pane,
     current_pane: ^Pane,
     last_pane:    ^Pane,
+    minibuffer:   ^Buffer,
+    miniprompt:   strings.Builder,
+    global_state: Global_State,
 
     ctx:          Program_Context,
     keybinds:     Keybinds,
@@ -83,10 +95,12 @@ destroy_editor :: proc() {
     }
     for &p in bragi.panes {
         set_pane_mode(&p, Edit_Mode{})
-        strings.builder_destroy(&p.builder)
+        strings.builder_destroy(&p.contents)
     }
     delete(bragi.buffers)
     delete(bragi.panes)
+
+    strings.builder_destroy(&bragi.miniprompt)
 }
 
 destroy_settings :: proc() {
@@ -120,8 +134,7 @@ initialize_context :: proc() {
 
     set_characters_textures()
 
-    cursor := sdl.CreateSystemCursor(.IBEAM)
-    sdl.SetCursor(cursor)
+    sdl.SetCursor(sdl.CreateSystemCursor(.IBEAM))
 
     bragi.ctx.running        = true
     bragi.ctx.undo_allocator = context.allocator
@@ -133,6 +146,7 @@ initialize_editor :: proc() {
 
     bragi.buffers = make([dynamic]Buffer, 0, 10)
     bragi.panes   = make([dynamic]Pane, 0, 2)
+    bragi.miniprompt = strings.builder_make()
 
     create_pane()
 
@@ -222,7 +236,17 @@ main :: proc() {
         frame_start := sdl.GetPerformanceCounter()
 
         update_input()
+
+        if bragi.minibuffer != nil {
+            begin_buffer(bragi.minibuffer, &bragi.miniprompt)
+        }
+
         update_pane(bragi.current_pane)
+
+        if bragi.minibuffer != nil {
+            end_buffer(bragi.minibuffer)
+        }
+
         render()
 
         free_all(context.temp_allocator)

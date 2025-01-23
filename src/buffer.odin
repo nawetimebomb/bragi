@@ -16,7 +16,7 @@ EOL_Sequence :: enum { LF, CRLF, }
 
 History_State :: struct {
     cursor:    int,
-    data:      []u8,
+    data:      []byte,
     gap_end:   int,
     gap_start: int,
 }
@@ -25,7 +25,7 @@ Buffer :: struct {
     allocator:      runtime.Allocator,
 
     cursor:         int,
-    data:           []u8,
+    data:           []byte,
     dirty:          bool,
     was_dirty:      bool,
     gap_end:        int,
@@ -56,15 +56,18 @@ create_buffer :: proc(
     allocator := context.allocator,
 ) -> ^Buffer {
     append(&bragi.buffers, Buffer{
-        allocator    = allocator,
-        data         = make([]u8, bytes, allocator),
-        dirty        = false,
-        gap_end      = bytes,
-        major_mode   = .Fundamental,
-        name         = strings.clone(name),
-        redo         = make([dynamic]History_State, 0, 5),
-        undo         = make([dynamic]History_State, 0, 5),
-        undo_timeout = undo_timeout,
+        allocator      = allocator,
+        cursor         = 0,
+        data           = make([]byte, bytes, allocator),
+        dirty          = false,
+        enable_history = true,
+        gap_start      = 0,
+        gap_end        = bytes,
+        major_mode     = .Fundamental,
+        name           = strings.clone(name),
+        redo           = make([dynamic]History_State, 0, 5),
+        undo           = make([dynamic]History_State, 0, 5),
+        undo_timeout   = undo_timeout,
     })
 
     result := &bragi.buffers[len(bragi.buffers) - 1]
@@ -122,7 +125,6 @@ get_or_create_buffer :: proc(
 
 begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
     assert(builder != nil)
-    buffer.cursor = clamp(buffer.cursor, 0, buffer_len(buffer) - 1)
     buffer.builder = builder
     update_buffer_time(buffer)
 
@@ -134,10 +136,12 @@ begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
 }
 
 update_buffer_time :: proc(buffer: ^Buffer) {
-    buffer.current_time = time.tick_now()
-	if buffer.undo_timeout <= 0 {
-		buffer.undo_timeout = UNDO_DEFAULT_TIMEOUT
-	}
+    if buffer.enable_history {
+        buffer.current_time = time.tick_now()
+	    if buffer.undo_timeout <= 0 {
+		    buffer.undo_timeout = UNDO_DEFAULT_TIMEOUT
+	    }
+    }
 }
 
 end_buffer :: proc(buffer: ^Buffer) {
@@ -169,70 +173,6 @@ get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
     return
 }
 
-// TODO: Refactor this
-count_backward_words_offset :: proc(buffer: ^Buffer, cursor, count: int) -> int {
-    found, offset: int
-    starting_cursor := cursor
-    str := strings.to_string(buffer.builder^)
-    word_started := false
-    delimiters := settings_get_word_delimiters(buffer.major_mode)
-
-    for offset = starting_cursor; offset > 0; offset -= 1 {
-        r := rune(str[offset])
-
-        if !word_started {
-            if !strings.contains_rune(delimiters, r) {
-                word_started = true
-            }
-        } else {
-            if strings.contains_rune(delimiters, r) {
-                // NOTE: adjustment for better feeling when trying to find
-                // or delete a previous word, since we don't need to get
-                // stuck on the end of a line
-                if r == '\n' { offset -= 1 }
-                word_started = false
-                found += 1
-            }
-        }
-
-        if found == count {
-            break
-        }
-    }
-
-    return max(0, starting_cursor - offset)
-}
-
-// TODO: Refactor this
-count_forward_words_offset :: proc(buffer: ^Buffer, cursor, count: int) -> int {
-    found, offset: int
-    starting_cursor := cursor
-    str := strings.to_string(buffer.builder^)
-    word_started := false
-    delimiters := settings_get_word_delimiters(buffer.major_mode)
-
-    for offset = starting_cursor; offset < buffer_len(buffer) - 1; offset += 1 {
-        r := rune(str[offset])
-
-        if !word_started {
-            if !strings.contains_rune(delimiters, r) {
-                word_started = true
-            }
-        } else {
-            if strings.contains_rune(delimiters, r) {
-                word_started = false
-                found += 1
-            }
-        }
-
-        if found == count {
-            break
-        }
-    }
-
-    return max(0, offset - starting_cursor)
-}
-
 move_cursor :: proc(buffer: ^Buffer, from, to: int, break_on_newline: bool) {
     str := strings.to_string(buffer.builder^)
 
@@ -240,21 +180,6 @@ move_cursor :: proc(buffer: ^Buffer, from, to: int, break_on_newline: bool) {
         buffer.cursor = x
         if x == to || (break_on_newline && str[x] == '\n') { break }
     }
-}
-
-buffer_search :: proc(buffer: ^Buffer, query: string) -> []int {
-    results := make([dynamic]int, 0, 10, context.temp_allocator)
-    str := strings.to_string(buffer.builder^)
-    initial_length := len(str)
-
-    for {
-        index := strings.index(str, query)
-        if index == -1 { break }
-        append(&results, initial_length - len(str) + index)
-        str = str[index + len(query):]
-    }
-
-    return slice.clone(results[:])
 }
 
 clear_history :: proc(history: ^[dynamic]History_State) {
@@ -296,17 +221,19 @@ push_history_state :: proc(
 }
 
 check_buffer_history_state :: proc(buffer: ^Buffer) {
-    clear_history(&buffer.redo)
+    if buffer.enable_history {
+        clear_history(&buffer.redo)
 
-    if time.tick_diff(buffer.last_edit_time, buffer.current_time) > buffer.undo_timeout {
-        log.debugf("Creating a new history state for buffer {0}", buffer.name)
-        push_history_state(buffer, &buffer.undo)
+        if time.tick_diff(buffer.last_edit_time, buffer.current_time) > buffer.undo_timeout {
+            log.debugf("Creating a new history state for buffer {0}", buffer.name)
+            push_history_state(buffer, &buffer.undo)
+        }
+
+        buffer.last_edit_time = buffer.current_time
     }
-
-    buffer.last_edit_time = buffer.current_time
 }
 
-buffer_save :: proc(buffer: ^Buffer, data: []u8) {
+buffer_save :: proc(buffer: ^Buffer, data: []byte) {
     if buffer.modified {
         log.debugf("Saving {0}", buffer.name)
         // sanitize_buffer(buffer)
@@ -383,7 +310,8 @@ buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
 }
 
 refresh_string_buffer :: proc(buffer: ^Buffer) {
-    clear(&buffer.builder.buf)
+    assert(buffer.builder != nil)
+    strings.builder_reset(buffer.builder)
     flush_entire_buffer(buffer)
 }
 
@@ -414,6 +342,7 @@ insert :: proc{
 
 // Inserts u8 character at pos
 insert_char :: proc(buffer: ^Buffer, pos: int, char: u8) {
+    assert(pos >= 0 && pos <= buffer_len(buffer))
     check_buffer_history_state(buffer)
     conditionally_grow_buffer(buffer, 1)
     move_gap(buffer, pos)
@@ -425,7 +354,8 @@ insert_char :: proc(buffer: ^Buffer, pos: int, char: u8) {
 }
 
 // Inserts array at pos
-insert_array :: proc(buffer: ^Buffer, pos: int, array: []u8) {
+insert_array :: proc(buffer: ^Buffer, pos: int, array: []byte) {
+    assert(pos >= 0 && pos <= buffer_len(buffer))
     check_buffer_history_state(buffer)
     conditionally_grow_buffer(buffer, len(array))
     move_gap(buffer, pos)
@@ -444,7 +374,7 @@ insert_rune :: proc(buffer: ^Buffer, pos: int, r: rune) {
 
 // Inserts string at pos
 insert_string :: proc(buffer: ^Buffer, pos: int, str: string) {
-    insert_array(buffer, pos, transmute([]u8)str)
+    insert_array(buffer, pos, transmute([]byte)str)
 }
 
 buffer_len :: proc(buffer: ^Buffer) -> int {
@@ -453,8 +383,7 @@ buffer_len :: proc(buffer: ^Buffer) -> int {
 }
 
 move_gap :: proc(buffer: ^Buffer, pos: int) {
-    gap_len := buffer.gap_end - buffer.gap_start
-    pos := clamp(pos, 0, len(buffer.data) - gap_len)
+    pos := clamp(pos, 0, buffer_len(buffer))
 
     if pos == buffer.gap_start { return }
 
@@ -480,7 +409,7 @@ conditionally_grow_buffer :: proc(buffer: ^Buffer, count: int) {
         new_data_len := max(2 * len(buffer.data), required_new_data_array_size)
 
         move_gap(buffer, len(buffer.data) - gap_len)
-        new_data_array := make([]u8, new_data_len, buffer.allocator)
+        new_data_array := make([]byte, new_data_len, buffer.allocator)
         copy_slice(new_data_array, buffer.data[:buffer.gap_end])
         delete(buffer.data)
         buffer.data = new_data_array

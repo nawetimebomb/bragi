@@ -237,7 +237,7 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
         }
         case .R: {
             if C {
-                search_backward(pane)
+                search(pane)
                 handled = true
             }
         }
@@ -250,7 +250,7 @@ handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
                 // save_some_buffers()
                 // handled = true
             } else if C {
-                search_forward(pane)
+                search(pane)
                 handled = true
             }
         }
@@ -434,31 +434,24 @@ update_input :: proc() {
                 case .TEXTINPUT: {
                     if !input_handled {
                         pane := bragi.current_pane
-                        search_mode, search_enabled := pane.mode.(Search_Mode)
-                        mark_mode, mark_enabled := pane.mode.(Mark_Mode)
                         input_char := cstring(raw_data(e.text.text[:]))
                         str := string(input_char)
 
-                        switch {
-                        case mark_enabled:
-                            start  := min(mark_mode.begin, pane.buffer.cursor)
-                            end    := max(mark_mode.begin, pane.buffer.cursor)
-                            length := end - start
-                            pane.buffer.cursor = start
-
-                            remove(pane.buffer, pane.buffer.cursor, length)
-                            set_pane_mode(pane, Edit_Mode{})
-                            insert(pane.buffer, pane.buffer.cursor, str)
-                        case search_enabled:
-                            insert(search_mode.buffer, search_mode.buffer.cursor, str)
-
-                            if search_mode.direction == .Forward {
-                                search_forward(pane)
-                            } else {
-                                search_backward(pane)
+                        if bragi.minibuffer != nil {
+                            insert(bragi.minibuffer, bragi.minibuffer.cursor, str)
+                        } else {
+                            switch m in pane.mode {
+                            case Edit_Mode:
+                                insert(pane.buffer, pane.buffer.cursor, str)
+                            case Mark_Mode:
+                                start  := min(m.begin, pane.buffer.cursor)
+                                end    := max(m.begin, pane.buffer.cursor)
+                                length := end - start
+                                pane.buffer.cursor = start
+                                remove(pane.buffer, pane.buffer.cursor, length)
+                                set_pane_mode(pane, Edit_Mode{})
+                                insert(pane.buffer, pane.buffer.cursor, str)
                             }
-                        case :
-                            insert(pane.buffer, pane.buffer.cursor, str)
                         }
                     }
                     return

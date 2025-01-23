@@ -40,23 +40,15 @@ Search_Mode_Direction :: enum {
     Backward, Forward,
 }
 
-Search_Mode :: struct {
-    buffer:    ^Buffer,
-    builder:   strings.Builder,
-    direction: Search_Mode_Direction,
-    query_len: int,
-    results:   []int,
-}
-
 Pane_Mode :: union #no_nil {
     Edit_Mode,
     Mark_Mode,
-    Search_Mode,
 }
 
 Pane :: struct {
     buffer:     ^Buffer,
-    builder:    strings.Builder,
+    contents:   strings.Builder,
+
     camera:     [2]i32,
     caret:      Caret,
     dimensions: [2]i32,
@@ -69,18 +61,12 @@ set_pane_mode :: proc(pane: ^Pane, new_mode: Pane_Mode) {
     switch &mode in pane.mode {
     case Edit_Mode:
     case Mark_Mode:
-    case Search_Mode:
-        delete(mode.results)
-        destroy_buffer(mode.buffer)
-        strings.builder_destroy(&mode.builder)
     }
 
     // And then initialize the new ones
     switch &mode in new_mode {
     case Edit_Mode:
     case Mark_Mode:
-    case Search_Mode:
-        mode.builder = strings.builder_make()
     }
 
     pane.mode = new_mode
@@ -89,11 +75,11 @@ set_pane_mode :: proc(pane: ^Pane, new_mode: Pane_Mode) {
 // TODO: Calculate new buffer dimensions and origin
 create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
     new_pane := Pane{
-        builder = strings.builder_make(),
+        contents   = strings.builder_make(),
     }
 
     if from == nil {
-        new_pane.buffer = get_or_create_buffer("*notes*", 0)
+        new_pane.buffer = get_or_create_buffer("*notes*", 32)
     } else {
         if pos == .Undefined {
             log.errorf("Should define a position for the new pane")
@@ -109,9 +95,9 @@ create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
 
 update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
     if pane == nil { return }
-    begin_buffer(pane.buffer, &pane.builder)
+    begin_buffer(pane.buffer, &pane.contents)
 
-    str := strings.to_string(pane.builder)
+    str := strings.to_string(pane.contents)
     char_width, line_height := get_standard_character_size()
     caret := &pane.caret
     now := time.tick_now()

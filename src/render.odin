@@ -190,86 +190,50 @@ render :: proc() {
         } // End Modeline
     }
 
-    { // Start Minibuffer
+    if bragi.minibuffer != nil { // Start Minibuffer
+        prompt := ""
+        str_to_render := ""
+        show_minibuffer: bool
+        prompt_row := window_size.y - line_height * 8
+        content_row := window_size.y - line_height * 7
+        prompt_rect := sdl.Rect{ 0, prompt_row, window_size.x, line_height }
+        content_rect := sdl.Rect{ 0, content_row, window_size.x, line_height * 6 }
+
         switch s in bragi.global_state {
         case Global_State_None:
 
         case Global_State_Search:
-            assert(bragi.minibuffer != nil)
-            row := window_size.y - line_height * 8
-            prompt := strings.to_string(bragi.miniprompt)
-            mfmt :=fmt.tprintf(
-                "Search in buffer {0}: {1}",
-                s.target.buffer.name, prompt,
-            )
-            col: i32
-            dest_rect := sdl.Rect{
-                0, row,
-                window_size.x, line_height,
-            }
-            set_bg(highlight)
-            sdl.RenderFillRect(renderer, &dest_rect)
-            set_bg(modeline_on_bg)
-            sdl.RenderDrawRect(renderer, &dest_rect)
+            show_minibuffer = true
+            query := strings.to_string(bragi.miniprompt)
+            prompt = fmt.tprintf("Search in buffer {0}: ", s.target.buffer.name)
+            str_to_render = fmt.tprintf("{0}{1}", prompt, query)
+        }
 
-            content_rect := sdl.Rect{
-                0, row + line_height,
-                window_size.x, line_height * 6,
-            }
+        if show_minibuffer {
+            set_bg(modeline_on_bg)
+            sdl.RenderFillRect(renderer, &prompt_rect)
+            set_bg(modeline_on_fg)
+            sdl.RenderDrawRect(renderer, &prompt_rect)
             set_bg(background)
             sdl.RenderFillRect(renderer, &content_rect)
 
-            for r, index in mfmt {
-                c := bragi.ctx.characters[r]
-                c.dest.x = col
-                c.dest.y = row
+            cursor_x := i32(len(prompt) + bragi.minibuffer.cursor) * char_width
+            cursor_rect := sdl.Rect{
+                cursor_x, prompt_rect.y,
+                char_width, line_height,
+            }
+            set_bg(cursor)
+            sdl.RenderFillRect(renderer, &cursor_rect)
 
-                set_fg(c.texture, background)
+            for r, index in str_to_render {
+                c := bragi.ctx.characters[r]
+                c.dest.x = char_width * i32(index)
+                c.dest.y = prompt_row
+
+                set_fg(c.texture, modeline_on_fg)
                 sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
-                col += char_width
             }
         }
-        // switch m in pane.mode {
-        // case Edit_Mode:
-
-        // case Search_Mode:
-        //     row := dims.y - line_height
-        //     minibuffer := strings.to_string(pane.minibuffer)
-        //     sm_fmt := fmt.tprintf("Search: {0}", minibuffer)
-
-        //     for r, index in sm_fmt {
-        //         c := bragi.ctx.characters[r]
-        //         c.dest.x = c.dest.w * i32(index)
-        //         c.dest.y = row
-
-        //         set_fg(c.texture, default)
-        //         sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
-        //     }
-        // case Mark_Mode:
-        //     start := min(pane.buffer.cursor, m.begin)
-        //     end   := max(pane.buffer.cursor, m.begin)
-        //     count_of_marked_characters := end - start
-        //     mm_fmt := fmt.tprintf("marked: {0}", count_of_marked_characters)
-        //     fmt_length := i32(len(mm_fmt))
-        //     dest_rect := sdl.Rect{
-        //         dims.x - fmt_length * char_width,
-        //         dims.y - line_height,
-        //         char_width * fmt_length, line_height,
-        //     }
-
-        //     set_bg(background)
-        //     sdl.RenderFillRect(renderer, &dest_rect)
-
-        //     for r, index in mm_fmt {
-        //         c := bragi.ctx.characters[r]
-        //         c.dest.x =
-        //             dims.x - fmt_length * char_width + i32(index) * char_width
-        //         c.dest.y = dims.y - line_height
-
-        //         set_fg(c.texture, default)
-        //         sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
-        //     }
-        // }
     } // End Minibuffer
 
     sdl.RenderPresent(renderer)

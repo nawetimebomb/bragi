@@ -40,8 +40,6 @@ translate :: proc(p: ^Pane, t: Translation, mark := false) {
     pos := p.buffer.cursor
     buf := p.contents.buf[:]
 
-    // TODO: Check for delimiters
-
     if mark {
         toggle_mark_on(p)
     }

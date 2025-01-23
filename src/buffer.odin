@@ -30,6 +30,7 @@ Buffer :: struct {
     was_dirty:      bool,
     gap_end:        int,
     gap_start:      int,
+    lines:          [dynamic]int,
 
     enable_history: bool,
     redo:           [dynamic]History_State,
@@ -63,6 +64,7 @@ create_buffer :: proc(
         enable_history = true,
         gap_start      = 0,
         gap_end        = bytes,
+        lines          = make([dynamic]int, 0, 32),
         major_mode     = .Fundamental,
         name           = strings.clone(name),
         redo           = make([dynamic]History_State, 0, 5),
@@ -132,6 +134,7 @@ begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
         buffer.dirty = false
         buffer.was_dirty = false
         refresh_string_buffer(buffer)
+        recalculate_lines(buffer)
     }
 }
 
@@ -157,10 +160,75 @@ destroy_buffer :: proc(buffer: ^Buffer) {
     clear_history(&buffer.undo)
     clear_history(&buffer.redo)
     delete(buffer.data)
+    delete(buffer.lines)
     delete(buffer.name)
     delete(buffer.redo)
     delete(buffer.undo)
     buffer.builder = nil
+}
+
+recalculate_lines :: proc(buffer: ^Buffer) {
+    assert(buffer.builder != nil)
+    buf := buffer.builder.buf[:]
+
+    // TODO: Add an offset here to make sure the lines array is generated from
+    // where things changed.
+    if len(buffer.lines) == 0 {
+        append(&buffer.lines, 0)
+    }
+
+    // TODO: This 1 should be changed by the offset where I need to check, which for that,
+    // I will need to recalculate.
+    remove_range(&buffer.lines, 1, len(buffer.lines))
+
+    for c, index in buf {
+        if c == '\n' {
+            append(&buffer.lines, index + 1)
+        }
+    }
+}
+
+is_between_line :: #force_inline proc(buffer: ^Buffer, line, pos: int) -> bool {
+    if line + 1 < len(buffer.lines) {
+        current_bol := get_line_offset(buffer, line)
+        next_bol := get_line_offset(buffer, line + 1)
+        return pos >= current_bol && pos < next_bol
+    }
+
+    return true
+}
+
+is_last_line :: #force_inline proc(buffer: ^Buffer, line: int) -> bool {
+    return line == len(buffer.lines) - 1
+}
+
+get_end_of_line :: #force_inline proc(buffer: ^Buffer, line: int) -> int {
+    if line + 1 < len(buffer.lines) {
+        offset := get_line_offset(buffer, line + 1)
+        return offset - 1
+    }
+
+    return buffer.lines[line]
+}
+
+get_line_number :: #force_inline proc(buffer: ^Buffer, pos: int) -> (line: int) {
+    for offset, index in buffer.lines {
+        if is_between_line(buffer, index, pos) {
+            line = index
+            break
+        }
+    }
+
+    return
+}
+
+get_current_line_offset :: #force_inline proc(buffer: ^Buffer, pos: int) -> (offset: int) {
+    return buffer.lines[get_line_number(buffer, pos)]
+}
+
+get_line_offset :: #force_inline proc(buffer: ^Buffer, line: int) -> (offset: int) {
+    assert(line < len(buffer.lines))
+    return buffer.lines[line]
 }
 
 get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {

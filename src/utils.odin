@@ -57,12 +57,6 @@ get_standard_character_size :: proc() -> (char_width, line_length: i32) {
     return M_char_rect.w, M_char_rect.h
 }
 
-
-get_current_line_offset :: proc(d: []u8, pos: int) -> (offset: int) {
-    bol, _ := get_line_boundaries(d, pos)
-    return pos - bol
-}
-
 get_next_line_start_index :: proc(d: []u8, pos: int) -> (index: int) {
     _, eol := get_line_boundaries(d, pos)
     return eol + 1

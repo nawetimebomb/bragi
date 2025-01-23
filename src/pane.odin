@@ -120,30 +120,33 @@ update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
         caret.hidden = !caret.hidden
     }
 
-    x, y: i32
+    // x, y: i32
 
-    for c, i in str {
-        if pane.buffer.cursor == i {
-            caret.position = { x, y }
+    caret.position.y = i32(get_line_number(pane.buffer, pane.buffer.cursor))
+    caret.position.x = i32(pane.buffer.cursor - pane.buffer.lines[caret.position.y])
 
-            if x > pane.camera.x + page_size_x {
-                pane.camera.x = x - page_size_x
-            } else if x < pane.camera.x {
-                pane.camera.x = x
-            }
+    // for c, i in str {
+    //     if pane.buffer.cursor == i {
+    //         caret.position = { x, y }
 
-            if y > pane.camera.y + page_size_y {
-                pane.camera.y = y - page_size_y
-            } else if y < pane.camera.y {
-                pane.camera.y = y
-            }
+    //         if x > pane.camera.x + page_size_x {
+    //             pane.camera.x = x - page_size_x
+    //         } else if x < pane.camera.x {
+    //             pane.camera.x = x
+    //         }
 
-            break
-        }
+    //         if y > pane.camera.y + page_size_y {
+    //             pane.camera.y = y - page_size_y
+    //         } else if y < pane.camera.y {
+    //             pane.camera.y = y
+    //         }
 
-        x = c == '\n' ? 0 : x + 1
-        y = c == '\n' ? y + 1 : y
-    }
+    //         break
+    //     }
+
+    //     x = c == '\n' ? 0 : x + 1
+    //     y = c == '\n' ? y + 1 : y
+    // }
 
     end_buffer(pane.buffer)
 }

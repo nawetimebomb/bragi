@@ -66,20 +66,52 @@ translate :: proc(p: ^Pane, t: Translation, mark := false) {
         for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
         for pos < len(buf) && is_whitespace(buf[pos])  { pos += 1 }
     case .previous_line:
-        prev_line_index := get_previous_line_start_index(buf, pos)
-        offset := max(get_current_line_offset(buf, pos), p.caret.max_offset)
-        pos = move_to(buf, prev_line_index, offset)
+        line_number := get_line_number(p.buffer, pos)
 
-        if offset > p.caret.max_offset {
-            p.caret.max_offset = offset
+        if line_number == 0 {
+            log.debug("Beginning of buffer")
+            return
+        }
+
+        bol := get_line_offset(p.buffer, line_number)
+        prev_line_number := line_number - 1
+        prev_bol := get_line_offset(p.buffer, prev_line_number)
+        pos_offset := pos - bol
+
+        if pos_offset > 0 {
+            p.caret.max_offset = pos_offset
+        }
+
+        if is_between_line(p.buffer, prev_line_number, prev_bol + p.caret.max_offset) {
+            pos = prev_bol + p.caret.max_offset
+        } else if is_between_line(p.buffer, prev_line_number, prev_bol + pos_offset) {
+            pos = prev_bol + pos_offset
+        } else {
+            pos = get_end_of_line(p.buffer, prev_line_number)
         }
     case .next_line:
-        next_line_index := get_next_line_start_index(buf, pos)
-        offset := max(get_current_line_offset(buf, pos), p.caret.max_offset)
-        pos = move_to(buf, next_line_index, offset)
+        line_number := get_line_number(p.buffer, pos)
 
-        if offset > p.caret.max_offset {
-            p.caret.max_offset = offset
+        if is_last_line(p.buffer, line_number) {
+            log.debug("End of buffer")
+            return
+        }
+
+        bol := get_line_offset(p.buffer, line_number)
+        next_line_number := line_number + 1
+        next_bol := get_line_offset(p.buffer, next_line_number)
+        pos_offset := pos - bol
+
+        if pos_offset > 0 {
+            p.caret.max_offset = pos_offset
+        }
+
+        if is_between_line(p.buffer, next_line_number, next_bol + p.caret.max_offset) {
+            pos = next_bol + p.caret.max_offset
+        } else if is_between_line(p.buffer, next_line_number, next_bol + pos_offset) {
+            pos = next_bol + pos_offset
+        } else {
+            pos = get_end_of_line(p.buffer, next_line_number)
         }
     case .end_of_buffer:
         pos = buffer_len(p.buffer)
@@ -165,7 +197,10 @@ kill_current_buffer :: proc(pane: ^Pane) {
         }
     }
 
-    get_or_create_buffer("*notes*", 0)
+    if len(bragi.buffers) == 0 {
+        get_or_create_buffer("*notes*", 0)
+    }
+
     pane.buffer = &bragi.buffers[len(bragi.buffers) - 1]
 }
 

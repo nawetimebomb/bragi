@@ -275,7 +275,7 @@ set_state :: proc(s: Global_State) {
 }
 
 search :: proc(p: ^Pane) {
-    if s, ok := bragi.global_state.(Global_State_Search); !ok {
+    if _, ok := bragi.global_state.(Global_State_Search); !ok {
         set_state(Global_State_Search{
             target = p,
         })

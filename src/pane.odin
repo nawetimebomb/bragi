@@ -112,17 +112,17 @@ update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
     begin_buffer(pane.buffer, &pane.builder)
 
     str := strings.to_string(pane.builder)
-    std_char_size := get_standard_character_size()
+    char_width, line_height := get_standard_character_size()
     caret := &pane.caret
     now := time.tick_now()
 
     // TODO: This should update every time create_pane is called
     pane.dimensions = {
-        bragi.ctx.window_size.x, bragi.ctx.window_size.y - std_char_size.y,
+        bragi.ctx.window_size.x, bragi.ctx.window_size.y - line_height,
     }
 
-    page_size_x := pane.dimensions.x / i32(std_char_size.x) - 1
-    page_size_y := pane.dimensions.y / i32(std_char_size.y) - 1
+    page_size_x := pane.dimensions.x / char_width - 1
+    page_size_y := pane.dimensions.y / line_height - 1
 
     if time.tick_diff(caret.last_keystroke_time, time.tick_now()) < CARET_RESET_TIMEOUT {
         caret.last_update_time = now

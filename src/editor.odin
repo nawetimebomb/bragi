@@ -171,7 +171,7 @@ kill_current_buffer :: proc(pane: ^Pane) {
 }
 
 kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
-    bol, eol := get_line_boundaries(strings.to_string(pane.builder), pane.buffer.cursor)
+    bol, eol := get_line_boundaries(pane.builder.buf[:], pane.buffer.cursor)
     line_length := eol - bol
 
     if line_length > 0 {
@@ -272,11 +272,10 @@ start_search :: proc(pane: ^Pane, direction: Search_Mode_Direction = .Forward) {
 
 mouse_set_point :: proc(pane: ^Pane, x, y: i32) {
     set_pane_mode(pane, Edit_Mode{})
-    char_size := get_standard_character_size()
-    s := strings.to_string(pane.builder)
-    rel_x := int(x / char_size.x + pane.camera.x)
-    rel_y := int(y / char_size.y + pane.camera.y)
-    pane.buffer.cursor = canonicalize_coords(s, rel_x, rel_y)
+    char_width, line_height := get_standard_character_size()
+    rel_x := int(x / char_width + pane.camera.x)
+    rel_y := int(y / line_height + pane.camera.y)
+    pane.buffer.cursor = canonicalize_coords(pane.builder.buf[:], rel_x, rel_y)
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
@@ -291,7 +290,7 @@ mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
 
 mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
     mouse_set_point(pane, x, y)
-    bol, eol := get_line_boundaries(strings.to_string(pane.builder), pane.buffer.cursor)
+    bol, eol := get_line_boundaries(pane.builder.buf[:], pane.buffer.cursor)
 
     pane.buffer.cursor = eol
     set_pane_mode(pane, Mark_Mode{

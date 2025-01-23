@@ -23,7 +23,7 @@ set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
 
 render :: proc() {
     colors := &bragi.settings.colorscheme_table
-    char_size := get_standard_character_size()
+    char_width, line_height := get_standard_character_size()
     renderer := bragi.ctx.renderer
     window_size := bragi.ctx.window_size
 
@@ -50,13 +50,14 @@ render :: proc() {
     for &pane in bragi.panes {
         caret := pane.caret
         camera := pane.camera
+        dims  := pane.dimensions
         focused := bragi.current_pane == &pane
 
         { // Start Caret
             dest_rect := sdl.Rect{
-                (caret.position.x - camera.x) * char_size.x,
-                (caret.position.y - camera.y) * char_size.y,
-                char_size.x, char_size.y,
+                (caret.position.x - camera.x) * char_width,
+                (caret.position.y - camera.y) * line_height,
+                char_width, line_height,
             }
 
             set_bg(cursor)
@@ -79,8 +80,8 @@ render :: proc() {
             x, y: i32
 
             for r, index in str {
-                column := (x - camera.x) * char_size.x
-                row := (y - camera.y) * char_size.y
+                column := (x - camera.x) * char_width
+                row := (y - camera.y) * line_height
                 c := bragi.ctx.characters[r]
                 c.dest.x = column
                 c.dest.y = row
@@ -114,17 +115,16 @@ render :: proc() {
                         case Edit_Mode:
 
                         case Mark_Mode:
-                            // TODO: Handle selection
-                            // start := min(mode.begin, pane.buffer.cursor)
-                            // end   := max(mode.begin, pane.buffer.cursor)
+                            start := min(mode.begin, pane.buffer.cursor)
+                            end   := max(mode.begin, pane.buffer.cursor)
 
-                            // if start <= index && end > index {
-                            //     set_bg(region)
-                            //     dest_rect := sdl.Rect{
-                            //         column, row, char_size.x, char_size.y,
-                            //     }
-                            //     sdl.RenderFillRect(renderer, &dest_rect)
-                            // }
+                            if start <= index && index < end {
+                                set_bg(region)
+                                dest_rect := sdl.Rect{
+                                    column, row, char_width, line_height,
+                                }
+                                sdl.RenderFillRect(renderer, &dest_rect)
+                            }
                         case Search_Mode:
                             if len(mode.results) > 0 {
                                 current := 0
@@ -147,15 +147,55 @@ render :: proc() {
                     x = 0
                     y += 1
                 }
-
             }
+
+            { // Start Message Minibuffer
+                switch m in pane.mode {
+                case Edit_Mode:
+
+                case Search_Mode:
+                    // for r, index in mb_fmt {
+                    //     c := bragi.ctx.characters[r]
+                    //     c.dest.x = c.dest.w * i32(index)
+                    //     c.dest.y = row
+
+                    //     set_fg(c.texture, search_enabled ? highlight : default)
+                    //     sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+                    // }
+
+                case Mark_Mode:
+                    start := min(pane.buffer.cursor, m.begin)
+                    end   := max(pane.buffer.cursor, m.begin)
+                    count_of_marked_characters := end - start
+                    mm_fmt := fmt.tprintf("marked: {0}", count_of_marked_characters)
+                    fmt_length := i32(len(mm_fmt))
+                    dest_rect := sdl.Rect{
+                        dims.x - fmt_length * char_width,
+                        dims.y - line_height,
+                        char_width * fmt_length, line_height,
+                    }
+
+                    set_bg(background)
+                    sdl.RenderFillRect(renderer, &dest_rect)
+
+                    for r, index in mm_fmt {
+                        c := bragi.ctx.characters[r]
+                        c.dest.x =
+                            dims.x - fmt_length * char_width + i32(index) * char_width
+                        c.dest.y = dims.y - line_height
+
+                        set_fg(c.texture, default)
+                        sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+                    }
+                }
+            } // End Message Minibuffer
 
             // for line, y_index in buffer_str_lines {
             //     for r, x_index in line {
             //         x := i32(x_index)
             //         y := i32(y_index)
-            //         column := (x - camera.x) * char_size.x
-            //         row := (y - camera.y) * char_size.y
+            //         column := (x - camera.x) * char_width
+            //         row := (y - camera.y) * line_height
             //         c := bragi.ctx.characters[r]
             //         c.dest.x = column
             //         c.dest.y = row
@@ -220,10 +260,10 @@ render :: proc() {
                 "{0}",
                 settings_get_major_mode_name(pane.buffer.major_mode),
             )
-            rml_fmt_size := i32(len(rml_fmt)) * char_size.x
-            row := window_size.y - char_size.y * 2
+            rml_fmt_size := i32(len(rml_fmt)) * char_width
+            row := window_size.y - line_height
             dest_rect := sdl.Rect{
-                0, row, pane.dimensions.x, char_size.y,
+                0, row, dims.x, line_height,
             }
 
             left_start_column  :: PADDING
@@ -255,42 +295,6 @@ render :: proc() {
                 sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
             }
         } // End Modeline
-
-        { // Start Message Minibuffer
-            row := window_size.y - char_size.y
-            dest_rect := sdl.Rect{ 0, row, window_size.x, char_size.y }
-            search_mode, search_enabled := pane.mode.(Search_Mode)
-            mb_fmt := ""
-            set_bg(background)
-            sdl.RenderFillRect(renderer, &dest_rect)
-
-            if search_enabled {
-                str := strings.to_string(search_mode.builder)
-                mb_fmt = fmt.tprintf("Search: {0}", str)
-
-                dest_rect := sdl.Rect{
-                    i32(len(mb_fmt)) * char_size.x, row,
-                    char_size.x, char_size.y,
-                }
-
-                set_bg(cursor)
-
-                if !caret.hidden {
-                    sdl.RenderFillRect(renderer, &dest_rect)
-                }
-
-                sdl.RenderDrawRect(renderer, &dest_rect)
-            }
-
-            for r, index in mb_fmt {
-                c := bragi.ctx.characters[r]
-                c.dest.x = c.dest.w * i32(index)
-                c.dest.y = row
-
-                set_fg(c.texture, search_enabled ? highlight : default)
-                sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
-            }
-        } // End Message Minibuffer
     }
 
     sdl.RenderPresent(bragi.ctx.renderer)

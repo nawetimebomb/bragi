@@ -190,11 +190,6 @@ set_characters_textures :: proc() {
     }
 }
 
-get_standard_character_size :: proc() -> [2]i32 {
-    M_char_rect := bragi.ctx.characters['M'].dest
-    return { M_char_rect.w, M_char_rect.h }
-}
-
 main :: proc() {
     context.logger = log.create_console_logger()
 

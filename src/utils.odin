@@ -35,12 +35,12 @@ move_to :: proc(d: []u8, start, count: int, stop_on_newline := true) -> (end: in
     return start + offset
 }
 
-canonicalize_coords :: proc(s: string, rel_x, rel_y: int) -> (point: int) {
+canonicalize_coords :: proc(d: []u8, rel_x, rel_y: int) -> (point: int) {
     x, y: int
 
-    for r, index in s {
+    for r, index in d {
         if y == rel_y {
-            bol, eol := get_line_boundaries(s, index)
+            bol, eol := get_line_boundaries(d, index)
             length := eol - bol
             point = length > rel_x ? bol + rel_x : eol
         }
@@ -52,37 +52,43 @@ canonicalize_coords :: proc(s: string, rel_x, rel_y: int) -> (point: int) {
     return
 }
 
+get_standard_character_size :: proc() -> (char_width, line_length: i32) {
+    M_char_rect := bragi.ctx.characters['M'].dest
+    return M_char_rect.w, M_char_rect.h
+}
+
+
 get_current_line_offset :: proc(d: []u8, pos: int) -> (offset: int) {
-    bol, _ := get_line_boundaries(string(d), pos)
+    bol, _ := get_line_boundaries(d, pos)
     return pos - bol
 }
 
-get_previous_line_start_index :: proc(d: []u8, pos: int) -> (index: int) {
-    bol, _ := get_line_boundaries(string(d), pos)
-    index, _ = get_line_boundaries(string(d), bol - 1)
-    return
-}
-
 get_next_line_start_index :: proc(d: []u8, pos: int) -> (index: int) {
-    _, eol := get_line_boundaries(string(d), pos)
+    _, eol := get_line_boundaries(d, pos)
     return eol + 1
 }
 
+get_previous_line_start_index :: proc(d: []u8, pos: int) -> (index: int) {
+    bol, _ := get_line_boundaries(d, pos)
+    index, _ = get_line_boundaries(d, bol - 1)
+    return
+}
+
 // Change this to use array of data
-get_line_boundaries :: proc(s: string, pos: int) -> (begin, end: int) {
+get_line_boundaries :: proc(d: []u8, pos: int) -> (begin, end: int) {
     begin = pos; end = pos
 
     for {
-        bsearch := begin > 0 && s[begin - 1] != '\n'
-        esearch := end < len(s) - 1 && s[end] != '\n'
+        bsearch := begin > 0 && d[begin - 1] != '\n'
+        esearch := end < len(d) - 1 && d[end] != '\n'
         if bsearch { begin -= 1 }
         if esearch { end += 1 }
         if !bsearch && !esearch { return }
     }
 }
 
-get_line_length :: proc(s: string, pos: int) -> int {
-    bol, eol := get_line_boundaries(s, pos)
+get_line_length :: proc(d: []u8, pos: int) -> int {
+    bol, eol := get_line_boundaries(d, pos)
     return eol - bol
 }
 
@@ -188,22 +194,6 @@ scan_through_similar_runes :: proc(
 
     offset = clamp(pos - start_offset, 0, len(s) - 1)
     fmt.println(offset)
-    return
-}
-
-scan_through_next_line :: proc(s: string, pos: int, max_offset: int) -> (offset: int) {
-    bol, eol := get_line_boundaries(s, pos)
-    next_bol, _ := get_line_boundaries(s, eol + 1)
-    offset = next_bol
-    last_pos := max(max_offset, bol - pos)
-
-    for x := next_bol; x < len(s); x += 1 {
-        if s[x] == '\n' { break }
-        if offset == next_bol + max_offset { break }
-
-        offset += 1
-    }
-
     return
 }
 

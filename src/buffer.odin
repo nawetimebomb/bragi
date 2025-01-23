@@ -96,8 +96,6 @@ create_buffer_from_file :: proc(
     result.filepath = filepath
     result.major_mode = find_major_mode(extension)
 
-    fmt.println(data)
-
     insert(result, 0, data)
     result.cursor = 0
     result.dirty = false
@@ -391,46 +389,6 @@ refresh_string_buffer :: proc(buffer: ^Buffer) {
 
 // Deletes X characters. If positive, deletes forward
 // TODO: Support UTF8
-// remove :: proc(buffer: ^Buffer, pos: int, count: int) {
-//     check_buffer_history_state(buffer)
-//     removed_bytes := 0
-//     result_pos := pos
-//     byte_rel_pos := buffer.cursor
-
-//     if count < 0 {
-//         for index in 0..<abs(count) {
-//             byte_rel_pos -= 1
-//             removed_bytes += 1
-
-//             for byte_rel_pos > 0 &&
-//                 is_continuation_byte(buffer.data[byte_rel_pos]) {
-//                 byte_rel_pos -= 1
-//                 removed_bytes += 1
-//             }
-//         }
-
-//         result_pos = max(0, result_pos - removed_bytes)
-//     } else {
-//         for index in 0..<count {
-//             byte_rel_pos += 1
-//             removed_bytes += 1
-
-//             for byte_rel_pos < buffer_len(buffer) &&
-//                 is_continuation_byte(buffer.data[byte_rel_pos]) {
-//                     byte_rel_pos += 1
-//                     removed_bytes += 1
-//             }
-//         }
-//     }
-
-//     move_gap(buffer, result_pos)
-//     buffer.cursor = result_pos
-//     fmt.println(buffer.gap_end)
-//     buffer.gap_end = min(buffer.gap_end + removed_bytes, buffer_len(buffer))
-//     fmt.println(buffer.gap_end)
-//     buffer.dirty = true
-//     buffer.modified = true
-// }
 remove :: proc(buffer: ^Buffer, pos: int, count: int) {
     check_buffer_history_state(buffer)
     chars_to_remove := abs(count)

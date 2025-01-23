@@ -122,8 +122,10 @@ update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
 
     // x, y: i32
 
-    caret.position.y = i32(get_line_number(pane.buffer, pane.buffer.cursor))
-    caret.position.x = i32(pane.buffer.cursor - pane.buffer.lines[caret.position.y])
+    if len(pane.buffer.lines) > 0 {
+        caret.position.y = i32(get_line_number(pane.buffer, pane.buffer.cursor))
+        caret.position.x = i32(pane.buffer.cursor - pane.buffer.lines[caret.position.y])
+    }
 
     // for c, i in str {
     //     if pane.buffer.cursor == i {

@@ -5,8 +5,6 @@ import "core:log"
 import "core:slice"
 import "core:strings"
 
-Vector2 :: distinct [2]int
-
 open_file :: proc(filepath: string) {
     buffer_found := false
 

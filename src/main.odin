@@ -235,13 +235,12 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
-        update_input()
-
         if bragi.minibuffer != nil {
             begin_buffer(bragi.minibuffer, &bragi.miniprompt)
         }
 
         update_pane(bragi.current_pane)
+        update_input()
 
         if bragi.minibuffer != nil {
             end_buffer(bragi.minibuffer)
@@ -276,9 +275,9 @@ main :: proc() {
         }
     }
 
-    destroy_context()
     destroy_editor()
     destroy_settings()
+    destroy_context()
 
     if reset_tracking_allocator(&tracking_allocator) {
         os.exit(1)

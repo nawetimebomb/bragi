@@ -7,18 +7,28 @@ import "core:mem"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "core:thread"
 import "core:time"
 import "core:unicode/utf8"
 
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
-
-EOL_Sequence :: enum { LF, CRLF, }
 
 History_State :: struct {
     cursor:    int,
     data:      []byte,
     gap_end:   int,
     gap_start: int,
+}
+
+Edit :: struct {
+    cursor: int,
+    length: int,
+}
+
+Buffer_Type :: enum {
+    file,
+    minibuffer,
+    scratch,
 }
 
 Buffer :: struct {
@@ -30,7 +40,10 @@ Buffer :: struct {
     was_dirty:      bool,
     gap_end:        int,
     gap_start:      int,
+    single_line:    bool,
     lines:          [dynamic]int,
+    //edits:          [dynamic]Edit,
+    type:           Buffer_Type,
 
     enable_history: bool,
     redo:           [dynamic]History_State,
@@ -47,7 +60,7 @@ Buffer :: struct {
     name:           string,
     readonly:       bool,
     modified:       bool,
-    eol_sequence:   EOL_Sequence,
+    crlf:           bool,
 }
 
 create_buffer :: proc(
@@ -130,11 +143,11 @@ begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
     buffer.builder = builder
     update_buffer_time(buffer)
 
-    if buffer.dirty || buffer.was_dirty || len(builder.buf) == 0 {
+    if buffer.dirty || buffer.was_dirty {
         buffer.dirty = false
         buffer.was_dirty = false
         refresh_string_buffer(buffer)
-        recalculate_lines(buffer)
+        recalculate_lines(buffer, buffer.builder.buf[:])
     }
 }
 
@@ -167,22 +180,13 @@ destroy_buffer :: proc(buffer: ^Buffer) {
     buffer.builder = nil
 }
 
-recalculate_lines :: proc(buffer: ^Buffer) {
-    assert(buffer.builder != nil)
-    buf := buffer.builder.buf[:]
+recalculate_lines :: proc(buffer: ^Buffer, buf: []u8) {
+    clear(&buffer.lines)
 
-    // TODO: Add an offset here to make sure the lines array is generated from
-    // where things changed.
-    if len(buffer.lines) == 0 {
-        append(&buffer.lines, 0)
-    }
-
-    // TODO: This 1 should be changed by the offset where I need to check, which for that,
-    // I will need to recalculate.
-    remove_range(&buffer.lines, 1, len(buffer.lines))
+    append(&buffer.lines, 0)
 
     for c, index in buf {
-        if c == '\n' {
+        if buf[index] == '\n' {
             append(&buffer.lines, index + 1)
         }
     }
@@ -268,9 +272,11 @@ undo_redo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]History_State) {
         buffer.gap_start = item.gap_start
 
         delete(buffer.data)
+        delete(buffer.lines)
         buffer.data = slice.clone(item.data, buffer.allocator)
         delete(item.data)
         buffer.dirty = true
+        buffer.modified = true
     }
 }
 
@@ -285,6 +291,13 @@ push_history_state :: proc(
     }
 
     append(history, item) or_return
+
+    // TODO: Keep history length to 5 temporarily
+    for len(history) > 5 {
+        delete(history[0].data)
+        ordered_remove(history, 0)
+    }
+
     return nil
 }
 

@@ -20,17 +20,6 @@ History_State :: struct {
     gap_start: int,
 }
 
-Edit :: struct {
-    cursor: int,
-    length: int,
-}
-
-Buffer_Type :: enum {
-    file,
-    minibuffer,
-    scratch,
-}
-
 Buffer :: struct {
     allocator:      runtime.Allocator,
 
@@ -42,8 +31,6 @@ Buffer :: struct {
     gap_start:      int,
     single_line:    bool,
     lines:          [dynamic]int,
-    //edits:          [dynamic]Edit,
-    type:           Buffer_Type,
 
     enable_history: bool,
     redo:           [dynamic]History_State,
@@ -138,7 +125,7 @@ get_or_create_buffer :: proc(
     return create_buffer(name, bytes, undo_timeout, allocator)
 }
 
-begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
+buffer_begin :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
     assert(builder != nil)
     buffer.builder = builder
     update_buffer_time(buffer)
@@ -151,16 +138,7 @@ begin_buffer :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
     }
 }
 
-update_buffer_time :: proc(buffer: ^Buffer) {
-    if buffer.enable_history {
-        buffer.current_time = time.tick_now()
-	    if buffer.undo_timeout <= 0 {
-		    buffer.undo_timeout = UNDO_DEFAULT_TIMEOUT
-	    }
-    }
-}
-
-end_buffer :: proc(buffer: ^Buffer) {
+buffer_end :: proc(buffer: ^Buffer) {
     buffer.builder = nil
 
     if buffer.dirty {
@@ -169,7 +147,7 @@ end_buffer :: proc(buffer: ^Buffer) {
     }
 }
 
-destroy_buffer :: proc(buffer: ^Buffer) {
+buffer_destroy :: proc(buffer: ^Buffer) {
     clear_history(&buffer.undo)
     clear_history(&buffer.redo)
     delete(buffer.data)
@@ -178,6 +156,15 @@ destroy_buffer :: proc(buffer: ^Buffer) {
     delete(buffer.redo)
     delete(buffer.undo)
     buffer.builder = nil
+}
+
+update_buffer_time :: proc(buffer: ^Buffer) {
+    if buffer.enable_history {
+        buffer.current_time = time.tick_now()
+	    if buffer.undo_timeout <= 0 {
+		    buffer.undo_timeout = UNDO_DEFAULT_TIMEOUT
+	    }
+    }
 }
 
 recalculate_lines :: proc(buffer: ^Buffer, buf: []u8) {

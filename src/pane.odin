@@ -6,15 +6,8 @@ import "core:mem"
 import "core:time"
 import "core:strings"
 
-CARET_BLINK_TIMER_DEFAULT :: 0.5
-
 CARET_RESET_TIMEOUT :: 50 * time.Millisecond
 CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
-
-Caret_Highlight :: struct {
-    start: int,
-    length: int,
-}
 
 New_Pane_Position :: enum {
     Right, Bottom, Undefined,
@@ -94,8 +87,7 @@ create_pane :: proc(from: ^Pane = nil, pos: New_Pane_Position = .Undefined) {
 }
 
 update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
-    if pane == nil { return }
-    begin_buffer(pane.buffer, &pane.contents)
+    assert(pane != nil)
 
     str := strings.to_string(pane.contents)
     char_width, line_height := get_standard_character_size()
@@ -120,11 +112,15 @@ update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
         caret.hidden = !caret.hidden
     }
 
-    // x, y: i32
-
     if len(pane.buffer.lines) > 0 {
         caret.position.y = i32(get_line_number(pane.buffer, pane.buffer.cursor))
         caret.position.x = i32(pane.buffer.cursor - pane.buffer.lines[caret.position.y])
+
+        if caret.position.y > pane.camera.y + page_size_y {
+            pane.camera.y = caret.position.y - page_size_y
+        } else if caret.position.y < pane.camera.y {
+            pane.camera.y = caret.position.y
+        }
     }
 
     // for c, i in str {
@@ -150,7 +146,7 @@ update_pane :: proc(pane: ^Pane, force_cursor_update := false) {
     //     y = c == '\n' ? y + 1 : y
     // }
 
-    end_buffer(pane.buffer)
+    //end_buffer(pane.buffer)
 }
 
 refresh_panes :: proc() {

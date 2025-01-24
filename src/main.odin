@@ -56,6 +56,8 @@ Global_State :: union {
 Bragi :: struct {
     buffers:      [dynamic]Buffer,
     panes:        [dynamic]Pane,
+    _panes:       [dynamic]_Pane,
+    focused_pane: ^_Pane,
     current_pane: ^Pane,
     last_pane:    ^Pane,
     minibuffer:   ^Buffer,
@@ -91,7 +93,7 @@ destroy_editor :: proc() {
     }
 
     for &b in bragi.buffers {
-        destroy_buffer(&b)
+        buffer_destroy(&b)
     }
     for &p in bragi.panes {
         set_pane_mode(&p, Edit_Mode{})
@@ -235,16 +237,18 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
-        if bragi.minibuffer != nil {
-            begin_buffer(bragi.minibuffer, &bragi.miniprompt)
+        for &p in bragi.panes {
+            buffer_begin(p.buffer, &p.contents)
+            update_pane(&p)
         }
 
         update_pane(bragi.current_pane)
         update_input()
 
-        if bragi.minibuffer != nil {
-            end_buffer(bragi.minibuffer)
+        for &p in bragi.panes {
+            buffer_end(p.buffer)
         }
+
 
         render()
 

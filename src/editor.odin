@@ -190,7 +190,7 @@ redo :: proc(pane: ^Pane) {
 kill_current_buffer :: proc(pane: ^Pane) {
     for &b, index in bragi.buffers {
         if &b == pane.buffer {
-            destroy_buffer(&b)
+            buffer_destroy(&b)
             ordered_remove(&bragi.buffers, index)
         }
     }

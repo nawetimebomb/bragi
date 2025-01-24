@@ -23,6 +23,33 @@ Rune_Category :: enum {
     word,
 }
 
+add :: proc{
+    add_buffer,
+    add_pane,
+}
+
+add_buffer :: proc(b: Buffer) -> ^Buffer {
+    _, err := append(&bragi.buffers, b)
+
+    if err != .None {
+        log.errorf("Cannot append buffer {0}.", b.name)
+        return nil
+    }
+
+    return &bragi.buffers[len(bragi.buffers) - 1]
+}
+
+add_pane :: proc(p: Pane) -> ^Pane {
+    _, err := append(&bragi.panes, p)
+
+    if err != .None {
+        log.error("Cannot append new pane.")
+        return nil
+    }
+
+    return &bragi.panes[len(bragi.panes) - 1]
+}
+
 move_to :: proc(d: []u8, start, count: int, stop_on_newline := true) -> (end: int) {
     max_offset := start + count
     offset := 0

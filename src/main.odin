@@ -43,26 +43,12 @@ Program_Context :: struct {
     window_focused: bool,
 }
 
-Global_State_None :: struct {}
-Global_State_Search :: struct {
-    target: ^Pane,
-}
-
-Global_State :: union {
-    Global_State_None,
-    Global_State_Search,
-}
-
 Bragi :: struct {
     buffers:      [dynamic]Buffer,
     panes:        [dynamic]Pane,
-    _panes:       [dynamic]_Pane,
-    focused_pane: ^_Pane,
+    focused_pane: ^Pane,
     current_pane: ^Pane,
     last_pane:    ^Pane,
-    minibuffer:   ^Buffer,
-    miniprompt:   strings.Builder,
-    global_state: Global_State,
 
     ctx:          Program_Context,
     keybinds:     Keybinds,
@@ -92,17 +78,14 @@ destroy_editor :: proc() {
         // TODO: Save desktop configuration
     }
 
+    for &p in bragi.panes {
+        pane_destroy(&p)
+    }
     for &b in bragi.buffers {
         buffer_destroy(&b)
     }
-    for &p in bragi.panes {
-        set_pane_mode(&p, Edit_Mode{})
-        strings.builder_destroy(&p.contents)
-    }
     delete(bragi.buffers)
     delete(bragi.panes)
-
-    strings.builder_destroy(&bragi.miniprompt)
 }
 
 destroy_settings :: proc() {
@@ -148,13 +131,16 @@ initialize_editor :: proc() {
 
     bragi.buffers = make([dynamic]Buffer, 0, 10)
     bragi.panes   = make([dynamic]Pane, 0, 2)
-    bragi.miniprompt = strings.builder_make()
 
-    create_pane()
+    p := add(pane_init())
+    p.input.buf = add(buffer_init("*notes*", 0))
+    bragi.last_pane = p
+    bragi.current_pane = p
+    bragi.focused_pane = p
 
     // TODO: This is a debug only thing
-    filepath := "C:/Code/bragi/demo/hello.odin"
-    open_file(filepath)
+    // filepath := "C:/Code/bragi/demo/hello.odin"
+    // open_file(filepath)
 }
 
 initialize_settings :: proc() {
@@ -237,18 +223,12 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
-        for &p in bragi.panes {
-            buffer_begin(p.buffer, &p.contents)
-            update_pane(&p)
-        }
-
-        update_pane(bragi.current_pane)
         update_input()
 
         for &p in bragi.panes {
-            buffer_end(p.buffer)
+            pane_begin(&p)
+            pane_end(&p)
         }
-
 
         render()
 

@@ -28,9 +28,10 @@ Pane_Function :: enum {
     search,
 }
 
-_Pane :: struct {
+Pane :: struct {
     caret: struct {
         pos:            [2]i32,
+        last_offset:    int,
 
         // The caret animation.
         blinking:       bool,
@@ -59,7 +60,7 @@ _Pane :: struct {
         select: int,
         // Some types of panes will need to act over other panes,
         // say opening a file, or searching through content.
-        target: ^_Pane,
+        target: ^Pane,
     },
 
     // Values that define the UI.
@@ -74,21 +75,25 @@ _Pane :: struct {
     viewport:       [2]i32,
 }
 
-should_caret_reset_blink_timers :: #force_inline proc(p: ^_Pane) -> bool {
+recalculate_panes :: proc() {
+    log.error("IMPLEMENT PROC")
+}
+
+should_caret_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {
     CARET_RESET_TIMEOUT :: 50 * time.Millisecond
     time_diff := time.tick_diff(p.caret.last_keystroke, time.tick_now())
     return time_diff < CARET_RESET_TIMEOUT
 }
 
-should_caret_blink :: #force_inline proc(p: ^_Pane) -> bool {
+should_caret_blink :: #force_inline proc(p: ^Pane) -> bool {
     CARET_BLINK_COUNT   :: 20
     CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
     time_diff := time.tick_diff(p.caret.last_update, time.tick_now())
     return p.caret.blinking_times < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
 }
 
-find_pane_in_window_coords :: proc(x, y: i32) -> ^_Pane {
-    for &p in bragi._panes {
+find_pane_in_window_coords :: proc(x, y: i32) -> ^Pane {
+    for &p in bragi.panes {
         origin := p.origin
         size := p.real_size
 
@@ -101,33 +106,29 @@ find_pane_in_window_coords :: proc(x, y: i32) -> ^_Pane {
     return nil
 }
 
-// TODO: I need to figure out how the pane will be created.
-// If the user tries to open a pane on the side, it should recalculate the horizontal
-// size of the existing panes.
-// TODO: Pane Function should set some defaults here.
-pane_init :: proc(should_focus := true, func: Pane_Function = .generic) {
-    p := _Pane{
+pane_init :: proc(func: Pane_Function = .generic) -> Pane {
+    p := Pane{
         input = {
             str = strings.builder_make(),
         },
         result = {
             str = strings.builder_make(),
         },
+        real_size = bragi.ctx.window_size,
     }
 
-    append(&bragi._panes, p)
+    // TODO: Pane Function should set some defaults here.
 
-    if should_focus {
-        bragi.focused_pane = &bragi._panes[len(bragi._panes) - 1]
-    }
+    return p
 }
 
-pane_begin :: proc(p: ^_Pane) {
+pane_begin :: proc(p: ^Pane) {
     char_width, line_height := get_standard_character_size()
 
     if p.input.buf  != nil { buffer_begin(p.input.buf,  &p.input.str) }
     if p.result.buf != nil { buffer_begin(p.result.buf, &p.result.str) }
 
+    p.real_size = bragi.ctx.window_size
     p.relative_size.x = p.real_size.x / char_width
     p.relative_size.y = p.real_size.y / line_height
 
@@ -159,12 +160,12 @@ pane_begin :: proc(p: ^_Pane) {
     }
 }
 
-pane_end :: proc(p: ^_Pane) {
+pane_end :: proc(p: ^Pane) {
     if p.input.buf  != nil { buffer_end(p.input.buf) }
     if p.result.buf != nil { buffer_end(p.result.buf) }
 }
 
-pane_destroy :: proc(p: ^_Pane) {
+pane_destroy :: proc(p: ^Pane) {
     p.input.buf = nil
     p.result.buf = nil
     strings.builder_destroy(&p.input.str)

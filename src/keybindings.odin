@@ -345,7 +345,7 @@ handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
         return handled
     }
 
-    pane.caret.last_keystroke_time = time.tick_now()
+    pane.caret.last_keystroke = time.tick_now()
 
     // Generic keybindings
     handled = handle_generic_keybindings(key, pane)
@@ -383,10 +383,8 @@ update_input :: proc() {
                 }
 
                 if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
-                    bragi.ctx.window_size = {
-                        e.window.data1, e.window.data2,
-                    }
-                    refresh_panes()
+                    bragi.ctx.window_size = { e.window.data1, e.window.data2 }
+                    recalculate_panes()
                 }
                 return
             }
@@ -407,17 +405,17 @@ update_input :: proc() {
                     if mouse.button == 1 {
                         switch mouse.clicks {
                         case 1:
-                            if clicks_on_pane_contents(mouse.x, mouse.y) {
-                                mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
-                            }
+                            bragi.current_pane =
+                                find_pane_in_window_coords(mouse.x, mouse.y)
+                            mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
                         case 2:
-                            if clicks_on_pane_contents(mouse.x, mouse.y) {
+                            bragi.current_pane =
+                                find_pane_in_window_coords(mouse.x, mouse.y)
                                 mouse_drag_word(bragi.current_pane, mouse.x, mouse.y)
-                            }
                         case 3:
-                            if clicks_on_pane_contents(mouse.x, mouse.y) {
+                            bragi.current_pane =
+                                find_pane_in_window_coords(mouse.x, mouse.y)
                                 mouse_drag_line(bragi.current_pane, mouse.x, mouse.y)
-                            }
                         }
                     }
 
@@ -436,23 +434,24 @@ update_input :: proc() {
                         pane := bragi.current_pane
                         input_char := cstring(raw_data(e.text.text[:]))
                         str := string(input_char)
+                        insert(pane.input.buf, pane.input.buf.cursor, str)
 
-                        if bragi.minibuffer != nil {
-                            insert(bragi.minibuffer, bragi.minibuffer.cursor, str)
-                        } else {
-                            switch m in pane.mode {
-                            case Edit_Mode:
-                                insert(pane.buffer, pane.buffer.cursor, str)
-                            case Mark_Mode:
-                                start  := min(m.begin, pane.buffer.cursor)
-                                end    := max(m.begin, pane.buffer.cursor)
-                                length := end - start
-                                pane.buffer.cursor = start
-                                remove(pane.buffer, pane.buffer.cursor, length)
-                                set_pane_mode(pane, Edit_Mode{})
-                                insert(pane.buffer, pane.buffer.cursor, str)
-                            }
-                        }
+                        // if bragi.minibuffer != nil {
+                        //     insert(bragi.minibuffer, bragi.minibuffer.cursor, str)
+                        // } else {
+                        //     switch m in pane.mode {
+                        //     case Edit_Mode:
+
+                        //     case Mark_Mode:
+                        //         start  := min(m.begin, pane.buffer.cursor)
+                        //         end    := max(m.begin, pane.buffer.cursor)
+                        //         length := end - start
+                        //         pane.buffer.cursor = start
+                        //         remove(pane.buffer, pane.buffer.cursor, length)
+                        //         set_pane_mode(pane, Edit_Mode{})
+                        //         insert(pane.buffer, pane.buffer.cursor, str)
+                        //     }
+                        // }
                     }
                     return
                 }

@@ -50,6 +50,31 @@ Buffer :: struct {
     crlf:           bool,
 }
 
+buffer_init :: proc(
+    name: string,
+    bytes: int,
+    undo_timeout := UNDO_DEFAULT_TIMEOUT,
+    allocator := context.allocator,
+) -> Buffer {
+    b := Buffer{
+        allocator      = allocator,
+        cursor         = 0,
+        data           = make([]byte, bytes, allocator),
+        dirty          = false,
+        enable_history = true,
+        gap_start      = 0,
+        gap_end        = bytes,
+        lines          = make([dynamic]int, 0, 32),
+        major_mode     = .Fundamental,
+        name           = strings.clone(name),
+        redo           = make([dynamic]History_State, 0, 5, allocator),
+        undo           = make([dynamic]History_State, 0, 5, allocator),
+        undo_timeout   = undo_timeout,
+    }
+    recalculate_lines(&b, b.data[:])
+    return b
+}
+
 create_buffer :: proc(
     name: string,
     bytes: int,
@@ -193,7 +218,7 @@ is_last_line :: #force_inline proc(buffer: ^Buffer, line: int) -> bool {
     return line == len(buffer.lines) - 1
 }
 
-get_end_of_line :: #force_inline proc(buffer: ^Buffer, line: int) -> int {
+get_eol_offset :: #force_inline proc(buffer: ^Buffer, line: int) -> int {
     if line + 1 < len(buffer.lines) {
         offset := get_line_offset(buffer, line + 1)
         return offset - 1

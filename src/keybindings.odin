@@ -9,19 +9,8 @@ import sdl "vendor:sdl2"
 Copy_Proc  :: #type proc(string)
 Paste_Proc :: #type proc() -> string
 
-Emacs_Keybinds :: struct {
-    Cx_pressed: bool,
-}
-
-Sublime_Keybinds :: struct {}
-
-Keybinds_Variant :: union {
-    Emacs_Keybinds,
-    Sublime_Keybinds,
-}
-
 Keybinds :: struct {
-    variant: Keybinds_Variant,
+    modifiers: [dynamic]string,
 }
 
 KMod :: sdl.KeymodFlag
@@ -38,303 +27,21 @@ check_shift :: proc(mod: sdl.Keymod) -> bool {
     return KMod.LSHIFT in mod || KMod.RSHIFT in mod
 }
 
-check_alt_shift :: proc(mod: sdl.Keymod) -> bool {
-    return check_alt(mod) && check_shift(mod) && !check_ctrl(mod)
-}
-
-check_ctrl_alt :: proc(mod: sdl.Keymod) -> bool {
-    return check_alt(mod) && check_ctrl(mod) && !check_shift(mod)
-}
-
-check_ctrl_shift :: proc(mod: sdl.Keymod) -> bool {
-    return check_ctrl(mod) && check_shift(mod) && !check_alt(mod)
-}
-
-check_ctrl_alt_shift :: proc(mod: sdl.Keymod) -> bool {
-    return check_alt(mod) && check_ctrl(mod) && check_shift(mod)
-}
-
 load_keybinds :: proc() {
-    // TODO: Here we should load the configuration from the user
-    bragi.keybinds.variant = Emacs_Keybinds{}
+    bragi.keybinds.modifiers = make([dynamic]string, 0, 1)
 }
 
-// These keybindings are shared between all keybinding modes (I.e. Sublime, Emacs, etc)
-handle_generic_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
-    handled := false
-
-    A   := check_alt(key.mod)
-    AS  := check_alt_shift(key.mod)
-    C   := check_ctrl(key.mod)
-    CA  := check_ctrl_alt(key.mod)
-    CS  := check_ctrl_shift(key.mod)
-    CAS := check_ctrl_alt_shift(key.mod)
-    S   := check_shift(key.mod)
-
-    #partial switch key.sym {
-        case .ESCAPE: {
-            when ODIN_DEBUG {
-                bragi.ctx.running = false
-                handled = true
-            }
-        }
-        case .BACKSPACE: {
-            if C {
-                delete_backward_word(pane)
-            } else {
-                delete_backward_char(pane)
-            }
-
-            handled = true
-        }
-        case .DELETE: {
-            if C {
-                delete_forward_word(pane)
-            } else {
-                delete_forward_char(pane)
-            }
-
-            handled = true
-        }
-        case .RETURN: {
-            newline(pane)
-            handled = true
-        }
-        case .PAGEUP: {
-            // buffer_scroll(-buffer_page_size().y)
-        }
-        case .PAGEDOWN: {
-            // buffer_scroll(buffer_page_size().y)
-        }
-        case .UP: {
-            translate(pane, .previous_line, S)
-            handled = true
-        }
-        case .DOWN: {
-            translate(pane, .next_line, S)
-            handled = true
-        }
-        case .LEFT: {
-            translate(pane, .backward_char, S)
-            handled = true
-        }
-        case .RIGHT: {
-            translate(pane, .forward_char, S)
-            handled = true
-        }
+get_key_representation :: proc(k: sdl.Keycode) -> string {
+    #partial switch k {
+        case .ESCAPE: return "ESC"
+        case .N:      return "n"
     }
 
-    return handled
-}
-
-handle_sublime_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
-    handled := false
-
-    A   := check_alt(key.mod)
-    AS  := check_alt_shift(key.mod)
-    C   := check_ctrl(key.mod)
-    CA  := check_ctrl_alt(key.mod)
-    CS  := check_ctrl_shift(key.mod)
-    CAS := check_ctrl_alt_shift(key.mod)
-    S   := check_shift(key.mod)
-
-    #partial switch key.sym {
-        case .S: {
-            if C {
-                save_buffer(pane)
-                handled = true
-            }
-        }
-    }
-
-    return handled
-}
-
-handle_global_emacs_keybindings :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
-    handled := false
-    vkb := &bragi.keybinds.variant.(Emacs_Keybinds)
-
-    A   := check_alt(key.mod)
-    AS  := check_alt_shift(key.mod)
-    C   := check_ctrl(key.mod)
-    CA  := check_ctrl_alt(key.mod)
-    CS  := check_ctrl_shift(key.mod)
-    CAS := check_ctrl_alt_shift(key.mod)
-    CX  := vkb.Cx_pressed
-    S   := check_shift(key.mod)
-
-    vkb.Cx_pressed = false
-
-    #partial switch key.sym {
-        case .A: {
-            if C {
-                translate(pane, .beginning_of_line, S)
-                handled = true
-            }
-        }
-        case .B: {
-            if A {
-                translate(pane, .backward_word, S)
-                handled = true
-            } else if C {
-                translate(pane, .backward_char, S)
-                handled = true
-            }
-        }
-        case .D: {
-            if A {
-                delete_forward_word(pane)
-                handled = true
-            } else if C {
-                delete_forward_char(pane)
-                handled = true
-            }
-        }
-        case .E: {
-            if C {
-                translate(pane, .end_of_line, S)
-                handled = true
-            }
-        }
-        case .F: {
-            if A {
-                translate(pane, .forward_word, S)
-                handled = true
-            } else if C {
-                translate(pane, .forward_char, S)
-                handled = true
-            }
-        }
-        case .G: {
-            if C {
-                keyboard_quit(pane)
-                handled = true
-            }
-        }
-        case .K: {
-            if CX {
-                kill_current_buffer(pane)
-                handled = true
-            } else if C {
-                kill_line(pane, handle_copy)
-                handled = true
-            }
-        }
-        case .N: {
-            if C {
-                translate(pane, .next_line, S)
-                handled = true
-            }
-        }
-        case .P: {
-            if CX && C {
-                mark_buffer(pane)
-                handled = true
-            } else if C {
-                translate(pane, .previous_line, S)
-                handled = true
-            }
-        }
-        case .R: {
-            if C {
-                search(pane)
-                handled = true
-            }
-        }
-        case .S: {
-            if CX && C {
-                save_buffer(pane)
-                handled = true
-            } else if CX {
-                // TODO: Save more than one buffer
-                // save_some_buffers()
-                // handled = true
-            } else if C {
-                search(pane)
-                handled = true
-            }
-        }
-        case .V: {
-            switch {
-                // case A: buffer_scroll(-buffer_page_size().y)
-                // case C: buffer_scroll(buffer_page_size().y)
-            }
-        }
-        case .W: {
-            if A {
-                kill_region(pane, false, handle_copy)
-                handled = true
-            } else if C {
-                kill_region(pane, true, handle_copy)
-                handled = true
-            }
-        }
-        case .X: {
-            if A {
-                // editor_command_dialog()
-            } else if C {
-                vkb.Cx_pressed = true
-                handled = true
-            }
-        }
-        case .Y: {
-            if C {
-                yank(pane, handle_paste)
-                handled = true
-            }
-        }
-        case .SPACE: {
-            if C {
-                set_mark(pane)
-                handled = true
-            }
-        }
-        case .PERIOD: {
-            if AS {
-                translate(pane, .end_of_buffer)
-                handled = true
-            }
-        }
-        case .GREATER: {
-            if A {
-                translate(pane, .end_of_buffer)
-                handled = true
-            }
-        }
-        case .COMMA: {
-            if AS {
-                translate(pane, .beginning_of_buffer)
-                handled = true
-            }
-        }
-        case .LESS: {
-            if A {
-                translate(pane, .beginning_of_buffer)
-                handled = true
-            }
-        }
-        case .SLASH: {
-            if CS {
-                redo(pane)
-                handled = true
-            } else if C {
-                undo(pane)
-                handled = true
-            }
-        }
-        case .QUESTION: {
-            if C {
-                redo(pane)
-                handled = true
-            }
-        }
-    }
-
-    return handled
+    return ""
 }
 
 handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
-    handled := false
+    pane.caret.last_keystroke = time.tick_now()
 
     // NOTE: Disallow mod keys as keystrokes
     disallowed_keystrokes := [?]sdl.Keycode{
@@ -342,22 +49,31 @@ handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     }
 
     if slice.contains(disallowed_keystrokes[:], key.sym) {
-        return handled
+        return false
     }
 
-    pane.caret.last_keystroke = time.tick_now()
+    keydown := strings.builder_make(context.temp_allocator)
 
-    // Generic keybindings
-    handled = handle_generic_keybindings(key, pane)
-
-    switch v in bragi.keybinds.variant {
-    case Emacs_Keybinds:
-        handled = handle_global_emacs_keybindings(key, pane)
-    case Sublime_Keybinds:
-        handled = handle_sublime_keybindings(key, pane)
+    for len(bragi.keybinds.modifiers) > 0 {
+        s := pop(&bragi.keybinds.modifiers)
+        strings.write_string(&keydown, s)
     }
 
-    return handled
+    if check_ctrl(key.mod)  { strings.write_string(&keydown, "C-") }
+    if check_alt(key.mod)   { strings.write_string(&keydown, "M-") }
+    if check_shift(key.mod) { strings.write_string(&keydown, "S-") }
+
+    strings.write_string(&keydown, get_key_representation(key.sym))
+
+    match := strings.to_string(keydown)
+
+    command, exists := bragi.settings.keybindings_table[match]
+
+    if exists {
+        do_command(command, pane.input.buf, match)
+    }
+
+    return exists
 }
 
 update_input :: proc() {

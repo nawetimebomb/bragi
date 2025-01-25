@@ -1,3 +1,19 @@
+# C = Ctrl | M = Alt | S = Shift
+[keybindings]
+modifier                        <C-x>
+quit                            <ESC>
+
+next_line                       <C-n>
+
+backward_char                   <C-b>       <Left>
+backward_word                   <M-b>       <C-Left>
+backward_paragraph              <M-S-[>     <C-Up>
+forward_char                    <C-f>       <Right>
+forward_word                    <M-f>       <C-Right>
+forward_paragraph               <M-S-]>     <C-Down>
+
+find_file                       <C-x-C-f>
+
 # Comments
 [colors]
 background                      012027
@@ -17,6 +33,6 @@ modeline_on_bg                  005662
 modeline_on_fg                  ffffff
 
 
-linen_bg                        001b21
+# linen_bg                        001b21
 linen_fg                        848484
 match_delimiter                 ff9800

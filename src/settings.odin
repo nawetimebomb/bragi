@@ -1,16 +1,25 @@
 package main
 
+import "core:fmt"
 import "core:log"
 import "core:os"
 import "core:reflect"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "languages"
 import "tokenizer"
 
+PARSE_ERROR_KEYBINDING_EXISTS_FMT :: "Error in line {0}: Keybinding {1} already bound"
+PARSE_ERROR_EXPECT_GOT_FMT        :: "Error in line {0}: Invalid setting.\n\tExpect: {1}\n\tGot: {2}"
+PARSE_ERROR_INVALID_COMMAND_FMT   :: "Error in line {0}: Invalid command {1}"
+PARSE_ERROR_INVALID_FACE_FMT      :: "Error in line {0}: Invalid face name {1}"
+PARSE_ERROR_MISSING_HEADING_FMT   :: "Error in line {0}: Heading not found, not able to determine configuration"
+
 Color :: distinct [4]u8
 Major_Modes_Table :: map[Major_Mode]Major_Mode_Settings
 Colorscheme_Table :: map[Face]Color
+Keybindings_Table :: map[string]Command
 
 // NOTE:
 //   ^Render_State is .Default, .Keyword, etc
@@ -59,8 +68,9 @@ Settings :: struct {
     last_write_time:             os.File_Time,
     use_internal_data:           bool,
 
-    major_modes_table:           Major_Modes_Table,
     colorscheme_table:           Colorscheme_Table,
+    keybindings_table:           Keybindings_Table,
+    major_modes_table:           Major_Modes_Table,
 
     cursor_blink_timeout:        f32,
     font_size:                   u32,
@@ -141,19 +151,127 @@ load_settings_from_file :: proc() {
 
 load_settings :: proc(data: []u8) {
     set_major_modes_settings()
+    parse_settings_data(data)
+}
 
+parse_settings_data :: proc(data: []u8) {
+    Parsing_Setting :: enum {
+        none,
+        colors,
+        keybindings,
+    }
+
+    is_not_empty :: proc(s: string) -> bool {
+        return len(s) > 0
+    }
+
+    currently_parsing: Parsing_Setting
+    line_number := 0
     settings_str := string(data)
+
     for line in strings.split_lines_iterator(&settings_str) {
-        if strings.starts_with(line, "#") || line == "[colors]" {
+        line_number += 1
+
+        // Look for a heading
+        switch {
+        case strings.starts_with(line, "#"):
+            // Skip a commentary line
             continue
-        }
+        case strings.starts_with(line, "[keybindings]"):
+            // Preparing for parsing keybindings
+            currently_parsing = .keybindings
+            continue
+        case strings.starts_with(line, "[colors]"):
+            // Preparing for parsing keybindings
+            currently_parsing = .colors
+            continue
+        case :
+            sl := strings.split(line, " ", context.temp_allocator)
+            setting := slice.filter(sl, is_not_empty, context.temp_allocator)
 
-        s := strings.split(line, " ", context.temp_allocator)
-        key := strings.trim_space(s[0])
-        value := strings.trim_space(s[len(s) - 1])
+            if len(setting) == 0 { continue }
 
-        if face, ok := reflect.enum_from_name(Face, key); ok {
-            bragi.settings.colorscheme_table[face] = hex_to_color(value)
+            switch currently_parsing {
+            case .none:
+                log.errorf(PARSE_ERROR_MISSING_HEADING_FMT, line_number)
+                return
+            case .keybindings:
+                if len(setting) < 2 {
+                    log.errorf(
+                        PARSE_ERROR_EXPECT_GOT_FMT,
+                        line_number,
+                        "command <keybinding>",
+                        line,
+                    )
+                    continue
+                }
+
+                command, ok := reflect.enum_from_name(Command, setting[0])
+
+                if !ok {
+                    log.errorf(
+                        PARSE_ERROR_INVALID_COMMAND_FMT,
+                        line_number,
+                        setting[0],
+                    )
+                    continue
+                }
+
+                for i in 1..<len(setting) {
+                    k := setting[i]
+
+                    if !strings.starts_with(k, "<") || !strings.ends_with(k, ">") {
+                        log.errorf(
+                            PARSE_ERROR_EXPECT_GOT_FMT,
+                            line_number,
+                            "<keybinding>",
+                            line,
+                        )
+                        continue
+                    }
+
+                    bind := k[1:len(k) - 1]
+
+                    fmt.println(bind)
+
+                    _, exists := bragi.settings.keybindings_table[bind]
+
+                    if exists {
+                        log.errorf(
+                            PARSE_ERROR_KEYBINDING_EXISTS_FMT,
+                            line_number,
+                            k,
+                        )
+                        continue
+                    }
+
+                    bragi.settings.keybindings_table[strings.clone(bind)] = command
+                }
+
+            case .colors:
+                if len(setting) != 2 {
+                    log.errorf(
+                        PARSE_ERROR_EXPECT_GOT_FMT,
+                        line_number,
+                        "face color",
+                        line,
+                    )
+                    continue
+                }
+
+                v, ok := reflect.enum_from_name(Face, setting[0])
+
+                if !ok {
+                    log.errorf(
+                        PARSE_ERROR_INVALID_FACE_FMT,
+                        line_number,
+                        setting[0],
+                    )
+                    continue
+                }
+
+                bragi.settings.colorscheme_table[v] = hex_to_color(setting[1])
+            }
         }
     }
 }

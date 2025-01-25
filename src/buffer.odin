@@ -14,15 +14,19 @@ import "core:unicode/utf8"
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
 History_State :: struct {
+    cursors:   []Cursor,
     cursor:    int,
     data:      []byte,
     gap_end:   int,
     gap_start: int,
 }
 
+Cursor :: [2]int
+
 Buffer :: struct {
     allocator:      runtime.Allocator,
 
+    cursors:        [dynamic]Cursor,
     cursor:         int,
     data:           []byte,
     dirty:          bool,
@@ -58,6 +62,7 @@ buffer_init :: proc(
 ) -> Buffer {
     b := Buffer{
         allocator      = allocator,
+        cursors        = make([dynamic]Cursor, 1, 1),
         cursor         = 0,
         data           = make([]byte, bytes, allocator),
         dirty          = false,
@@ -175,6 +180,7 @@ buffer_end :: proc(buffer: ^Buffer) {
 buffer_destroy :: proc(buffer: ^Buffer) {
     clear_history(&buffer.undo)
     clear_history(&buffer.redo)
+    delete(buffer.cursors)
     delete(buffer.data)
     delete(buffer.lines)
     delete(buffer.name)
@@ -194,7 +200,6 @@ update_buffer_time :: proc(buffer: ^Buffer) {
 
 recalculate_lines :: proc(buffer: ^Buffer, buf: []u8) {
     clear(&buffer.lines)
-
     append(&buffer.lines, 0)
 
     for c, index in buf {
@@ -257,14 +262,14 @@ get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
     return
 }
 
-move_cursor :: proc(buffer: ^Buffer, from, to: int, break_on_newline: bool) {
-    str := strings.to_string(buffer.builder^)
+// move_cursor :: proc(buffer: ^Buffer, from, to: int, break_on_newline: bool) {
+//     str := strings.to_string(buffer.builder^)
 
-    for x := from; x < len(str); x += 1 {
-        buffer.cursor = x
-        if x == to || (break_on_newline && str[x] == '\n') { break }
-    }
-}
+//     for x := from; x < len(str); x += 1 {
+//         buffer.cursor = x
+//         if x == to || (break_on_newline && str[x] == '\n') { break }
+//     }
+// }
 
 clear_history :: proc(history: ^[dynamic]History_State) {
     for len(history) > 0 {
@@ -283,8 +288,9 @@ undo_redo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]History_State) {
         buffer.gap_end   = item.gap_end
         buffer.gap_start = item.gap_start
 
+        delete(buffer.cursors)
         delete(buffer.data)
-        delete(buffer.lines)
+        buffer.cursors = slice.clone_to_dynamic(item.cursors, buffer.allocator)
         buffer.data = slice.clone(item.data, buffer.allocator)
         delete(item.data)
         buffer.dirty = true
@@ -296,6 +302,7 @@ push_history_state :: proc(
     buffer: ^Buffer, history: ^[dynamic]History_State,
 ) -> mem.Allocator_Error {
     item := History_State{
+        cursors   = slice.clone(buffer.cursors[:], buffer.allocator),
         cursor    = buffer.cursor,
         data      = slice.clone(buffer.data, buffer.allocator),
         gap_end   = buffer.gap_end,

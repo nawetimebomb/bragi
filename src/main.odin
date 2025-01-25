@@ -86,6 +86,7 @@ destroy_editor :: proc() {
     }
     delete(bragi.buffers)
     delete(bragi.panes)
+    delete(bragi.keybinds.modifiers)
 }
 
 destroy_settings :: proc() {
@@ -93,6 +94,11 @@ destroy_settings :: proc() {
 
     delete(bragi.settings.major_modes_table)
     delete(bragi.settings.colorscheme_table)
+
+    for key, _ in bragi.settings.keybindings_table {
+        delete(key)
+    }
+    delete(bragi.settings.keybindings_table)
 }
 
 initialize_context :: proc() {
@@ -138,9 +144,9 @@ initialize_editor :: proc() {
     bragi.current_pane = p
     bragi.focused_pane = p
 
-    // TODO: This is a debug only thing
-    // filepath := "C:/Code/bragi/demo/hello.odin"
-    // open_file(filepath)
+    //    TODO: This is a debug only thing
+    filepath := "C:/Code/bragi/demo/hello.odin"
+    open_file(filepath)
 }
 
 initialize_settings :: proc() {
@@ -212,9 +218,9 @@ main :: proc() {
         return err
     }
 
+    initialize_context()
     initialize_settings()
     initialize_editor()
-    initialize_context()
     load_keybinds()
 
     last_update_time := time.tick_now()

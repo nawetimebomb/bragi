@@ -32,6 +32,35 @@ Translation :: enum {
     next_line,
     end_of_buffer,
     end_of_line,
+    down,
+}
+
+move_cursor :: proc(b: ^Buffer, t: Translation) {
+    pos := b.cursor
+
+    #partial switch t {
+        case .down: {
+            line_number := get_line_number(b, pos)
+
+            if is_last_line(b, line_number) {
+                log.debug("End of buffer")
+                return
+            }
+
+            bol := get_line_offset(b, line_number)
+            next_line_number := line_number + 1
+            next_bol := get_line_offset(b, next_line_number)
+            pos_offset := pos - bol
+
+            if is_between_line(b, next_line_number, next_bol + pos_offset) {
+                pos = next_bol + pos_offset
+            } else {
+                pos = get_eol_offset(b, next_line_number)
+            }
+        }
+    }
+
+    b.cursor = pos
 }
 
 translate :: proc(p: ^Pane, t: Translation, mark := false) {
@@ -43,6 +72,7 @@ translate :: proc(p: ^Pane, t: Translation, mark := false) {
     }
 
     switch t {
+    case .down:
     case .beginning_of_buffer:
         pos = 0
     case .beginning_of_line:

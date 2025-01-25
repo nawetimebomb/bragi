@@ -144,7 +144,7 @@ pane_begin :: proc(p: ^Pane) {
         p.caret.blinking_times += 1
     }
 
-    p.caret.pos.y = i32(get_line_number(p.input.buf, p.input.buf.cursor))
+    p.caret.pos.y = i32(get_line_index(p.input.buf, p.input.buf.cursor))
     p.caret.pos.x = i32(p.input.buf.cursor - p.input.buf.lines[p.caret.pos.y])
 
     if p.caret.pos.x > p.viewport.x + p.relative_size.x {

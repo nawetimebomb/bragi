@@ -6,6 +6,7 @@ import     "core:log"
 import     "core:math"
 import     "core:mem"
 import     "core:os"
+import     "core:prof/spall"
 import     "core:slice"
 import     "core:strings"
 import     "core:time"
@@ -36,6 +37,9 @@ Program_Context :: struct {
     undo_allocator: runtime.Allocator,
     font:           ^ttf.Font,
     characters:     map[rune]Character_Texture,
+    profiling:      bool,
+    spall_buf:      spall.Buffer,
+    spall_ctx:      spall.Context,
     running:        bool,
     renderer:       ^sdl.Renderer,
     window:         ^sdl.Window,
@@ -198,6 +202,21 @@ set_characters_textures :: proc() {
     }
 }
 
+initialize_profiling :: proc() {
+	bragi.ctx.spall_ctx = spall.context_create("profile.spall")
+	buf := make([]u8, spall.BUFFER_DEFAULT_SIZE)
+	bragi.ctx.spall_buf = spall.buffer_create(buf)
+    bragi.ctx.profiling = true
+}
+
+destroy_profiling :: proc() {
+    buf := bragi.ctx.spall_buf.data
+    spall.buffer_destroy(&bragi.ctx.spall_ctx, &bragi.ctx.spall_buf)
+    delete(buf)
+    spall.context_destroy(&bragi.ctx.spall_ctx)
+    bragi.ctx.profiling = false
+}
+
 main :: proc() {
     context.logger = log.create_console_logger()
 
@@ -221,6 +240,7 @@ main :: proc() {
     initialize_context()
     initialize_settings()
     initialize_editor()
+    //initialize_profiling()
     load_keybinds()
 
     last_update_time := time.tick_now()
@@ -229,10 +249,10 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
-        update_input()
-
         for &p in bragi.panes {
+            focused := bragi.focused_pane == &p
             pane_begin(&p)
+            if focused { update_input() }
             pane_end(&p)
         }
 
@@ -265,6 +285,7 @@ main :: proc() {
         }
     }
 
+    //destroy_profiling()
     destroy_editor()
     destroy_settings()
     destroy_context()
@@ -274,4 +295,20 @@ main :: proc() {
     }
 
     mem.tracking_allocator_destroy(&tracking_allocator)
+}
+
+profiling_start :: proc(name: string, loc := #caller_location) {
+    if !bragi.ctx.profiling {
+        return
+    }
+
+    spall._buffer_begin(&bragi.ctx.spall_ctx, &bragi.ctx.spall_buf, name, "", loc)
+}
+
+profiling_end :: proc() {
+    if !bragi.ctx.profiling {
+        return
+    }
+
+    spall._buffer_end(&bragi.ctx.spall_ctx, &bragi.ctx.spall_buf)
 }

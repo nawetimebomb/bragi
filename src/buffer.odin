@@ -157,6 +157,8 @@ get_or_create_buffer :: proc(
 
 buffer_begin :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
     assert(builder != nil)
+    profiling_start("buffer_begin")
+
     buffer.builder = builder
     update_buffer_time(buffer)
 
@@ -166,6 +168,8 @@ buffer_begin :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
         refresh_string_buffer(buffer)
         recalculate_lines(buffer, buffer.builder.buf[:])
     }
+
+    profiling_end()
 }
 
 buffer_end :: proc(buffer: ^Buffer) {
@@ -211,8 +215,8 @@ recalculate_lines :: proc(buffer: ^Buffer, buf: []u8) {
 
 is_between_line :: #force_inline proc(buffer: ^Buffer, line, pos: int) -> bool {
     if line + 1 < len(buffer.lines) {
-        current_bol := get_line_offset(buffer, line)
-        next_bol := get_line_offset(buffer, line + 1)
+        current_bol := get_line_start(buffer, line)
+        next_bol := get_line_start(buffer, line + 1)
         return pos >= current_bol && pos < next_bol
     }
 
@@ -223,16 +227,16 @@ is_last_line :: #force_inline proc(buffer: ^Buffer, line: int) -> bool {
     return line == len(buffer.lines) - 1
 }
 
-get_eol_offset :: #force_inline proc(buffer: ^Buffer, line: int) -> int {
+get_line_end :: #force_inline proc(buffer: ^Buffer, line: int) -> int {
     if line + 1 < len(buffer.lines) {
-        offset := get_line_offset(buffer, line + 1)
+        offset := get_line_start(buffer, line + 1)
         return offset - 1
     }
 
     return buffer.lines[line]
 }
 
-get_line_number :: #force_inline proc(buffer: ^Buffer, pos: int) -> (line: int) {
+get_line_index :: #force_inline proc(buffer: ^Buffer, pos: int) -> (line: int) {
     for offset, index in buffer.lines {
         if is_between_line(buffer, index, pos) {
             line = index
@@ -243,13 +247,88 @@ get_line_number :: #force_inline proc(buffer: ^Buffer, pos: int) -> (line: int) 
     return
 }
 
-get_current_line_offset :: #force_inline proc(buffer: ^Buffer, pos: int) -> (offset: int) {
-    return buffer.lines[get_line_number(buffer, pos)]
-}
-
-get_line_offset :: #force_inline proc(buffer: ^Buffer, line: int) -> (offset: int) {
+get_line_start :: #force_inline proc(buffer: ^Buffer, line: int) -> (offset: int) {
     assert(line < len(buffer.lines))
     return buffer.lines[line]
+}
+
+Cursor_Translation :: enum {
+    DOWN, RIGHT, LEFT, UP,
+    BUFFER_START,
+    BUFFER_END,
+    LINE_START,
+    LINE_END,
+    WORD_START,
+    WORD_END,
+}
+
+get_current_cursor_head :: #force_inline proc(b: ^Buffer) -> int {
+    return b.cursors[len(b.cursors) - 1][0]
+}
+
+_translate :: proc(b: ^Buffer, t: Cursor_Translation) -> int {
+    assert(b.builder != nil)
+    pos := get_current_cursor_head(b)
+    buf := b.builder.buf[:]
+    line_index := get_line_index(b, pos)
+    line_start_start := get_line_start(b, line_index)
+    offset_from_bol := pos - line_start_start
+
+    switch t {
+    case .DOWN:
+        if is_last_line(b, line_index) { return pos }
+
+        next_line_index := line_index + 1
+        next_line_start := get_line_start(b, next_line_index)
+
+        if is_between_line(b, next_line_index, next_line_start + offset_from_bol) {
+            pos = next_line_start + offset_from_bol
+        } else {
+            pos = get_line_end(b, next_line_index)
+        }
+    case .LEFT:
+        pos -= 1
+        for pos > 0 && is_continuation_byte(buf[pos]) { pos -= 1 }
+    case .RIGHT:
+        pos += 1
+        for pos < len(buf) && is_continuation_byte(buf[pos]) { pos += 1 }
+    case .UP:
+        if line_index == 0 { return pos }
+
+        prev_line_index := line_index - 1
+        prev_line_start := get_line_start(b, prev_line_index)
+
+        if is_between_line(b, prev_line_index, prev_line_start + offset_from_bol) {
+            pos = prev_line_start + offset_from_bol
+        } else {
+            pos = get_line_end(b, prev_line_index)
+        }
+    case .BUFFER_START:
+        pos = 0
+    case .BUFFER_END:
+        pos = len(buf)
+    case .LINE_START:
+        if pos == line_start_start {
+            for pos < len(buf) && is_whitespace(buf[pos]) { pos += 1 }
+        } else {
+            pos = line_start_start
+        }
+    case .LINE_END:
+        for pos < len(buf) && !is_newline(buf[pos]) { pos += 1 }
+    case .WORD_START:
+        // TODO: WORD_START and WORD_END should actually figure out if the
+        // characters in point form a word or not, and the skip over them.
+        // Right now basically is taking "WORD" as a regular english word,
+        // even when there's characters like underscore or hyphen in the middle.
+        for pos > 0 && is_whitespace(buf[pos - 1])  { pos -= 1 }
+        for pos > 0 && !is_whitespace(buf[pos - 1]) { pos -= 1 }
+    case .WORD_END:
+        for pos < len(buf) && is_whitespace(buf[pos])  { pos += 1 }
+        for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
+    }
+
+
+    return clamp(pos, 0, len(buf))
 }
 
 get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
@@ -261,15 +340,6 @@ get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
 
     return
 }
-
-// move_cursor :: proc(buffer: ^Buffer, from, to: int, break_on_newline: bool) {
-//     str := strings.to_string(buffer.builder^)
-
-//     for x := from; x < len(str); x += 1 {
-//         buffer.cursor = x
-//         if x == to || (break_on_newline && str[x] == '\n') { break }
-//     }
-// }
 
 clear_history :: proc(history: ^[dynamic]History_State) {
     for len(history) > 0 {

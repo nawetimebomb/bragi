@@ -57,25 +57,25 @@ translate :: proc(p: ^Pane, t: Translation, mark := false) {
         pos -= 1
         for pos > 0 && is_continuation_byte(buf[pos]) { pos -= 1 }
     case .backward_word:
-        for pos > 0 && !is_whitespace(buf[pos - 1]) { pos -= 1 }
         for pos > 0 && is_whitespace(buf[pos - 1])  { pos -= 1 }
+        for pos > 0 && !is_whitespace(buf[pos - 1]) { pos -= 1 }
     case .forward_char:
         pos += 1
         for pos < len(buf) && is_continuation_byte(buf[pos]) { pos += 1 }
     case .forward_word:
-        for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
         for pos < len(buf) && is_whitespace(buf[pos])  { pos += 1 }
+        for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
     case .previous_line:
-        line_number := get_line_number(p.input.buf, pos)
+        line_number := get_line_index(p.input.buf, pos)
 
         if line_number == 0 {
             log.debug("Beginning of buffer")
             return
         }
 
-        bol := get_line_offset(p.input.buf, line_number)
+        bol := get_line_start(p.input.buf, line_number)
         prev_line_number := line_number - 1
-        prev_bol := get_line_offset(p.input.buf, prev_line_number)
+        prev_bol := get_line_start(p.input.buf, prev_line_number)
         pos_offset := pos - bol
 
         if pos_offset > 0 {
@@ -87,19 +87,19 @@ translate :: proc(p: ^Pane, t: Translation, mark := false) {
         } else if is_between_line(p.input.buf, prev_line_number, prev_bol + pos_offset) {
             pos = prev_bol + pos_offset
         } else {
-            pos = get_eol_offset(p.input.buf, prev_line_number)
+            pos = get_line_end(p.input.buf, prev_line_number)
         }
     case .next_line:
-        line_number := get_line_number(p.input.buf, pos)
+        line_number := get_line_index(p.input.buf, pos)
 
         if is_last_line(p.input.buf, line_number) {
             log.debug("End of buffer")
             return
         }
 
-        bol := get_line_offset(p.input.buf, line_number)
+        bol := get_line_start(p.input.buf, line_number)
         next_line_number := line_number + 1
-        next_bol := get_line_offset(p.input.buf, next_line_number)
+        next_bol := get_line_start(p.input.buf, next_line_number)
         pos_offset := pos - bol
 
         if pos_offset > 0 {
@@ -111,7 +111,7 @@ translate :: proc(p: ^Pane, t: Translation, mark := false) {
         } else if is_between_line(p.input.buf, next_line_number, next_bol + pos_offset) {
             pos = next_bol + pos_offset
         } else {
-            pos = get_eol_offset(p.input.buf, next_line_number)
+            pos = get_line_end(p.input.buf, next_line_number)
         }
     case .end_of_buffer:
         pos = buffer_len(p.input.buf)

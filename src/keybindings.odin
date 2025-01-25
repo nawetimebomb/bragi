@@ -99,9 +99,17 @@ handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
         delete(s)
     }
 
-    if check_ctrl(key.mod)  { strings.write_string(&keydown, "C-") }
-    if check_alt(key.mod)   { strings.write_string(&keydown, "M-") }
-    if check_shift(key.mod) { strings.write_string(&keydown, "S-") }
+    if check_ctrl(key.mod)  {
+        strings.write_string(&keydown, "C-")
+    }
+
+    if check_alt(key.mod)   {
+        strings.write_string(&keydown, "M-")
+    }
+
+    if check_shift(key.mod) {
+        strings.write_string(&keydown, "S-")
+    }
 
     strings.write_string(&keydown, get_key_representation(key.sym))
     match := strings.to_string(keydown)

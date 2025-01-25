@@ -170,6 +170,9 @@ parse_settings_data :: proc(data: []u8) {
     settings_str := string(data)
 
     clear(&bragi.settings.colorscheme_table)
+    for key, _ in bragi.settings.keybindings_table {
+        delete(key)
+    }
     clear(&bragi.settings.keybindings_table)
 
     for line in strings.split_lines_iterator(&settings_str) {

@@ -50,18 +50,6 @@ add_pane :: proc(p: Pane) -> ^Pane {
     return &bragi.panes[len(bragi.panes) - 1]
 }
 
-move_to :: proc(d: []u8, start, count: int, stop_on_newline := true) -> (end: int) {
-    max_offset := start + count
-    offset := 0
-
-    for pos := start; pos < max_offset && pos < len(d); pos += 1 {
-        if stop_on_newline && d[pos] == '\n' { break }
-        offset += 1
-    }
-
-    return start + offset
-}
-
 canonicalize_coords :: proc(d: []u8, rel_x, rel_y: int) -> (point: int) {
     x, y: int
 

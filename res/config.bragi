@@ -11,7 +11,7 @@ redo                            <C-S-/>
 newline                         <RET>
 
 # kill_region
-# kill_line
+kill_line                       <C-k>
 # kill_ring_save
 # yank
 # yank_from_history
@@ -28,8 +28,8 @@ newline                         <RET>
 
 delete_backward_char            <BACKSPACE>
 delete_backward_word            <C-BACKSPACE> <M-BACKSPACE>
-delete_forward_char             <DEL>
-delete_forward_word             <M-DEL>
+delete_forward_char             <C-d> <DEL>
+delete_forward_word             <M-d> <M-DEL>
 
 backward_char                   <C-b>
 backward_word                   <M-b>

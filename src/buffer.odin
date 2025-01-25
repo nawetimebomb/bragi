@@ -266,9 +266,10 @@ get_current_cursor_head :: #force_inline proc(b: ^Buffer) -> int {
     return b.cursors[len(b.cursors) - 1][0]
 }
 
-_translate :: proc(b: ^Buffer, t: Cursor_Translation) -> int {
+translate :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
     assert(b.builder != nil)
-    pos := get_current_cursor_head(b)
+    pos = b.cursor
+    //pos = get_current_cursor_head(b)
     buf := b.builder.buf[:]
     line_index := get_line_index(b, pos)
     line_start_start := get_line_start(b, line_index)
@@ -276,7 +277,7 @@ _translate :: proc(b: ^Buffer, t: Cursor_Translation) -> int {
 
     switch t {
     case .DOWN:
-        if is_last_line(b, line_index) { return pos }
+        if is_last_line(b, line_index) { return }
 
         next_line_index := line_index + 1
         next_line_start := get_line_start(b, next_line_index)
@@ -293,7 +294,7 @@ _translate :: proc(b: ^Buffer, t: Cursor_Translation) -> int {
         pos += 1
         for pos < len(buf) && is_continuation_byte(buf[pos]) { pos += 1 }
     case .UP:
-        if line_index == 0 { return pos }
+        if line_index == 0 { return }
 
         prev_line_index := line_index - 1
         prev_line_start := get_line_start(b, prev_line_index)
@@ -327,8 +328,27 @@ _translate :: proc(b: ^Buffer, t: Cursor_Translation) -> int {
         for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
     }
 
-
     return clamp(pos, 0, len(buf))
+}
+
+delete_to :: proc(b: ^Buffer, t: Cursor_Translation) {
+    pos := translate(b, t)
+    remove(b, b.cursor, pos - b.cursor)
+}
+
+move_to :: proc(b: ^Buffer, t: Cursor_Translation) {
+    // TODO: Manage multiple cursors
+    has_selection :: proc(b: ^Buffer) -> bool {
+        return false
+    }
+
+    if has_selection(b) {
+        // TODO: make selection logic
+    } else {
+        pos := translate(b, t)
+        b.cursor = pos
+        // b.cursors[0] = { pos, pos }
+    }
 }
 
 get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {

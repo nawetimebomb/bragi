@@ -55,57 +55,59 @@ Command :: enum {
     self_insert,
 }
 
-do_command :: proc(cmd: Command, p: ^Pane, input: string) {
+do_command :: proc(cmd: Command, p: ^Pane, data: any) {
+    b := p.input.buf
+
     switch cmd {
-    case .noop: log.error("NOT IMPLEMENTED")
-    case .modifier: add_modifier(input)
-    case .quit: bragi.ctx.running = false
+    case .noop:                    log.error("NOT IMPLEMENTED")
+    case .modifier:                add_modifier(data.(string))
+    case .quit:                    bragi.ctx.running = false
 
-    case .find_file: log.error("NOT IMPLEMENTED")
-    case .save_buffer: save_buffer(p)
+    case .find_file:               log.error("NOT IMPLEMENTED")
+    case .save_buffer:             save_buffer(p)
 
-    case .undo: undo(p)
-    case .redo: redo(p)
+    case .undo:                    undo(p)
+    case .redo:                    redo(p)
 
-    case .newline: newline(p)
+    case .newline:                 newline(p)
 
-    case .kill_region: log.error("NOT IMPLEMENTED")
-    case .kill_line: log.error("NOT IMPLEMENTED")
-    case .kill_ring_save: log.error("NOT IMPLEMENTED")
-    case .yank: log.error("NOT IMPLEMENTED")
-    case .yank_from_history: log.error("NOT IMPLEMENTED")
+    case .kill_region:             log.error("NOT IMPLEMENTED")
+    case .kill_line:               delete_to(b, .LINE_END)
+    case .kill_ring_save:          log.error("NOT IMPLEMENTED")
+    case .yank:                    log.error("NOT IMPLEMENTED")
+    case .yank_from_history:       log.error("NOT IMPLEMENTED")
 
-    case .mark_backward_char: log.error("NOT IMPLEMENTED")
-    case .mark_backward_word: log.error("NOT IMPLEMENTED")
+    case .mark_backward_char:      log.error("NOT IMPLEMENTED")
+    case .mark_backward_word:      log.error("NOT IMPLEMENTED")
     case .mark_backward_paragraph: log.error("NOT IMPLEMENTED")
-    case .mark_forward_char: log.error("NOT IMPLEMENTED")
-    case .mark_forward_word: log.error("NOT IMPLEMENTED")
-    case .mark_forward_paragraph: log.error("NOT IMPLEMENTED")
-    case .mark_rectangle: log.error("NOT IMPLEMENTED")
-    case .mark_set: log.error("NOT IMPLEMENTED")
-    case .mark_whole_buffer: log.error("NOT IMPLEMENTED")
+    case .mark_forward_char:       log.error("NOT IMPLEMENTED")
+    case .mark_forward_word:       log.error("NOT IMPLEMENTED")
+    case .mark_forward_paragraph:  log.error("NOT IMPLEMENTED")
+    case .mark_rectangle:          log.error("NOT IMPLEMENTED")
+    case .mark_set:                log.error("NOT IMPLEMENTED")
+    case .mark_whole_buffer:       log.error("NOT IMPLEMENTED")
 
-    case .delete_backward_char: delete_backward_char(p)
-    case .delete_backward_word: delete_backward_word(p)
-    case .delete_forward_char: delete_forward_char(p)
-    case .delete_forward_word: delete_forward_word(p)
+    case .delete_backward_char:    delete_to(b, .LEFT)
+    case .delete_backward_word:    delete_to(b, .WORD_START)
+    case .delete_forward_char:     delete_to(b, .RIGHT)
+    case .delete_forward_word:     delete_to(b, .WORD_END)
 
-    case .backward_char: translate(p, .backward_char)
-    case .backward_word: translate(p, .backward_word)
-    case .backward_paragraph: log.error("NOT IMPLEMENTED")
-    case .forward_char: translate(p, .forward_char)
-    case .forward_word: translate(p, .forward_word)
-    case .forward_paragraph: log.error("NOT IMPLEMENTED")
+    case .backward_char:           move_to(b, .LEFT)
+    case .backward_word:           move_to(b, .WORD_START)
+    case .backward_paragraph:      log.error("NOT IMPLEMENTED")
+    case .forward_char:            move_to(b, .RIGHT)
+    case .forward_word:            move_to(b, .WORD_END)
+    case .forward_paragraph:       log.error("NOT IMPLEMENTED")
 
-    case .next_line:     translate(p, .next_line)
-    case .previous_line: translate(p, .previous_line)
+    case .next_line:               move_to(b, .DOWN)
+    case .previous_line:           move_to(b, .UP)
 
-    case .beginning_of_buffer: translate(p, .beginning_of_buffer)
-    case .beginning_of_line:   translate(p, .beginning_of_line)
-    case .end_of_buffer:       translate(p, .end_of_buffer)
-    case .end_of_line:         translate(p, .end_of_line)
+    case .beginning_of_buffer:     move_to(b, .BUFFER_START)
+    case .beginning_of_line:       move_to(b, .LINE_START)
+    case .end_of_buffer:           move_to(b, .BUFFER_END)
+    case .end_of_line:             move_to(b, .LINE_END)
 
-    case .self_insert: log.error("NOT IMPLEMENTED")
+    case .self_insert:             log.error("NOT IMPLEMENTED")
     }
 }
 

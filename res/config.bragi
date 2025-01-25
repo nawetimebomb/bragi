@@ -3,16 +3,48 @@
 modifier                        <C-x>
 quit                            <ESC>
 
-next_line                       <C-n>
-
-backward_char                   <C-b>       <Left>
-backward_word                   <M-b>       <C-Left>
-backward_paragraph              <M-S-[>     <C-Up>
-forward_char                    <C-f>       <Right>
-forward_word                    <M-f>       <C-Right>
-forward_paragraph               <M-S-]>     <C-Down>
-
 find_file                       <C-x-C-f>
+save_buffer                     <C-x-C-s>
+undo                            <C-/>
+redo                            <C-S-/>
+
+newline                         <RET>
+
+# kill_region
+# kill_line
+# kill_ring_save
+# yank
+# yank_from_history
+
+# mark_backward_char
+# mark_backward_word
+# mark_backward_paragraph
+# mark_forward_char
+# mark_forward_word
+# mark_forward_paragraph
+# mark_rectangle
+# mark_set
+# mark_whole_buffer
+
+delete_backward_char            <BACKSPACE>
+delete_backward_word            <C-BACKSPACE> <M-BACKSPACE>
+delete_forward_char             <DEL>
+delete_forward_word             <M-DEL>
+
+backward_char                   <C-b>
+backward_word                   <M-b>
+# backward_paragraph
+forward_char                    <C-f>
+forward_word                    <M-f>
+# forward_paragraph
+
+next_line                       <C-n>
+previous_line                   <C-p>
+
+beginning_of_buffer             <M-S-,>
+beginning_of_line               <C-a>
+end_of_buffer                   <M-S-.>
+end_of_line                     <C-e>
 
 # Comments
 [colors]

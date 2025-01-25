@@ -33,8 +33,47 @@ load_keybinds :: proc() {
 
 get_key_representation :: proc(k: sdl.Keycode) -> string {
     #partial switch k {
-        case .ESCAPE: return "ESC"
-        case .N:      return "n"
+        case .BACKSPACE:        return "BACKSPACE"
+        case .DELETE:           return "DEL"
+        case .ESCAPE:           return "ESC"
+        case .RETURN:           return "RET"
+
+        case .COMMA:            return ","
+        case .PERIOD:           return "."
+
+        case .SLASH:            return "/"
+
+        case .DOWN:             return "Down"
+        case .LEFT:             return "Left"
+        case .RIGHT:            return "Right"
+        case .UP:               return "Up"
+
+	    case .A:                return "a"
+	    case .B:                return "b"
+	    case .C:                return "c"
+	    case .D:                return "d"
+	    case .E:                return "e"
+	    case .F:                return "f"
+	    case .G:                return "g"
+	    case .H:                return "h"
+	    case .I:                return "i"
+	    case .J:                return "j"
+	    case .K:                return "k"
+	    case .L:                return "l"
+	    case .M:                return "m"
+	    case .N:                return "n"
+	    case .O:                return "o"
+	    case .P:                return "p"
+	    case .Q:                return "q"
+	    case .R:                return "r"
+	    case .S:                return "s"
+	    case .T:                return "t"
+	    case .U:                return "u"
+	    case .V:                return "v"
+	    case .W:                return "w"
+	    case .X:                return "x"
+	    case .Y:                return "y"
+	    case .Z:                return "z"
     }
 
     return ""
@@ -57,6 +96,7 @@ handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     for len(bragi.keybinds.modifiers) > 0 {
         s := pop(&bragi.keybinds.modifiers)
         strings.write_string(&keydown, s)
+        delete(s)
     }
 
     if check_ctrl(key.mod)  { strings.write_string(&keydown, "C-") }
@@ -64,13 +104,11 @@ handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     if check_shift(key.mod) { strings.write_string(&keydown, "S-") }
 
     strings.write_string(&keydown, get_key_representation(key.sym))
-
     match := strings.to_string(keydown)
-
     command, exists := bragi.settings.keybindings_table[match]
 
     if exists {
-        do_command(command, pane.input.buf, match)
+        do_command(command, pane, match)
     }
 
     return exists

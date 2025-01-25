@@ -169,6 +169,9 @@ parse_settings_data :: proc(data: []u8) {
     line_number := 0
     settings_str := string(data)
 
+    clear(&bragi.settings.colorscheme_table)
+    clear(&bragi.settings.keybindings_table)
+
     for line in strings.split_lines_iterator(&settings_str) {
         line_number += 1
 
@@ -231,8 +234,6 @@ parse_settings_data :: proc(data: []u8) {
                     }
 
                     bind := k[1:len(k) - 1]
-
-                    fmt.println(bind)
 
                     _, exists := bragi.settings.keybindings_table[bind]
 

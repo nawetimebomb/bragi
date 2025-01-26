@@ -48,8 +48,11 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
     set_bg(background)
     sdl.RenderClear(renderer)
-    set_bg(comment)
-    sdl.RenderDrawRect(renderer, &pane_dest)
+
+    if index > 0 {
+        set_bg(comment)
+        sdl.RenderDrawLine(renderer, 0, 0, 0, window_size.y)
+    }
 
     { // Start Caret
         caret := p.caret

@@ -5,6 +5,9 @@ quit                            <ESC>
 
 find_file                       <C-x-C-f>
 save_buffer                     <C-x-C-s>
+
+new_pane_to_the_right           <C-x-3>
+
 undo                            <C-/>
 redo                            <C-S-/>
 

@@ -290,10 +290,7 @@ main :: proc() {
     destroy_settings()
     destroy_context()
 
-    if reset_tracking_allocator(&tracking_allocator) {
-        os.exit(1)
-    }
-
+    reset_tracking_allocator(&tracking_allocator)
     mem.tracking_allocator_destroy(&tracking_allocator)
 }
 

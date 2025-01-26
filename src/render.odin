@@ -51,6 +51,7 @@ render :: proc() {
         caret := pane.caret
         viewport := pane.viewport
         dims  := pane.real_size
+        origin := pane.origin
         focused := bragi.current_pane == &pane
 
         { // Start Caret
@@ -161,7 +162,7 @@ render :: proc() {
             }
 
             left_start_column  :: PADDING
-            right_start_column := window_size.x - PADDING - rml_fmt_size
+            right_start_column := dims.x - PADDING - rml_fmt_size
 
             if focused {
                 set_bg(modeline_on_bg)

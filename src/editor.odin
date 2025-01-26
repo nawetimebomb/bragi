@@ -21,29 +21,22 @@ open_file :: proc(filepath: string) {
     }
 }
 
-delete_backward_char :: proc(pane: ^Pane) {
-    remove(pane.input.buf, pane.input.buf.cursor, -1)
+editor_new_pane :: proc(p: ^Pane, pos: New_Pane_Position) {
+    new_pane := pane_init(.generic)
+
+    p.real_size.x /= 2
+    new_pane.real_size.x /= 2
+    new_pane.origin.x = p.real_size.x
+
+    new_pane.input.buf = p.input.buf
+
+    add(new_pane)
 }
 
-delete_backward_word :: proc(p: ^Pane) {
-    pos := p.input.buf.cursor
-    buf := p.input.str.buf[:]
-    for pos > 0 && !is_whitespace(buf[pos - 1]) { pos -= 1 }
-    for pos > 0 && is_whitespace(buf[pos - 1])  { pos -= 1 }
+editor_find_file :: proc(target: ^Pane) {
+    new_pane := pane_init(.file_explorer)
 
-    remove(p.input.buf, p.input.buf.cursor, pos - p.input.buf.cursor)
-}
 
-delete_forward_char :: proc(pane: ^Pane) {
-    remove(pane.input.buf, pane.input.buf.cursor, 1)
-}
-
-delete_forward_word :: proc(p: ^Pane) {
-    pos := p.input.buf.cursor
-    buf := p.input.str.buf[:]
-    for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
-    for pos < len(buf) && is_whitespace(buf[pos])  { pos += 1 }
-    remove(p.input.buf, p.input.buf.cursor, pos - p.input.buf.cursor)
 }
 
 newline :: proc(p: ^Pane) {

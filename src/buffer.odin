@@ -24,34 +24,36 @@ History_State :: struct {
 Cursor :: [2]int
 
 Buffer :: struct {
-    allocator:      runtime.Allocator,
+    allocator:            runtime.Allocator,
 
-    cursors:        [dynamic]Cursor,
-    cursor:         int,
-    data:           []byte,
-    dirty:          bool,
-    was_dirty:      bool,
-    gap_end:        int,
-    gap_start:      int,
-    single_line:    bool,
-    lines:          [dynamic]int,
+    cursors:              [dynamic]Cursor,
+    marking:              bool,
 
-    enable_history: bool,
-    redo:           [dynamic]History_State,
-    undo:           [dynamic]History_State,
-    history_limit:  int,
-    current_time:   time.Tick,
-    last_edit_time: time.Tick,
-    undo_timeout:   time.Duration,
+    cursor:               int,
+    data:                 []byte,
+    dirty:                bool,
+    was_dirty_last_frame: bool,
+    gap_end:              int,
+    gap_start:            int,
+    single_line:          bool,
+    lines:                [dynamic]int,
 
-    builder:        ^strings.Builder,
+    enable_history:       bool,
+    redo:                 [dynamic]History_State,
+    undo:                 [dynamic]History_State,
+    history_limit:        int,
+    current_time:         time.Tick,
+    last_edit_time:       time.Tick,
+    undo_timeout:         time.Duration,
 
-    filepath:       string,
-    major_mode:     Major_Mode,
-    name:           string,
-    readonly:       bool,
-    modified:       bool,
-    crlf:           bool,
+    builder:              ^strings.Builder,
+
+    filepath:             string,
+    major_mode:           Major_Mode,
+    name:                 string,
+    readonly:             bool,
+    modified:             bool,
+    crlf:                 bool,
 }
 
 buffer_init :: proc(
@@ -133,9 +135,12 @@ create_buffer_from_file :: proc(
 
     insert(result, 0, data)
     result.cursor = 0
-    result.dirty = false
     result.modified = false
-    result.was_dirty = true
+
+    // TODO: Because in debug I'm opening a file when running Bragi, I need
+    // this to be temporarily false
+    result.dirty = false
+    result.was_dirty_last_frame = true
 
     return result
 }
@@ -155,29 +160,29 @@ get_or_create_buffer :: proc(
     return create_buffer(name, bytes, undo_timeout, allocator)
 }
 
-buffer_begin :: proc(buffer: ^Buffer, builder: ^strings.Builder) {
+buffer_begin :: proc(b: ^Buffer, builder: ^strings.Builder) {
     assert(builder != nil)
+    assert(b.dirty == false)
     profiling_start("buffer_begin")
 
-    buffer.builder = builder
-    update_buffer_time(buffer)
+    b.builder = builder
+    update_buffer_time(b)
 
-    if buffer.dirty || buffer.was_dirty {
-        buffer.dirty = false
-        buffer.was_dirty = false
-        refresh_string_buffer(buffer)
-        recalculate_lines(buffer, buffer.builder.buf[:])
+    if b.was_dirty_last_frame {
+        b.was_dirty_last_frame = false
+        refresh_string_buffer(b)
+        recalculate_lines(b, b.builder.buf[:])
     }
 
     profiling_end()
 }
 
-buffer_end :: proc(buffer: ^Buffer) {
-    buffer.builder = nil
+buffer_end :: proc(b: ^Buffer) {
+    b.builder = nil
 
-    if buffer.dirty {
-        buffer.dirty = false
-        buffer.was_dirty = true
+    if b.dirty {
+        b.dirty = false
+        b.was_dirty_last_frame = true
     }
 }
 

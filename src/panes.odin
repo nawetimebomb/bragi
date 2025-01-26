@@ -23,9 +23,13 @@ Pane_Function :: enum {
     // The pane used for text input
     generic,
     // The pane used for selecting files
-    find_file,
+    file_explorer,
     // The pane that shows results and allows to search
     search,
+}
+
+New_Pane_Position :: enum {
+    BOTTOM, RIGHT,
 }
 
 Pane :: struct {
@@ -128,7 +132,6 @@ pane_begin :: proc(p: ^Pane) {
     if p.input.buf  != nil { buffer_begin(p.input.buf,  &p.input.str) }
     if p.result.buf != nil { buffer_begin(p.result.buf, &p.result.str) }
 
-    p.real_size = bragi.ctx.window_size
     p.relative_size.x = p.real_size.x / char_width
     p.relative_size.y = p.real_size.y / line_height
 

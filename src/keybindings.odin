@@ -76,6 +76,17 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
 	    case .X:                return "x"
 	    case .Y:                return "y"
 	    case .Z:                return "z"
+
+	    case .NUM0:             return "0"
+	    case .NUM1:             return "1"
+	    case .NUM2:             return "2"
+	    case .NUM3:             return "3"
+	    case .NUM4:             return "4"
+	    case .NUM5:             return "5"
+	    case .NUM6:             return "6"
+	    case .NUM7:             return "7"
+	    case .NUM8:             return "8"
+	    case .NUM9:             return "9"
     }
 
     return ""

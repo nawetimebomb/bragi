@@ -11,6 +11,8 @@ Command :: enum {
     find_file,
     save_buffer,
 
+    new_pane_to_the_right,
+
     undo,
     redo,
 
@@ -63,8 +65,10 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .modifier:                add_modifier(data.(string))
     case .quit:                    bragi.ctx.running = false
 
-    case .find_file:               log.error("NOT IMPLEMENTED")
+    case .find_file:               editor_find_file(p)
     case .save_buffer:             save_buffer(p)
+
+    case .new_pane_to_the_right:   editor_new_pane(p, .RIGHT)
 
     case .undo:                    undo(p)
     case .redo:                    redo(p)

@@ -1,5 +1,7 @@
 package main
 
+import     "core:encoding/uuid"
+import     "core:fmt"
 import     "core:log"
 import     "core:strings"
 import     "core:time"
@@ -56,6 +58,9 @@ Pane :: struct {
         str: strings.Builder,
     },
 
+    // If this pane is marked for deletion, it will be deleted at the end of the frame.
+    mark_for_deletion: bool,
+
     // Results buffer are usually readonly, and they are used to list results from
     // the input provided and the type of function that opened this pane.
     // `result.select` means the index of the current selection.
@@ -78,6 +83,8 @@ Pane :: struct {
     origin:         [2]i32,
     // The amount of scrolling the pane has done so far, depending of the caret.
     viewport:       [2]i32,
+
+    uid: uuid.Identifier,
 }
 
 recalculate_panes :: proc() {
@@ -110,9 +117,9 @@ should_caret_blink :: #force_inline proc(p: ^Pane) -> bool {
 }
 
 find_pane_in_window_coords :: proc(x, y: i32) -> ^Pane {
-    for &p in bragi.panes {
-        origin := p.origin
-        size := p.real_size
+    for &p, index in bragi.panes {
+        origin := [2]i32{ p.real_size.x * i32(index), 0 }
+        size := [2]i32{ origin.x + p.real_size.x, p.real_size.y }
 
         if origin.x <= x && size.x > x && origin.y <= y && size.y > y {
             return &p
@@ -132,6 +139,7 @@ pane_init :: proc(func: Pane_Function = .generic) -> Pane {
             str = strings.builder_make(),
         },
         real_size = bragi.ctx.window_size,
+        uid       = uuid.generate_v7(),
     }
 
     // TODO: Pane Function should set some defaults here.
@@ -176,9 +184,15 @@ pane_begin :: proc(p: ^Pane) {
     }
 }
 
-pane_end :: proc(p: ^Pane) {
+pane_end :: proc(p: ^Pane, index: int) {
     if p.input.buf  != nil { buffer_end(p.input.buf) }
     if p.result.buf != nil { buffer_end(p.result.buf) }
+
+    if p.mark_for_deletion {
+        pane_destroy(p)
+        ordered_remove(&bragi.panes, index)
+        recalculate_panes()
+    }
 }
 
 pane_destroy :: proc(p: ^Pane) {

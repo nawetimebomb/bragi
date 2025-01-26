@@ -1,6 +1,8 @@
 package main
 
 import     "base:runtime"
+import     "core:crypto"
+import     "core:encoding/uuid"
 import     "core:fmt"
 import     "core:log"
 import     "core:math"
@@ -49,15 +51,13 @@ Program_Context :: struct {
 }
 
 Bragi :: struct {
-    buffers:      [dynamic]Buffer,
-    panes:        [dynamic]Pane,
-    focused_pane: ^Pane,
-    current_pane: ^Pane,
-    last_pane:    ^Pane,
+    buffers:         [dynamic]Buffer,
+    panes:           [dynamic]Pane,
+    focused_pane_id: uuid.Identifier,
 
-    ctx:          Program_Context,
-    keybinds:     Keybinds,
-    settings:     Settings,
+    ctx:             Program_Context,
+    keybinds:        Keybinds,
+    settings:        Settings,
 }
 
 bragi: Bragi
@@ -150,13 +150,11 @@ initialize_editor :: proc() {
 
     p := add(pane_init())
     p.input.buf = add(buffer_init("*notes*", 0))
-    bragi.last_pane = p
-    bragi.current_pane = p
-    bragi.focused_pane = p
+    bragi.focused_pane_id = p.uid
 
     //    TODO: This is a debug only thing
     filepath := "C:/Code/bragi/demo/hello.odin"
-    open_file(filepath)
+    open_file(p, filepath)
 }
 
 initialize_settings :: proc() {
@@ -225,6 +223,7 @@ destroy_profiling :: proc() {
 
 main :: proc() {
     context.logger = log.create_console_logger()
+    context.random_generator = crypto.random_generator()
 
     default_allocator := context.allocator
     tracking_allocator: mem.Tracking_Allocator
@@ -256,11 +255,11 @@ main :: proc() {
         frame_start := sdl.GetPerformanceCounter()
 
         for &p, index in bragi.panes {
-            focused := bragi.focused_pane == &p
+            focused := bragi.focused_pane_id == p.uid
             pane_begin(&p)
-            if focused { update_input() }
-            pane_end(&p)
+            if focused { update_input(&p) }
             render_pane(&p, index, focused)
+            pane_end(&p, index)
         }
 
         sdl.RenderPresent(bragi.ctx.renderer)

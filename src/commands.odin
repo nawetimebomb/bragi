@@ -11,6 +11,8 @@ Command :: enum {
     find_file,
     save_buffer,
 
+    delete_this_pane,
+    delete_other_panes,
     new_pane_to_the_right,
 
     undo,
@@ -68,6 +70,8 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .find_file:               editor_find_file(p)
     case .save_buffer:             save_buffer(p)
 
+    case .delete_this_pane:        editor_close_panes(p, .CURRENT)
+    case .delete_other_panes:      editor_close_panes(p, .OTHER)
     case .new_pane_to_the_right:   editor_new_pane(p, .RIGHT)
 
     case .undo:                    undo(p)

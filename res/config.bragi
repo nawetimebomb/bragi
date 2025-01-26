@@ -6,7 +6,10 @@ quit                            <ESC>
 find_file                       <C-x-C-f>
 save_buffer                     <C-x-C-s>
 
+delete_this_pane                <C-x-0>
+delete_other_panes              <C-x-1>
 new_pane_to_the_right           <C-x-3>
+other_pane                      <C-x-o>
 
 undo                            <C-/>
 redo                            <C-S-/>

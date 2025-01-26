@@ -92,8 +92,8 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
     return ""
 }
 
-handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
-    pane.caret.last_keystroke = time.tick_now()
+handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
+    p.caret.last_keystroke = time.tick_now()
 
     // NOTE: Disallow mod keys as keystrokes
     disallowed_keystrokes := [?]sdl.Keycode{
@@ -129,13 +129,13 @@ handle_keydown :: proc(key: sdl.Keysym, pane: ^Pane) -> bool {
     command, exists := bragi.settings.keybindings_table[match]
 
     if exists {
-        do_command(command, pane, match)
+        do_command(command, p, match)
     }
 
     return exists
 }
 
-update_input :: proc() {
+update_input :: proc(p: ^Pane) {
     e: sdl.Event
     input_handled := false
 
@@ -150,14 +150,9 @@ update_input :: proc() {
 
                 if w.event == .FOCUS_LOST {
                     bragi.ctx.window_focused = false
-                    bragi.last_pane    = bragi.current_pane
-                    bragi.current_pane = nil
                 } else if w.event == .FOCUS_GAINED {
                     bragi.ctx.window_focused = true
-                    bragi.current_pane = bragi.last_pane
-                }
-
-                if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
+                } else if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
                     // TODO: Handle texture resizing
                     bragi.ctx.window_size = { e.window.data1, e.window.data2 }
                     recalculate_panes()
@@ -167,70 +162,64 @@ update_input :: proc() {
             case .DROPFILE: {
                 sdl.RaiseWindow(bragi.ctx.window)
                 filepath := string(e.drop.file)
-                open_file(filepath)
+                open_file(p, filepath)
                 delete(e.drop.file)
                 return
             }
-        }
+            case .MOUSEBUTTONDOWN: {
+                mouse := e.button
 
-        if bragi.current_pane != nil {
-            #partial switch e.type {
-                case .MOUSEBUTTONDOWN: {
-                    mouse := e.button
-
-                    if mouse.button == 1 {
-                        switch mouse.clicks {
-                        case 1:
-                            bragi.current_pane =
-                                find_pane_in_window_coords(mouse.x, mouse.y)
-                            mouse_set_point(bragi.current_pane, mouse.x, mouse.y)
-                        case 2:
-                            bragi.current_pane =
-                                find_pane_in_window_coords(mouse.x, mouse.y)
-                                mouse_drag_word(bragi.current_pane, mouse.x, mouse.y)
-                        case 3:
-                            bragi.current_pane =
-                                find_pane_in_window_coords(mouse.x, mouse.y)
-                                mouse_drag_line(bragi.current_pane, mouse.x, mouse.y)
-                        }
+                if mouse.button == 1 {
+                    switch mouse.clicks {
+                    case 1:
+                        found := find_pane_in_window_coords(mouse.x, mouse.y)
+                        bragi.focused_pane_id = found.uid
+                        mouse_set_point(found, mouse.x, mouse.y)
+                    case 2:
+                        found := find_pane_in_window_coords(mouse.x, mouse.y)
+                        bragi.focused_pane_id = found.uid
+                        mouse_drag_word(found, mouse.x, mouse.y)
+                    case 3:
+                        found := find_pane_in_window_coords(mouse.x, mouse.y)
+                        bragi.focused_pane_id = found.uid
+                        mouse_drag_line(found, mouse.x, mouse.y)
                     }
+                }
 
-                    return
-                }
-                case .MOUSEWHEEL: {
-                    wheel := e.wheel
-                    scroll(bragi.current_pane, wheel.y * -1 * 5)
-                    return
-                }
-                case .KEYDOWN: {
-                    input_handled = handle_keydown(e.key.keysym, bragi.current_pane)
-                }
-                case .TEXTINPUT: {
-                    if !input_handled {
-                        pane := bragi.current_pane
-                        input_char := cstring(raw_data(e.text.text[:]))
-                        str := string(input_char)
-                        insert(pane.input.buf, pane.input.buf.cursor, str)
+                return
+            }
+            case .MOUSEWHEEL: {
+                wheel := e.wheel
+                scroll(p, wheel.y * -1 * 5)
+                return
+            }
+            case .KEYDOWN: {
+                input_handled = handle_keydown(p, e.key.keysym)
+            }
+            case .TEXTINPUT: {
+                if !input_handled {
+                    input_char := cstring(raw_data(e.text.text[:]))
+                    str := string(input_char)
+                    insert(p.input.buf, p.input.buf.cursor, str)
 
-                        // if bragi.minibuffer != nil {
-                        //     insert(bragi.minibuffer, bragi.minibuffer.cursor, str)
-                        // } else {
-                        //     switch m in pane.mode {
-                        //     case Edit_Mode:
+                    // if bragi.minibuffer != nil {
+                    //     insert(bragi.minibuffer, bragi.minibuffer.cursor, str)
+                    // } else {
+                    //     switch m in pane.mode {
+                    //     case Edit_Mode:
 
-                        //     case Mark_Mode:
-                        //         start  := min(m.begin, pane.buffer.cursor)
-                        //         end    := max(m.begin, pane.buffer.cursor)
-                        //         length := end - start
-                        //         pane.buffer.cursor = start
-                        //         remove(pane.buffer, pane.buffer.cursor, length)
-                        //         set_pane_mode(pane, Edit_Mode{})
-                        //         insert(pane.buffer, pane.buffer.cursor, str)
-                        //     }
-                        // }
-                    }
-                    return
+                    //     case Mark_Mode:
+                    //         start  := min(m.begin, pane.buffer.cursor)
+                    //         end    := max(m.begin, pane.buffer.cursor)
+                    //         length := end - start
+                    //         pane.buffer.cursor = start
+                    //         remove(pane.buffer, pane.buffer.cursor, length)
+                    //         set_pane_mode(pane, Edit_Mode{})
+                    //         insert(pane.buffer, pane.buffer.cursor, str)
+                    //     }
+                    // }
                 }
+                return
             }
         }
     }

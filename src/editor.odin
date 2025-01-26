@@ -5,19 +5,41 @@ import "core:log"
 import "core:slice"
 import "core:strings"
 
-open_file :: proc(filepath: string) {
+open_file :: proc(p: ^Pane, filepath: string) {
     buffer_found := false
 
     for &b in bragi.buffers {
         if b.filepath == filepath {
-            bragi.last_pane.input.buf = &b
+            p.input.buf = &b
             buffer_found = true
             break
         }
     }
 
     if !buffer_found {
-        bragi.last_pane.input.buf = create_buffer_from_file(filepath)
+        p.input.buf = create_buffer_from_file(filepath)
+    }
+}
+
+editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
+    if w == .CURRENT {
+        other_pane: ^Pane
+
+        for &p1, index in bragi.panes {
+            if p.uid != p1.uid {
+                other_pane = &p1
+                break
+            }
+        }
+
+        p.mark_for_deletion = true
+        bragi.focused_pane_id = other_pane.uid
+    } else {
+        for &p1 in bragi.panes {
+            if p.uid != p1.uid {
+                p1.mark_for_deletion = true
+            }
+        }
     }
 }
 
@@ -29,8 +51,9 @@ editor_new_pane :: proc(p: ^Pane, pos: New_Pane_Position) {
     // new_pane.origin.x = p.real_size.x
 
     new_pane.input.buf = p.input.buf
+    result := add(new_pane)
 
-    bragi.focused_pane = add(new_pane)
+    bragi.focused_pane_id = result.uid
     recalculate_panes()
 }
 

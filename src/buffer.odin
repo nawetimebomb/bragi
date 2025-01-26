@@ -31,6 +31,7 @@ Buffer :: struct {
 
     cursor:               int,
     data:                 []byte,
+    str:                  string,
     dirty:                bool,
     was_dirty_last_frame: bool,
     gap_end:              int,
@@ -45,8 +46,6 @@ Buffer :: struct {
     current_time:         time.Tick,
     last_edit_time:       time.Tick,
     undo_timeout:         time.Duration,
-
-    builder:              ^strings.Builder,
 
     filepath:             string,
     major_mode:           Major_Mode,
@@ -64,9 +63,12 @@ buffer_init :: proc(
 ) -> Buffer {
     b := Buffer{
         allocator      = allocator,
+
         cursors        = make([dynamic]Cursor, 1, 1),
+
         cursor         = 0,
         data           = make([]byte, bytes, allocator),
+        str            = "",
         dirty          = false,
         enable_history = true,
         gap_start      = 0,
@@ -78,7 +80,7 @@ buffer_init :: proc(
         undo           = make([dynamic]History_State, 0, 5, allocator),
         undo_timeout   = undo_timeout,
     }
-    recalculate_lines(&b, b.data[:])
+    recalculate_lines(&b)
     return b
 }
 
@@ -160,26 +162,22 @@ get_or_create_buffer :: proc(
     return create_buffer(name, bytes, undo_timeout, allocator)
 }
 
-buffer_begin :: proc(b: ^Buffer, builder: ^strings.Builder) {
-    assert(builder != nil)
+buffer_begin :: proc(b: ^Buffer) {
     assert(b.dirty == false)
     profiling_start("buffer_begin")
 
-    b.builder = builder
     update_buffer_time(b)
 
     if b.was_dirty_last_frame {
         b.was_dirty_last_frame = false
         refresh_string_buffer(b)
-        recalculate_lines(b, b.builder.buf[:])
+        recalculate_lines(b)
     }
 
     profiling_end()
 }
 
 buffer_end :: proc(b: ^Buffer) {
-    b.builder = nil
-
     if b.dirty {
         b.dirty = false
         b.was_dirty_last_frame = true
@@ -193,9 +191,9 @@ buffer_destroy :: proc(buffer: ^Buffer) {
     delete(buffer.data)
     delete(buffer.lines)
     delete(buffer.name)
+    delete(buffer.str)
     delete(buffer.redo)
     delete(buffer.undo)
-    buffer.builder = nil
 }
 
 update_buffer_time :: proc(buffer: ^Buffer) {
@@ -207,13 +205,14 @@ update_buffer_time :: proc(buffer: ^Buffer) {
     }
 }
 
-recalculate_lines :: proc(buffer: ^Buffer, buf: []u8) {
-    clear(&buffer.lines)
-    append(&buffer.lines, 0)
+recalculate_lines :: proc(b: ^Buffer) {
+    buf := transmute([]u8)b.str
+    clear(&b.lines)
+    append(&b.lines, 0)
 
     for c, index in buf {
         if buf[index] == '\n' {
-            append(&buffer.lines, index + 1)
+            append(&b.lines, index + 1)
         }
     }
 }
@@ -272,10 +271,9 @@ get_current_cursor_head :: #force_inline proc(b: ^Buffer) -> int {
 }
 
 translate :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
-    assert(b.builder != nil)
     pos = b.cursor
     //pos = get_current_cursor_head(b)
-    buf := b.builder.buf[:]
+    buf := b.str
     line_index := get_line_index(b, pos)
     line_start_start := get_line_start(b, line_index)
     offset_from_bol := pos - line_start_start
@@ -447,8 +445,6 @@ buffer_save :: proc(buffer: ^Buffer, data: []byte) {
 }
 
 sanitize_buffer :: proc(buffer: ^Buffer) {
-    assert(buffer.builder != nil)
-
     LF_COUNT :: 1
     initial_cursor_pos := buffer.cursor
     line_endings := 0
@@ -476,26 +472,24 @@ sanitize_buffer :: proc(buffer: ^Buffer) {
     }
 }
 
-flush_entire_buffer :: proc(buffer: ^Buffer) {
-    flush_range(buffer, 0, buffer_len(buffer))
-}
-
-flush_range :: proc(buffer: ^Buffer, start, end: int) {
-    left, right := buffer_get_strings(buffer)
+flush_range :: proc(b: ^Buffer, start, end: int) {
+    builder := strings.builder_make(context.temp_allocator)
+    left, right := buffer_get_strings(b)
     assert(start >= 0, "invalid start position")
-    assert(end <= buffer_len(buffer), "invalud end position")
-    assert(buffer.builder != nil)
+    assert(end <= buffer_len(b), "invalud end position")
 
     left_len := len(left)
 
     if end <= left_len {
-        strings.write_string(buffer.builder, left[start:end])
+        strings.write_string(&builder, left[start:end])
     } else if start >= left_len {
-        strings.write_string(buffer.builder, right[start - left_len:end - left_len])
+        strings.write_string(&builder, right[start - left_len:end - left_len])
     } else {
-        strings.write_string(buffer.builder, left[start:])
-        strings.write_string(buffer.builder, right[:end - left_len])
+        strings.write_string(&builder, left[start:])
+        strings.write_string(&builder, right[:end - left_len])
     }
+
+    b.str = strings.clone(strings.to_string(builder))
 }
 
 buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
@@ -504,10 +498,9 @@ buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
     return
 }
 
-refresh_string_buffer :: proc(buffer: ^Buffer) {
-    assert(buffer.builder != nil)
-    strings.builder_reset(buffer.builder)
-    flush_entire_buffer(buffer)
+refresh_string_buffer :: proc(b: ^Buffer) {
+    delete(b.str)
+    flush_range(b, 0, buffer_len(b))
 }
 
 // Deletes X characters. If positive, deletes forward

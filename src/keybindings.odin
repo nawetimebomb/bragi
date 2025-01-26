@@ -158,6 +158,7 @@ update_input :: proc() {
                 }
 
                 if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
+                    // TODO: Handle texture resizing
                     bragi.ctx.window_size = { e.window.data1, e.window.data2 }
                     recalculate_panes()
                 }

@@ -1,8 +1,9 @@
 package main
 
-import "core:log"
-import "core:strings"
-import "core:time"
+import     "core:log"
+import     "core:strings"
+import     "core:time"
+import sdl "vendor:sdl2"
 
 // @Description
 // Panes follow the concept of "windows" in Emacs. The editor window can separate in
@@ -80,7 +81,19 @@ Pane :: struct {
 }
 
 recalculate_panes :: proc() {
-    log.error("IMPLEMENT PROC")
+    window_size := bragi.ctx.window_size
+
+    for &p in bragi.panes {
+        p.real_size.x = window_size.x / i32(len(bragi.panes))
+        p.real_size.y = window_size.y
+    }
+
+    sdl.DestroyTexture(bragi.ctx.pane_texture)
+
+    bragi.ctx.pane_texture = sdl.CreateTexture(
+        bragi.ctx.renderer, .RGBA8888, .TARGET,
+        window_size.x / i32(len(bragi.panes)), window_size.y,
+    )
 }
 
 should_caret_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {
@@ -129,8 +142,8 @@ pane_init :: proc(func: Pane_Function = .generic) -> Pane {
 pane_begin :: proc(p: ^Pane) {
     char_width, line_height := get_standard_character_size()
 
-    if p.input.buf  != nil { buffer_begin(p.input.buf,  &p.input.str) }
-    if p.result.buf != nil { buffer_begin(p.result.buf, &p.result.str) }
+    if p.input.buf  != nil { buffer_begin(p.input.buf) }
+    if p.result.buf != nil { buffer_begin(p.result.buf) }
 
     p.relative_size.x = p.real_size.x / char_width
     p.relative_size.y = p.real_size.y / line_height

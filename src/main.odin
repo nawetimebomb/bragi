@@ -41,6 +41,7 @@ Program_Context :: struct {
     spall_buf:      spall.Buffer,
     spall_ctx:      spall.Context,
     running:        bool,
+    pane_texture:   ^sdl.Texture,
     renderer:       ^sdl.Renderer,
     window:         ^sdl.Window,
     window_size:    [2]i32,
@@ -130,6 +131,11 @@ initialize_context :: proc() {
     set_characters_textures()
 
     sdl.SetCursor(sdl.CreateSystemCursor(.IBEAM))
+
+    bragi.ctx.pane_texture = sdl.CreateTexture(
+        bragi.ctx.renderer, .RGBA8888, .TARGET,
+        DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
+    )
 
     bragi.ctx.running        = true
     bragi.ctx.undo_allocator = context.allocator
@@ -249,14 +255,15 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
-        for &p in bragi.panes {
+        for &p, index in bragi.panes {
             focused := bragi.focused_pane == &p
             pane_begin(&p)
             if focused { update_input() }
             pane_end(&p)
+            render_pane(&p, index, focused)
         }
 
-        render()
+        sdl.RenderPresent(bragi.ctx.renderer)
 
         free_all(context.temp_allocator)
 

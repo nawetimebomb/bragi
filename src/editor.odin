@@ -24,13 +24,14 @@ open_file :: proc(filepath: string) {
 editor_new_pane :: proc(p: ^Pane, pos: New_Pane_Position) {
     new_pane := pane_init(.generic)
 
-    p.real_size.x /= 2
-    new_pane.real_size.x /= 2
-    new_pane.origin.x = p.real_size.x
+    // p.real_size.x /= 2
+    // new_pane.real_size.x /= 2
+    // new_pane.origin.x = p.real_size.x
 
     new_pane.input.buf = p.input.buf
 
-    add(new_pane)
+    bragi.focused_pane = add(new_pane)
+    recalculate_panes()
 }
 
 editor_find_file :: proc(target: ^Pane) {

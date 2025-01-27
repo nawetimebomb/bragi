@@ -149,7 +149,7 @@ initialize_editor :: proc() {
     bragi.panes   = make([dynamic]Pane, 0, 2)
 
     p := add(pane_init())
-    p.content.buffer = add(buffer_init("*notes*", 0))
+    p.buffer = add(buffer_init("*notes*", 0))
     bragi.focused_pane_id = p.uid
 
     //    TODO: This is a debug only thing

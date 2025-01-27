@@ -6,8 +6,8 @@ import sdl "vendor:sdl2"
 import     "languages"
 
 is_caret_showing :: #force_inline proc(p: ^Pane, x, y: i32) -> bool {
-    caret := p.content.caret
-    return !caret.blinking && caret.coords.x == x && caret.coords.y == y
+    caret := p.caret
+    return !caret.blinking && i32(caret.coords.x) == x && i32(caret.coords.y) == y
 }
 
 set_bg :: #force_inline proc(c: Color) {
@@ -29,8 +29,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     window_size := bragi.ctx.window_size
     pane_dest := sdl.Rect{ p.real_size.x * i32(index), 0, p.real_size.x, p.real_size.y }
     viewport := p.viewport
-    caret := p.content.caret
-    buffer := p.content.buffer
+    caret := p.caret
+    buffer := p.buffer
 
     background      := colors[.background]
     builtin         := colors[.builtin]
@@ -59,8 +59,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
     { // Start Caret
         dest_rect := sdl.Rect{
-            (caret.coords.x - viewport.x) * char_width,
-            (caret.coords.y - viewport.y) * line_height,
+            (i32(caret.coords.x) - viewport.x) * char_width,
+            (i32(caret.coords.y) - viewport.y) * line_height,
             char_width, line_height,
         }
 

@@ -96,11 +96,6 @@ get_line_boundaries :: proc(d: []u8, pos: int) -> (begin, end: int) {
     }
 }
 
-get_line_length :: proc(d: []u8, pos: int) -> int {
-    bol, eol := get_line_boundaries(d, pos)
-    return eol - bol
-}
-
 get_word_boundaries :: proc(s: string, pos: int) -> (begin, end: int) {
     begin = pos; end = pos
 

@@ -82,7 +82,7 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .kill_region:             log.error("NOT IMPLEMENTED")
     case .kill_line:               delete_to(p, .LINE_END)
     case .kill_ring_save:          log.error("NOT IMPLEMENTED")
-    case .yank:                    log.error("NOT IMPLEMENTED")
+    case .yank:                    yank(p, handle_paste)
     case .yank_from_history:       log.error("NOT IMPLEMENTED")
 
     case .mark_backward_char:      log.error("NOT IMPLEMENTED")

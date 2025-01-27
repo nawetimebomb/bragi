@@ -93,7 +93,7 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
 }
 
 handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
-    p.content.caret.last_keystroke = time.tick_now()
+    p.caret.last_keystroke = time.tick_now()
 
     // NOTE: Disallow mod keys as keystrokes
     disallowed_keystrokes := [?]sdl.Keycode{
@@ -200,7 +200,7 @@ update_input :: proc(p: ^Pane) {
                 if !input_handled {
                     input_char := cstring(raw_data(e.text.text[:]))
                     str := string(input_char)
-                    p.content.cursor = insert(p.content.buffer, p.content.cursor, str)
+                    self_insert(p, str)
                 }
                 return
             }
@@ -208,13 +208,11 @@ update_input :: proc(p: ^Pane) {
     }
 }
 
-@(private="file")
 handle_copy :: proc(str: string) {
     result := strings.clone_to_cstring(str, context.temp_allocator)
     sdl.SetClipboardText(result)
 }
 
-@(private="file")
 handle_paste :: proc() -> string {
     result := sdl.GetClipboardText()
     return string(result)

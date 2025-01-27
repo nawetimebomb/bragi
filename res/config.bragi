@@ -20,7 +20,7 @@ newline                         <RET>
 # kill_region
 kill_line                       <C-k>
 # kill_ring_save
-# yank
+yank                            <C-y>
 # yank_from_history
 
 # mark_backward_char

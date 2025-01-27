@@ -202,14 +202,16 @@ save_buffer :: proc(p: ^Pane) {
     buffer_save(p.buffer)
 }
 
-undo :: proc(p: ^Pane) {
-    undo_redo(p.buffer, &p.buffer.undo, &p.buffer.redo)
-    p.should_resync_caret = true
-}
+editor_undo_redo :: proc(p: ^Pane, a: enum { REDO, UNDO }) {
+    success: bool
 
-redo :: proc(p: ^Pane) {
-    undo_redo(p.buffer, &p.buffer.redo, &p.buffer.undo)
-    p.should_resync_caret = true
+    if a == .REDO {
+        success = undo_redo(p.buffer, &p.buffer.redo, &p.buffer.undo)
+    } else {
+        success = undo_redo(p.buffer, &p.buffer.undo, &p.buffer.redo)
+    }
+
+    p.should_resync_caret = success
 }
 
 yank :: proc(p: ^Pane, callback: Paste_Proc) {
@@ -229,87 +231,15 @@ newline :: proc(p: ^Pane) {
     p.caret.coords.y += 1
 }
 
-// translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Buffer_Cursor) {
-//     pos = p.cursor
-//     buffer := p.buffer
-//     str := buffer.str
-//     line_index := get_line_index(buffer, pos)
-//     line_start_start := get_line_start(buffer, line_index)
-//     offset_from_bol := pos - line_start_start
-
-//     switch t {
-//     case .DOWN:
-// if is_last_line(buffer, line_index) { return }
-
-// next_line_index := line_index + 1
-// next_line_start := get_line_start(buffer, next_line_index)
-
-// if is_between_line(buffer, next_line_index, next_line_start + offset_from_bol) {
-//     pos = next_line_start + offset_from_bol
-// } else {
-//     pos = get_line_end(buffer, next_line_index)
-// }
-//     case .LEFT:
-//         pos -= 1
-//         for pos > 0 && is_continuation_byte(str[pos]) { pos -= 1 }
-//     case .RIGHT:
-//         pos += 1
-//         for pos < len(str) && is_continuation_byte(str[pos]) { pos += 1 }
-//     case .UP:
-//         if line_index == 0 { return }
-
-//         prev_line_index := line_index - 1
-//         prev_line_start := get_line_start(buffer, prev_line_index)
-
-//         if is_between_line(buffer, prev_line_index, prev_line_start + offset_from_bol) {
-//             pos = prev_line_start + offset_from_bol
-//         } else {
-//             pos = get_line_end(buffer, prev_line_index)
-//         }
-//     case .BUFFER_START:
-//         pos = 0
-//     case .BUFFER_END:
-//         pos = len(str)
-//     case .LINE_START:
-//         if pos == line_start_start {
-//             for pos < len(str) && is_whitespace(str[pos]) { pos += 1 }
-//         } else {
-//             pos = line_start_start
-//         }
-//     case .LINE_END:
-//         for pos < len(str) && !is_newline(str[pos]) { pos += 1 }
-//     case .WORD_START:
-//         // TODO: WORD_START and WORD_END should actually figure out if the
-//         // characters in point form a word or not, and the skip over them.
-//         // Right now basically is taking "WORD" as a regular english word,
-//         // even when there's characters like underscore or hyphen in the middle.
-//         for pos > 0 && is_whitespace(str[pos - 1])  { pos -= 1 }
-//         for pos > 0 && !is_whitespace(str[pos - 1]) { pos -= 1 }
-//     case .WORD_END:
-//         for pos < len(str) && is_whitespace(str[pos])  { pos += 1 }
-//         for pos < len(str) && !is_whitespace(str[pos]) { pos += 1 }
-//     }
-
-//     return clamp(pos, 0, len(str))
-// }
-
 delete_to :: proc(p: ^Pane, t: Caret_Translation) {
-    pos := translate(p, t)
-    // p.cursor = remove(p.buffer, p.cursor, pos - p.cursor)
+    end_pos := caret_to_buffer_cursor(p.buffer, translate(p, t))
+    start_pos := caret_to_buffer_cursor(p.buffer, p.caret.coords)
+    remove(p.buffer, start_pos, end_pos - start_pos)
+    p.should_resync_caret = true
 }
 
 move_to :: proc(p: ^Pane, t: Caret_Translation) {
-    // // TODO: Manage multiple cursors
-    // has_selection :: proc(b: ^Buffer) -> bool {
-    //     return false
-    // }
-
-    // if has_selection(b) {
-    //     // TODO: make selection logic
-    // } else {
     p.caret.coords = translate(p, t)
-
-    // }
 }
 
 translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Caret_Pos) {
@@ -338,9 +268,17 @@ translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Caret_Pos) {
     case .LINE_END:
         pos.x = get_line_length(buffer, pos.y)
     case .WORD_START:
-        log.error("IMPLEMENT WORD_START")
+        s := buffer.str
+        x := caret_to_buffer_cursor(buffer, pos)
+        for x > 0 && is_whitespace(s[x - 1]) { x -= 1 }
+        for x > 0 && !is_whitespace(s[x - 1]) { x -= 1 }
+        pos = buffer_cursor_to_caret(buffer, x)
     case .WORD_END:
-        log.error("IMPLEMENT WORD_END")
+        s := buffer.str
+        x := caret_to_buffer_cursor(buffer, pos)
+        for x < len(s) && is_whitespace(s[x])  { x += 1 }
+        for x < len(s) && !is_whitespace(s[x]) { x += 1}
+        pos = buffer_cursor_to_caret(buffer, x)
     }
 
     return correct_out_of_bounds_caret(buffer, pos)

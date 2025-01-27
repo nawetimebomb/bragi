@@ -74,8 +74,8 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .delete_other_panes:      editor_close_panes(p, .OTHER)
     case .new_pane_to_the_right:   editor_new_pane(p)
 
-    case .undo:                    undo(p)
-    case .redo:                    redo(p)
+    case .undo:                    editor_undo_redo(p, .UNDO)
+    case .redo:                    editor_undo_redo(p, .REDO)
 
     case .newline:                 newline(p)
 

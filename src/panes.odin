@@ -139,8 +139,7 @@ recalculate_panes :: proc() {
 }
 
 sync_buffer_cursor_to_caret :: proc(p: ^Pane) {
-    p.caret.coords.y = get_line_index(p.buffer, p.buffer.cursor)
-    p.caret.coords.x = p.buffer.cursor - get_line_start(p.buffer, p.caret.coords.y)
+    p.caret.coords = buffer_cursor_to_caret(p.buffer, p.buffer.cursor)
 }
 
 should_caret_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {

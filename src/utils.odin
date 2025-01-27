@@ -204,3 +204,13 @@ scan_through_similar_runes :: proc(
 is_continuation_byte :: proc(b: byte) -> bool {
 	return b >= 0x80 && b < 0xc0
 }
+
+buffer_cursor_to_caret :: proc(b: ^Buffer, pos: Buffer_Cursor) -> (result: Caret_Pos) {
+    result.y = get_line_index(b, pos)
+    result.x = pos - get_line_start(b, result.y)
+    return
+}
+
+caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
+    return b.lines[pos.y] + pos.x
+}

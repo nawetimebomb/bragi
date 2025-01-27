@@ -283,7 +283,7 @@ clear_history :: proc(history: ^[dynamic]History_State) {
     clear(history)
 }
 
-undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
+undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) -> bool {
     if len(undo) > 0 {
         push_history_state(b, redo)
         item := pop(undo)
@@ -297,7 +297,10 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
         delete(item.data)
         b.dirty = true
         b.modified = true
+        return true
     }
+
+    return false
 }
 
 push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.Allocator_Error {
@@ -330,10 +333,6 @@ check_buffer_history_state :: proc(b: ^Buffer) {
 
         b.last_edit_time = b.current_time
     }
-}
-
-caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
-    return b.lines[pos.y] + pos.x
 }
 
 buffer_save :: proc(b: ^Buffer) {

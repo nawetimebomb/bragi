@@ -9,6 +9,7 @@ Command :: enum {
     quit,
 
     find_file,
+    kill_current_buffer,
     save_buffer,
 
     delete_this_pane,
@@ -60,19 +61,18 @@ Command :: enum {
 }
 
 do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    b := p.input.buf
-
     switch cmd {
     case .noop:                    log.error("NOT IMPLEMENTED")
     case .modifier:                add_modifier(data.(string))
     case .quit:                    bragi.ctx.running = false
 
     case .find_file:               editor_find_file(p)
+    case .kill_current_buffer:     kill_current_buffer(p)
     case .save_buffer:             save_buffer(p)
 
     case .delete_this_pane:        editor_close_panes(p, .CURRENT)
     case .delete_other_panes:      editor_close_panes(p, .OTHER)
-    case .new_pane_to_the_right:   editor_new_pane(p, .RIGHT)
+    case .new_pane_to_the_right:   editor_new_pane(p)
 
     case .undo:                    undo(p)
     case .redo:                    redo(p)
@@ -80,7 +80,7 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .newline:                 newline(p)
 
     case .kill_region:             log.error("NOT IMPLEMENTED")
-    case .kill_line:               delete_to(b, .LINE_END)
+    case .kill_line:               delete_to(p, .LINE_END)
     case .kill_ring_save:          log.error("NOT IMPLEMENTED")
     case .yank:                    log.error("NOT IMPLEMENTED")
     case .yank_from_history:       log.error("NOT IMPLEMENTED")
@@ -95,25 +95,25 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .mark_set:                log.error("NOT IMPLEMENTED")
     case .mark_whole_buffer:       log.error("NOT IMPLEMENTED")
 
-    case .delete_backward_char:    delete_to(b, .LEFT)
-    case .delete_backward_word:    delete_to(b, .WORD_START)
-    case .delete_forward_char:     delete_to(b, .RIGHT)
-    case .delete_forward_word:     delete_to(b, .WORD_END)
+    case .delete_backward_char:    delete_to(p, .LEFT)
+    case .delete_backward_word:    delete_to(p, .WORD_START)
+    case .delete_forward_char:     delete_to(p, .RIGHT)
+    case .delete_forward_word:     delete_to(p, .WORD_END)
 
-    case .backward_char:           move_to(b, .LEFT)
-    case .backward_word:           move_to(b, .WORD_START)
+    case .backward_char:           move_to(p, .LEFT)
+    case .backward_word:           move_to(p, .WORD_START)
     case .backward_paragraph:      log.error("NOT IMPLEMENTED")
-    case .forward_char:            move_to(b, .RIGHT)
-    case .forward_word:            move_to(b, .WORD_END)
+    case .forward_char:            move_to(p, .RIGHT)
+    case .forward_word:            move_to(p, .WORD_END)
     case .forward_paragraph:       log.error("NOT IMPLEMENTED")
 
-    case .next_line:               move_to(b, .DOWN)
-    case .previous_line:           move_to(b, .UP)
+    case .next_line:               move_to(p, .DOWN)
+    case .previous_line:           move_to(p, .UP)
 
-    case .beginning_of_buffer:     move_to(b, .BUFFER_START)
-    case .beginning_of_line:       move_to(b, .LINE_START)
-    case .end_of_buffer:           move_to(b, .BUFFER_END)
-    case .end_of_line:             move_to(b, .LINE_END)
+    case .beginning_of_buffer:     move_to(p, .BUFFER_START)
+    case .beginning_of_line:       move_to(p, .LINE_START)
+    case .end_of_buffer:           move_to(p, .BUFFER_END)
+    case .end_of_line:             move_to(p, .LINE_END)
 
     case .self_insert:             log.error("NOT IMPLEMENTED")
     }

@@ -93,7 +93,7 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
 }
 
 handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
-    p.caret.last_keystroke = time.tick_now()
+    p.content.caret.last_keystroke = time.tick_now()
 
     // NOTE: Disallow mod keys as keystrokes
     disallowed_keystrokes := [?]sdl.Keycode{
@@ -200,24 +200,7 @@ update_input :: proc(p: ^Pane) {
                 if !input_handled {
                     input_char := cstring(raw_data(e.text.text[:]))
                     str := string(input_char)
-                    insert(p.input.buf, p.input.buf.cursor, str)
-
-                    // if bragi.minibuffer != nil {
-                    //     insert(bragi.minibuffer, bragi.minibuffer.cursor, str)
-                    // } else {
-                    //     switch m in pane.mode {
-                    //     case Edit_Mode:
-
-                    //     case Mark_Mode:
-                    //         start  := min(m.begin, pane.buffer.cursor)
-                    //         end    := max(m.begin, pane.buffer.cursor)
-                    //         length := end - start
-                    //         pane.buffer.cursor = start
-                    //         remove(pane.buffer, pane.buffer.cursor, length)
-                    //         set_pane_mode(pane, Edit_Mode{})
-                    //         insert(pane.buffer, pane.buffer.cursor, str)
-                    //     }
-                    // }
+                    p.content.cursor = insert(p.content.buffer, p.content.cursor, str)
                 }
                 return
             }

@@ -13,29 +13,25 @@ import "core:unicode/utf8"
 
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
+Buffer_Cursor :: int
+
 History_State :: struct {
-    cursors:   []Cursor,
-    cursor:    int,
     data:      []byte,
     gap_end:   int,
     gap_start: int,
 }
 
-Cursor :: [2]int
-
 Buffer :: struct {
     allocator:            runtime.Allocator,
 
-    cursors:              [dynamic]Cursor,
     marking:              bool,
 
-    cursor:               int,
     data:                 []byte,
     str:                  string,
     dirty:                bool,
     was_dirty_last_frame: bool,
-    gap_end:              int,
-    gap_start:            int,
+    gap_end:              Buffer_Cursor,
+    gap_start:            Buffer_Cursor,
     single_line:          bool,
     lines:                [dynamic]int,
 
@@ -64,21 +60,20 @@ buffer_init :: proc(
     b := Buffer{
         allocator      = allocator,
 
-        cursors        = make([dynamic]Cursor, 1, 1),
-
-        cursor         = 0,
         data           = make([]byte, bytes, allocator),
         str            = "",
         dirty          = false,
-        enable_history = true,
         gap_start      = 0,
         gap_end        = bytes,
         lines          = make([dynamic]int, 0, 32),
-        major_mode     = .Fundamental,
-        name           = strings.clone(name),
+
+        enable_history = true,
         redo           = make([dynamic]History_State, 0, 5, allocator),
         undo           = make([dynamic]History_State, 0, 5, allocator),
         undo_timeout   = undo_timeout,
+
+        major_mode     = .Fundamental,
+        name           = strings.clone(name),
     }
     recalculate_lines(&b)
     return b
@@ -92,7 +87,6 @@ create_buffer :: proc(
 ) -> ^Buffer {
     append(&bragi.buffers, Buffer{
         allocator      = allocator,
-        cursor         = 0,
         data           = make([]byte, bytes, allocator),
         dirty          = false,
         enable_history = true,
@@ -136,7 +130,6 @@ create_buffer_from_file :: proc(
     result.major_mode = find_major_mode(extension)
 
     insert(result, 0, data)
-    result.cursor = 0
     result.modified = false
 
     // TODO: Because in debug I'm opening a file when running Bragi, I need
@@ -187,7 +180,6 @@ buffer_end :: proc(b: ^Buffer) {
 buffer_destroy :: proc(buffer: ^Buffer) {
     clear_history(&buffer.undo)
     clear_history(&buffer.redo)
-    delete(buffer.cursors)
     delete(buffer.data)
     delete(buffer.lines)
     delete(buffer.name)
@@ -217,7 +209,7 @@ recalculate_lines :: proc(b: ^Buffer) {
     }
 }
 
-is_between_line :: #force_inline proc(buffer: ^Buffer, line, pos: int) -> bool {
+is_between_line :: #force_inline proc(buffer: ^Buffer, line, pos: Buffer_Cursor) -> bool {
     if line + 1 < len(buffer.lines) {
         current_bol := get_line_start(buffer, line)
         next_bol := get_line_start(buffer, line + 1)
@@ -240,7 +232,7 @@ get_line_end :: #force_inline proc(buffer: ^Buffer, line: int) -> int {
     return buffer.lines[line]
 }
 
-get_line_index :: #force_inline proc(buffer: ^Buffer, pos: int) -> (line: int) {
+get_line_index :: #force_inline proc(buffer: ^Buffer, pos: Buffer_Cursor) -> (line: int) {
     for offset, index in buffer.lines {
         if is_between_line(buffer, index, pos) {
             line = index
@@ -254,104 +246,6 @@ get_line_index :: #force_inline proc(buffer: ^Buffer, pos: int) -> (line: int) {
 get_line_start :: #force_inline proc(buffer: ^Buffer, line: int) -> (offset: int) {
     assert(line < len(buffer.lines))
     return buffer.lines[line]
-}
-
-Cursor_Translation :: enum {
-    DOWN, RIGHT, LEFT, UP,
-    BUFFER_START,
-    BUFFER_END,
-    LINE_START,
-    LINE_END,
-    WORD_START,
-    WORD_END,
-}
-
-get_current_cursor_head :: #force_inline proc(b: ^Buffer) -> int {
-    return b.cursors[len(b.cursors) - 1][0]
-}
-
-translate :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
-    pos = b.cursor
-    //pos = get_current_cursor_head(b)
-    buf := b.str
-    line_index := get_line_index(b, pos)
-    line_start_start := get_line_start(b, line_index)
-    offset_from_bol := pos - line_start_start
-
-    switch t {
-    case .DOWN:
-        if is_last_line(b, line_index) { return }
-
-        next_line_index := line_index + 1
-        next_line_start := get_line_start(b, next_line_index)
-
-        if is_between_line(b, next_line_index, next_line_start + offset_from_bol) {
-            pos = next_line_start + offset_from_bol
-        } else {
-            pos = get_line_end(b, next_line_index)
-        }
-    case .LEFT:
-        pos -= 1
-        for pos > 0 && is_continuation_byte(buf[pos]) { pos -= 1 }
-    case .RIGHT:
-        pos += 1
-        for pos < len(buf) && is_continuation_byte(buf[pos]) { pos += 1 }
-    case .UP:
-        if line_index == 0 { return }
-
-        prev_line_index := line_index - 1
-        prev_line_start := get_line_start(b, prev_line_index)
-
-        if is_between_line(b, prev_line_index, prev_line_start + offset_from_bol) {
-            pos = prev_line_start + offset_from_bol
-        } else {
-            pos = get_line_end(b, prev_line_index)
-        }
-    case .BUFFER_START:
-        pos = 0
-    case .BUFFER_END:
-        pos = len(buf)
-    case .LINE_START:
-        if pos == line_start_start {
-            for pos < len(buf) && is_whitespace(buf[pos]) { pos += 1 }
-        } else {
-            pos = line_start_start
-        }
-    case .LINE_END:
-        for pos < len(buf) && !is_newline(buf[pos]) { pos += 1 }
-    case .WORD_START:
-        // TODO: WORD_START and WORD_END should actually figure out if the
-        // characters in point form a word or not, and the skip over them.
-        // Right now basically is taking "WORD" as a regular english word,
-        // even when there's characters like underscore or hyphen in the middle.
-        for pos > 0 && is_whitespace(buf[pos - 1])  { pos -= 1 }
-        for pos > 0 && !is_whitespace(buf[pos - 1]) { pos -= 1 }
-    case .WORD_END:
-        for pos < len(buf) && is_whitespace(buf[pos])  { pos += 1 }
-        for pos < len(buf) && !is_whitespace(buf[pos]) { pos += 1 }
-    }
-
-    return clamp(pos, 0, len(buf))
-}
-
-delete_to :: proc(b: ^Buffer, t: Cursor_Translation) {
-    pos := translate(b, t)
-    remove(b, b.cursor, pos - b.cursor)
-}
-
-move_to :: proc(b: ^Buffer, t: Cursor_Translation) {
-    // TODO: Manage multiple cursors
-    has_selection :: proc(b: ^Buffer) -> bool {
-        return false
-    }
-
-    if has_selection(b) {
-        // TODO: make selection logic
-    } else {
-        pos := translate(b, t)
-        b.cursor = pos
-        // b.cursors[0] = { pos, pos }
-    }
 }
 
 get_buffer_status :: proc(buffer: ^Buffer) -> (status: string) {
@@ -377,13 +271,10 @@ undo_redo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]History_State) {
         push_history_state(buffer, redo)
         item := pop(undo)
 
-        buffer.cursor    = item.cursor
         buffer.gap_end   = item.gap_end
         buffer.gap_start = item.gap_start
 
-        delete(buffer.cursors)
         delete(buffer.data)
-        buffer.cursors = slice.clone_to_dynamic(item.cursors, buffer.allocator)
         buffer.data = slice.clone(item.data, buffer.allocator)
         delete(item.data)
         buffer.dirty = true
@@ -395,8 +286,6 @@ push_history_state :: proc(
     buffer: ^Buffer, history: ^[dynamic]History_State,
 ) -> mem.Allocator_Error {
     item := History_State{
-        cursors   = slice.clone(buffer.cursors[:], buffer.allocator),
-        cursor    = buffer.cursor,
         data      = slice.clone(buffer.data, buffer.allocator),
         gap_end   = buffer.gap_end,
         gap_start = buffer.gap_start,
@@ -426,27 +315,27 @@ check_buffer_history_state :: proc(buffer: ^Buffer) {
     }
 }
 
-buffer_save :: proc(buffer: ^Buffer, data: []byte) {
-    if buffer.modified {
-        log.debugf("Saving {0}", buffer.name)
+buffer_save :: proc(b: ^Buffer) {
+    if b.modified {
+        log.debugf("Saving {0}", b.name)
         // sanitize_buffer(buffer)
-        err := os.write_entire_file_or_err(buffer.filepath, data)
+        err := os.write_entire_file_or_err(b.filepath, transmute([]u8)b.str)
 
         if err != nil {
-            log.errorf("Error saving buffer {0}", buffer.name)
+            log.errorf("Error saving buffer {0}", b.name)
             return
         }
 
         // buffer.dirty = changed
-        buffer.modified = false
+        b.modified = false
     } else {
-        log.debugf("Nothing to save in {0}", buffer.name)
+        log.debugf("Nothing to save in {0}", b.name)
     }
 }
 
 sanitize_buffer :: proc(buffer: ^Buffer) {
     LF_COUNT :: 1
-    initial_cursor_pos := buffer.cursor
+    initial_cursor_pos := 0
     line_endings := 0
     changed := false
 
@@ -464,8 +353,6 @@ sanitize_buffer :: proc(buffer: ^Buffer) {
         remove(buffer, buffer_len(buffer), LF_COUNT - line_endings)
         changed = true
     }
-
-    buffer.cursor = clamp(initial_cursor_pos, 0, buffer_len(buffer) - 1)
 
     if changed {
         refresh_string_buffer(buffer)
@@ -505,20 +392,20 @@ refresh_string_buffer :: proc(b: ^Buffer) {
 
 // Deletes X characters. If positive, deletes forward
 // TODO: Support UTF8
-remove :: proc(buffer: ^Buffer, pos: int, count: int) {
+remove :: proc(buffer: ^Buffer, pos: Buffer_Cursor, count: int) -> int {
     check_buffer_history_state(buffer)
     chars_to_remove := abs(count)
     effective_pos := pos
 
     if count < 0 {
         effective_pos = max(0, effective_pos - chars_to_remove)
-        buffer.cursor = effective_pos
     }
 
     move_gap(buffer, effective_pos)
     buffer.gap_end = min(buffer.gap_end + chars_to_remove, len(buffer.data))
     buffer.dirty = true
     buffer.modified = true
+    return effective_pos
 }
 
 insert :: proc{
@@ -529,40 +416,40 @@ insert :: proc{
 }
 
 // Inserts u8 character at pos
-insert_char :: proc(buffer: ^Buffer, pos: int, char: u8) {
+insert_char :: proc(buffer: ^Buffer, pos: Buffer_Cursor, char: u8) -> int {
     assert(pos >= 0 && pos <= buffer_len(buffer))
     check_buffer_history_state(buffer)
     conditionally_grow_buffer(buffer, 1)
     move_gap(buffer, pos)
     buffer.data[buffer.gap_start] = char
     buffer.gap_start += 1
-    buffer.cursor += 1
     buffer.dirty = true
     buffer.modified = true
+    return pos + 1
 }
 
 // Inserts array at pos
-insert_array :: proc(buffer: ^Buffer, pos: int, array: []byte) {
+insert_array :: proc(buffer: ^Buffer, pos: Buffer_Cursor, array: []byte) -> int {
     assert(pos >= 0 && pos <= buffer_len(buffer))
     check_buffer_history_state(buffer)
     conditionally_grow_buffer(buffer, len(array))
     move_gap(buffer, pos)
     copy_slice(buffer.data[buffer.gap_start:], array)
     buffer.gap_start += len(array)
-    buffer.cursor += len(array)
     buffer.dirty = true
     buffer.modified = true
+    return pos + len(array)
 }
 
 // Inserts rune (unicode char) at pos
-insert_rune :: proc(buffer: ^Buffer, pos: int, r: rune) {
+insert_rune :: proc(buffer: ^Buffer, pos: Buffer_Cursor, r: rune) -> int {
     bytes, _ := utf8.encode_rune(r)
-    insert_array(buffer, pos, bytes[:])
+    return insert_array(buffer, pos, bytes[:])
 }
 
 // Inserts string at pos
-insert_string :: proc(buffer: ^Buffer, pos: int, str: string) {
-    insert_array(buffer, pos, transmute([]byte)str)
+insert_string :: proc(buffer: ^Buffer, pos: Buffer_Cursor, str: string) -> int {
+    return insert_array(buffer, pos, transmute([]byte)str)
 }
 
 buffer_len :: proc(buffer: ^Buffer) -> int {
@@ -570,7 +457,7 @@ buffer_len :: proc(buffer: ^Buffer) -> int {
     return len(buffer.data) - gap
 }
 
-move_gap :: proc(buffer: ^Buffer, pos: int) {
+move_gap :: proc(buffer: ^Buffer, pos: Buffer_Cursor) {
     pos := clamp(pos, 0, buffer_len(buffer))
 
     if pos == buffer.gap_start { return }

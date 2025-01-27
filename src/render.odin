@@ -6,7 +6,8 @@ import sdl "vendor:sdl2"
 import     "languages"
 
 is_caret_showing :: #force_inline proc(p: ^Pane, x, y: i32) -> bool {
-    return !p.caret.blinking && p.caret.pos.x == x && p.caret.pos.y == y
+    caret := p.content.caret
+    return !caret.blinking && caret.coords.x == x && caret.coords.y == y
 }
 
 set_bg :: #force_inline proc(c: Color) {
@@ -28,6 +29,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     window_size := bragi.ctx.window_size
     pane_dest := sdl.Rect{ p.real_size.x * i32(index), 0, p.real_size.x, p.real_size.y }
     viewport := p.viewport
+    caret := p.content.caret
+    buffer := p.content.buffer
 
     background      := colors[.background]
     builtin         := colors[.builtin]
@@ -55,17 +58,16 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     }
 
     { // Start Caret
-        caret := p.caret
         dest_rect := sdl.Rect{
-            (caret.pos.x - viewport.x) * char_width,
-            (caret.pos.y - viewport.y) * line_height,
+            (caret.coords.x - viewport.x) * char_width,
+            (caret.coords.y - viewport.y) * line_height,
             char_width, line_height,
         }
 
         set_bg(cursor)
 
         if focused {
-            if !p.caret.blinking {
+            if !caret.blinking {
                 sdl.RenderFillRect(renderer, &dest_rect)
             }
         } else {
@@ -74,13 +76,13 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     } // End Caret
 
     { // Start Buffer
-        mm := p.input.buf.major_mode
+        mm := buffer.major_mode
         lexer := languages.Lexer{}
         lexer_enabled := settings_is_lexer_enabled(mm)
         lex := settings_get_lexer_proc(mm)
         x, y: i32
 
-        for r, index in p.input.buf.str {
+        for r, index in buffer.str {
                 col := (x - viewport.x) * char_width
                 row := (y - viewport.y) * line_height
                 c := bragi.ctx.characters[r]
@@ -146,14 +148,14 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         lml_fmt := fmt.tprintf(
             "{0} {1}  Ln: {2} Col: {3}",
-            get_buffer_status(p.input.buf),
-            p.input.buf.name,
-            p.caret.pos.y,
-            p.caret.pos.x,
+            get_buffer_status(buffer),
+            buffer.name,
+            caret.coords.y,
+            caret.coords.x,
         )
         rml_fmt := fmt.tprintf(
             "{0}",
-            settings_get_major_mode_name(p.input.buf.major_mode),
+            settings_get_major_mode_name(buffer.major_mode),
         )
         rml_fmt_size := i32(len(rml_fmt)) * char_width
         row := window_size.y - line_height

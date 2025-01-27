@@ -20,58 +20,26 @@ import sdl "vendor:sdl2"
 // These "search" panes will also have a targeting pane, where the search will be executed,
 // and the results will be pulled from.
 
-// This enum will determine the functionality of the pane, and allow to change what the
-// keybindings do.
-Pane_Function :: enum {
-    // The pane used for text input
-    generic,
-    // The pane used for selecting files
-    file_explorer,
-    // The pane that shows results and allows to search
-    search,
-}
-
-New_Pane_Position :: enum {
-    BOTTOM, RIGHT,
+Pane_Content :: struct {
+    buffer: ^Buffer,
+    caret: struct {
+        blinking:       bool,
+        blinking_count: int,
+        coords:         [2]i32,
+        last_keystroke: time.Tick,
+        last_offset:    int,
+        last_update:    time.Tick,
+    },
+    cursor: Buffer_Cursor,
 }
 
 Pane :: struct {
-    caret: struct {
-        pos:            [2]i32,
-        last_offset:    int,
-
-        // The caret animation.
-        blinking:       bool,
-        blinking_times: int,
-        last_keystroke: time.Tick,
-        last_update:    time.Tick,
-    },
-
-    // Defines what the pane does.
-    function: Pane_Function,
-
-    // All panes will need some input. For the generic panes, this will be the file
-    // contents or the code the user is entering. For the panes with results (I.e. search)
-    // this will be where the user enters the query.
-    input: struct {
-        buf: ^Buffer,
-        str: strings.Builder,
-    },
+    // The pane contents, buffer and its cursor goes here. Cursor lives in the pane so,
+    // users can navigate and edit the same buffer in two different panes.
+    content: Pane_Content,
 
     // If this pane is marked for deletion, it will be deleted at the end of the frame.
     mark_for_deletion: bool,
-
-    // Results buffer are usually readonly, and they are used to list results from
-    // the input provided and the type of function that opened this pane.
-    // `result.select` means the index of the current selection.
-    result: struct {
-        buf:    ^Buffer,
-        str:    strings.Builder,
-        select: int,
-        // Some types of panes will need to act over other panes,
-        // say opening a file, or searching through content.
-        target: ^Pane,
-    },
 
     // Values that define the UI.
     show_scrollbar: bool,
@@ -79,8 +47,6 @@ Pane :: struct {
     relative_size:  [2]i32,
     // The size of the pane, in pixels.
     real_size:      [2]i32,
-    // Where the pane starts, in reference to the whole window (from top-left).
-    origin:         [2]i32,
     // The amount of scrolling the pane has done so far, depending of the caret.
     viewport:       [2]i32,
 
@@ -105,15 +71,16 @@ recalculate_panes :: proc() {
 
 should_caret_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {
     CARET_RESET_TIMEOUT :: 50 * time.Millisecond
-    time_diff := time.tick_diff(p.caret.last_keystroke, time.tick_now())
+    time_diff := time.tick_diff(p.content.caret.last_keystroke, time.tick_now())
     return time_diff < CARET_RESET_TIMEOUT
 }
 
 should_caret_blink :: #force_inline proc(p: ^Pane) -> bool {
+    caret := &p.content.caret
     CARET_BLINK_COUNT   :: 20
     CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
-    time_diff := time.tick_diff(p.caret.last_update, time.tick_now())
-    return p.caret.blinking_times < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
+    time_diff := time.tick_diff(caret.last_update, time.tick_now())
+    return caret.blinking_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
 }
 
 find_pane_in_window_coords :: proc(x, y: i32) -> ^Pane {
@@ -130,63 +97,57 @@ find_pane_in_window_coords :: proc(x, y: i32) -> ^Pane {
     return nil
 }
 
-pane_init :: proc(func: Pane_Function = .generic) -> Pane {
+pane_init :: proc() -> Pane {
     p := Pane{
-        input = {
-            str = strings.builder_make(),
-        },
-        result = {
-            str = strings.builder_make(),
-        },
         real_size = bragi.ctx.window_size,
         uid       = uuid.generate_v7(),
     }
-
-    // TODO: Pane Function should set some defaults here.
 
     return p
 }
 
 pane_begin :: proc(p: ^Pane) {
     char_width, line_height := get_standard_character_size()
+    buffer := p.content.buffer
+    caret := &p.content.caret
+    cursor := p.content.cursor
+    viewport := &p.viewport
 
-    if p.input.buf  != nil { buffer_begin(p.input.buf) }
-    if p.result.buf != nil { buffer_begin(p.result.buf) }
+    if buffer  != nil { buffer_begin(buffer) }
 
     p.relative_size.x = p.real_size.x / char_width
     p.relative_size.y = p.real_size.y / line_height
 
     if should_caret_reset_blink_timers(p) {
-        p.caret.last_update = time.tick_now()
-        p.caret.blinking = false
-        p.caret.blinking_times = 0
+        caret.last_update = time.tick_now()
+        caret.blinking = false
+        caret.blinking_count = 0
     }
 
     if should_caret_blink(p) {
-        p.caret.last_update = time.tick_now()
-        p.caret.blinking = !p.caret.blinking
-        p.caret.blinking_times += 1
+        caret.last_update = time.tick_now()
+        caret.blinking = !caret.blinking
+        caret.blinking_count += 1
     }
 
-    p.caret.pos.y = i32(get_line_index(p.input.buf, p.input.buf.cursor))
-    p.caret.pos.x = i32(p.input.buf.cursor - p.input.buf.lines[p.caret.pos.y])
+    caret.coords.y = i32(get_line_index(buffer, cursor))
+    caret.coords.x = i32(cursor - buffer.lines[caret.coords.y])
 
-    if p.caret.pos.x > p.viewport.x + p.relative_size.x {
-        p.viewport.x = p.caret.pos.x - p.relative_size.x
-    } else if p.caret.pos.x < p.viewport.x {
-        p.viewport.x = p.caret.pos.x
+    if caret.coords.x > viewport.x + p.relative_size.x {
+        viewport.x = caret.coords.x - p.relative_size.x
+    } else if caret.coords.x < viewport.x {
+        viewport.x = caret.coords.x
     }
 
-    if p.caret.pos.y > p.viewport.y + p.relative_size.y {
-        p.viewport.y = p.caret.pos.y - p.relative_size.y
-    } else if p.caret.pos.y < p.viewport.y {
-        p.viewport.y = p.caret.pos.y
+    if caret.coords.y > viewport.y + p.relative_size.y {
+        viewport.y = caret.coords.y - p.relative_size.y
+    } else if caret.coords.y < viewport.y {
+        viewport.y = caret.coords.y
     }
 }
 
 pane_end :: proc(p: ^Pane, index: int) {
-    if p.input.buf  != nil { buffer_end(p.input.buf) }
-    if p.result.buf != nil { buffer_end(p.result.buf) }
+    if p.content.buffer  != nil { buffer_end(p.content.buffer) }
 
     if p.mark_for_deletion {
         pane_destroy(p)
@@ -196,8 +157,5 @@ pane_end :: proc(p: ^Pane, index: int) {
 }
 
 pane_destroy :: proc(p: ^Pane) {
-    p.input.buf = nil
-    p.result.buf = nil
-    strings.builder_destroy(&p.input.str)
-    strings.builder_destroy(&p.result.str)
+    p.content.buffer = nil
 }

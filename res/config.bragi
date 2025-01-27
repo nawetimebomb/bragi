@@ -4,6 +4,7 @@ modifier                        <C-x>
 quit                            <ESC>
 
 find_file                       <C-x-C-f>
+kill_current_buffer             <C-x-k>
 save_buffer                     <C-x-C-s>
 
 delete_this_pane                <C-x-0>

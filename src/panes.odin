@@ -20,6 +20,11 @@ import sdl "vendor:sdl2"
 // These "search" panes will also have a targeting pane, where the search will be executed,
 // and the results will be pulled from.
 
+Caret_Position :: struct {
+    head: [2]int,
+    tail: [2]int,
+}
+
 Caret_Pos :: [2]int
 
 Pane :: struct {
@@ -35,7 +40,6 @@ Pane :: struct {
     // The pane contents, buffer and its cursor goes here. Cursor lives in the pane so,
     // users can navigate and edit the same buffer in two different panes.
     buffer: ^Buffer,
-    cursor: Buffer_Cursor,
 
     // If this pane is marked for deletion, it will be deleted at the end of the frame.
     mark_for_deletion: bool,
@@ -67,7 +71,6 @@ pane_begin :: proc(p: ^Pane) {
     char_width, line_height := get_standard_character_size()
     buffer := p.buffer
     caret := &p.caret
-    cursor := p.cursor
     viewport := &p.viewport
 
     if buffer  != nil { buffer_begin(buffer) }

@@ -58,7 +58,7 @@ editor_new_pane :: proc(p: ^Pane) {
     new_pane := pane_init()
 
     new_pane.buffer = p.buffer
-    new_pane.cursor = p.cursor
+    new_pane.caret = p.caret
     result := add(new_pane)
 
     bragi.focused_pane_id = result.uid
@@ -165,11 +165,12 @@ search :: proc(p: ^Pane) {
 }
 
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
-    buffer := p.buffer
+    pos: Caret_Pos
     char_width, line_height := get_standard_character_size()
-    rel_x := int(x / char_width + p.viewport.x)
-    rel_y := int(y / line_height + p.viewport.y)
-    p.cursor = canonicalize_coords(transmute([]u8)buffer.str, rel_x, rel_y)
+    pos.x = int(x / char_width + p.viewport.x)
+    pos.y = int(y / line_height + p.viewport.y)
+
+    p.caret.coords = correct_out_of_bounds_caret(p, pos)
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
@@ -253,8 +254,18 @@ translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Caret_Pos) {
         pos.y += 1
     case .LEFT:
         pos.x -= 1
+
+        if pos.x < 0 && pos.y > 0 {
+            pos.y -= 1
+            pos.x = get_line_length(p.buffer, pos.y)
+        }
     case .RIGHT:
         pos.x += 1
+
+        if pos.x > get_line_length(p.buffer, pos.y) && pos.y < lines_count - 1 {
+            pos.y += 1
+            pos.x = 0
+        }
     case .UP:
         pos.y -= 1
     case .BUFFER_START:
@@ -281,24 +292,15 @@ translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Caret_Pos) {
         pos = buffer_cursor_to_caret(buffer, x)
     }
 
-    return correct_out_of_bounds_caret(buffer, pos)
+    return correct_out_of_bounds_caret(p, pos)
 }
 
-correct_out_of_bounds_caret :: proc(b: ^Buffer, p: Caret_Pos) -> (pos: Caret_Pos) {
+correct_out_of_bounds_caret :: proc(p: ^Pane, prev_pos: Caret_Pos) -> (pos: Caret_Pos) {
+    b := p.buffer
     lines_count := len(b.lines)
-    pos = p
+    pos = prev_pos
 
     pos.y = clamp(pos.y, 0, lines_count - 1)
-
-    switch {
-    case pos.x < 0 && pos.y > 0:
-        pos.y -= 1
-        pos.x = get_line_length(b, pos.y)
-    case pos.x > get_line_length(b, pos.y) && pos.y < lines_count - 1:
-        pos.y += 1
-        pos.x = 0
-    }
-
     pos.x = clamp(pos.x, 0, get_line_length(b, pos.y))
 
     return pos

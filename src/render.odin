@@ -5,9 +5,8 @@ import     "core:strings"
 import sdl "vendor:sdl2"
 import     "languages"
 
-is_caret_showing :: #force_inline proc(p: ^Pane, x, y: i32) -> bool {
-    caret := p.caret
-    return !caret.blinking && i32(caret.coords.x) == x && i32(caret.coords.y) == y
+is_caret_showing :: #force_inline proc(c: ^Caret, x, y: i32) -> bool {
+    return !c.blinking && i32(c.coords.x) == x && i32(c.coords.y) == y
 }
 
 set_bg :: #force_inline proc(c: Color) {
@@ -66,7 +65,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         set_bg(cursor)
 
-        if focused {
+        if focused && !bragi.bottom_pane.enabled {
             if !caret.blinking {
                 sdl.RenderFillRect(renderer, &dest_rect)
             }
@@ -110,8 +109,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     set_fg(c.texture, default)
                 }
 
-                if focused {
-                    if is_caret_showing(p, x, y) {
+                if focused && !bragi.bottom_pane.enabled {
+                    if is_caret_showing(&caret, x, y) {
                         set_fg(c.texture, background)
                     }
                 }
@@ -128,12 +127,13 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
     { // Start Modeline
         PADDING :: 10
+        line_number := caret.coords.y + 1
 
         lml_fmt := fmt.tprintf(
-            "{0} {1}  Ln: {2} Col: {3}",
+            "{0} {1} ({2}, {3})",
             get_buffer_status(buffer),
             buffer.name,
-            caret.coords.y,
+            line_number,
             caret.coords.x,
         )
         rml_fmt := fmt.tprintf(
@@ -182,5 +182,96 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 }
 
 render_bottom_pane :: proc() {
+    bp := &bragi.bottom_pane
 
+    if !bp.enabled { return  }
+
+    colors := &bragi.settings.colorscheme_table
+    char_width, line_height := get_standard_character_size()
+    renderer := bragi.ctx.renderer
+    window_size := bragi.ctx.window_size
+    viewport := bp.viewport
+    caret := bp.caret
+    buffer := bp.buffer
+    pane_dest := sdl.Rect{
+        window_size.x, window_size.y - 6 * line_height,
+        window_size.x, 6 * line_height,
+    }
+
+    background      := colors[.background]
+    builtin         := colors[.builtin]
+    comment         := colors[.comment]
+    constant        := colors[.constant]
+    cursor          := colors[.cursor]
+    default         := colors[.default]
+    highlight       := colors[.highlight]
+    keyword         := colors[.keyword]
+    modeline_off_bg := colors[.modeline_off_bg]
+    modeline_off_fg := colors[.modeline_off_fg]
+    modeline_on_bg  := colors[.modeline_on_bg]
+    modeline_on_fg  := colors[.modeline_on_fg]
+    region          := colors[.region]
+    string          := colors[.string]
+
+    { // Start Results
+        for res, line_index in bp.results {
+            row := window_size.y - 6 * line_height + i32(line_index) * line_height
+
+            if bp.selected_index == line_index {
+                select_rect := sdl.Rect{ 0, row, window_size.x, line_height }
+                set_bg(region)
+                sdl.RenderFillRect(renderer, &select_rect)
+            }
+
+            for r, char_index in res.label {
+                col := i32(char_index) * char_width
+                c := bragi.ctx.characters[r]
+                c.dest.x = col
+                c.dest.y = row
+                set_fg(c.texture, default)
+                sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+            }
+        }
+    } // End Results
+
+    { // Start Prompt
+        prompt_rect := sdl.Rect{
+            0, window_size.y - line_height, window_size.x, line_height,
+        }
+        prompt_fmt := fmt.tprintf(
+            "({0}/{1}) Switch to: ", bp.selected_index + 1, len(bp.results),
+        )
+        full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, buffer.str)
+        row := window_size.y - line_height
+
+        set_bg(background)
+        sdl.RenderFillRect(renderer, &prompt_rect)
+
+        cursor_rect := sdl.Rect{
+            i32(caret.coords.x + len(prompt_fmt)) * char_width, row,
+            char_width, line_height,
+        }
+
+        if !caret.blinking {
+            set_bg(cursor)
+            sdl.RenderFillRect(renderer, &cursor_rect)
+        }
+
+        for r, index in full_fmt {
+            col := i32(index) * char_width
+            c := bragi.ctx.characters[r]
+            c.dest.x = col
+            c.dest.y = row
+
+            if index < len(prompt_fmt) {
+                set_fg(c.texture, highlight)
+            } else if is_caret_showing(&caret, i32(caret.coords.x + len(prompt_fmt)), 0) {
+                set_fg(c.texture, background)
+            } else {
+                set_fg(c.texture, default)
+            }
+
+            sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+        }
+    } // End Prompt
 }

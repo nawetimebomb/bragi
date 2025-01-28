@@ -81,7 +81,7 @@ editor_find_file :: proc(target: ^Pane) {
     show_bottom_pane(target, .FILES)
 }
 
-editor_find_buffer :: proc(target: ^Pane) {
+editor_switch_buffer :: proc(target: ^Pane) {
     show_bottom_pane(target, .BUFFERS)
 }
 
@@ -252,13 +252,17 @@ translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Caret_Pos) {
     case .BUFFER_START:
         pos = { 0, 0 }
     case .BUFFER_END:
-        pos = { 0, lines_count - 1 }
+        if lines_count == 1 {
+            pos = { len(buffer.str), 0 }
+        } else {
+            pos = { 0, lines_count - 1 }
+        }
     case .LINE_START:
         bol := get_line_start(buffer, pos.y)
         bol_indent := get_line_start_after_indent(buffer, pos.y)
         pos.x = pos.x == 0 ? bol_indent - bol : 0
     case .LINE_END:
-        pos.x = get_line_length(buffer, pos.y)
+        pos.x = lines_count == 1 ? len(buffer.str) : get_line_length(buffer, pos.y)
     case .WORD_START:
         s := buffer.str
         x := caret_to_buffer_cursor(buffer, pos)
@@ -282,7 +286,10 @@ correct_out_of_bounds_caret :: proc(p: ^Pane, prev_pos: Caret_Pos) -> (pos: Care
     pos = prev_pos
 
     pos.y = clamp(pos.y, 0, lines_count - 1)
-    pos.x = clamp(pos.x, 0, get_line_length(b, pos.y))
+    pos.x = clamp(
+        pos.x, 0,
+        lines_count == 1 ? len(p.buffer.str) : get_line_length(b, pos.y),
+    )
 
     return pos
 }

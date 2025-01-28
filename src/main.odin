@@ -84,6 +84,8 @@ destroy_editor :: proc() {
         // TODO: Save desktop configuration
     }
 
+    bottom_pane_destroy()
+
     for &p in bragi.panes {
         pane_destroy(&p)
     }

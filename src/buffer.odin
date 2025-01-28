@@ -24,6 +24,7 @@ History_State :: struct {
 
 Buffer :: struct {
     allocator:            runtime.Allocator,
+    internal:             bool,
 
     marking:              bool,
 
@@ -189,6 +190,15 @@ buffer_destroy :: proc(b: ^Buffer) {
     delete(b.str)
     delete(b.redo)
     delete(b.undo)
+}
+
+buffer_reset :: proc(b: ^Buffer) {
+    clear_history(&b.undo)
+    clear_history(&b.redo)
+    delete(b.data)
+    delete(b.str)
+    clear(&b.lines)
+    b.data = make([]u8, 0, b.allocator)
 }
 
 update_buffer_time :: proc(b: ^Buffer) {

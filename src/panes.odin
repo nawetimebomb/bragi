@@ -78,13 +78,13 @@ pane_begin :: proc(p: ^Pane) {
         sync_caret_coords(p)
     }
 
-    if should_caret_reset_blink_timers(p) {
+    if should_caret_reset_blink_timers(caret) {
         caret.last_update = time.tick_now()
         caret.blinking = false
         caret.blinking_count = 0
     }
 
-    if should_caret_blink(p) {
+    if should_caret_blink(caret) {
         caret.last_update = time.tick_now()
         caret.blinking = !caret.blinking
         caret.blinking_count += 1
@@ -156,18 +156,17 @@ reset_viewport :: proc(p: ^Pane) {
     }
 }
 
-should_caret_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {
+should_caret_reset_blink_timers :: #force_inline proc(c: ^Caret) -> bool {
     CARET_RESET_TIMEOUT :: 50 * time.Millisecond
-    time_diff := time.tick_diff(p.caret.last_keystroke, time.tick_now())
+    time_diff := time.tick_diff(c.last_keystroke, time.tick_now())
     return time_diff < CARET_RESET_TIMEOUT
 }
 
-should_caret_blink :: #force_inline proc(p: ^Pane) -> bool {
-    caret := &p.caret
+should_caret_blink :: #force_inline proc(c: ^Caret) -> bool {
     CARET_BLINK_COUNT   :: 20
     CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
-    time_diff := time.tick_diff(caret.last_update, time.tick_now())
-    return caret.blinking_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
+    time_diff := time.tick_diff(c.last_update, time.tick_now())
+    return c.blinking_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
 }
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {

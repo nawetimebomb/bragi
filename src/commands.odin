@@ -11,6 +11,7 @@ Command :: enum {
     quit_mode,
 
     find_file,
+    switch_buffer,
     kill_current_buffer,
     save_buffer,
 
@@ -72,6 +73,7 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .quit_mode:               editor_reset_all_modes()
 
     case .find_file:               editor_find_file(p)
+    case .switch_buffer:           editor_switch_buffer(p)
     case .kill_current_buffer:     kill_current_buffer(p)
     case .save_buffer:             save_buffer(p)
 

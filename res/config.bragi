@@ -6,6 +6,7 @@ quit                            <ESC>
 quit_mode                       <C-g>
 
 find_file                       <C-x-C-f>
+switch_buffer                   <C-x-b>
 kill_current_buffer             <C-x-k>
 save_buffer                     <C-x-C-s>
 

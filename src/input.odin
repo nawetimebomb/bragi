@@ -193,9 +193,15 @@ update_input :: proc() {
             }
             case .TEXTINPUT: {
                 if !input_handled {
+                    bp := &bragi.bottom_pane
                     input_char := cstring(raw_data(e.text.text[:]))
                     str := string(input_char)
-                    self_insert(p, str)
+                    if bp.enabled {
+                        cursor := caret_to_buffer_cursor(bp.buffer, bp.caret.coords)
+                        bp.caret.coords.x += insert(bp.buffer, cursor, str)
+                    } else {
+                        self_insert(p, str)
+                    }
                 }
                 return
             }

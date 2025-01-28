@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:log"
 import "core:slice"
 import "core:strings"
+import "core:time"
 
 Caret_Translation :: enum {
     DOWN, RIGHT, LEFT, UP,
@@ -173,6 +174,26 @@ search :: proc(p: ^Pane) {
     log.error("IMPLEMENT")
 }
 
+editor_switch_to_pane_on_click :: proc(x, y: i32) {
+    found, index := find_pane_in_window_coords(x, y)
+
+    if found == nil {
+        log.errorf("Pane not found in coordinates {0}, {1}", x, y)
+        return
+    }
+
+    bragi.focused_index = index
+    found.caret.last_keystroke = time.tick_now()
+    rel_x, rel_y := get_relative_coords_from_pane(found, x, y)
+    mouse_set_point(found, rel_x, rel_y)
+}
+
+get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32) {
+    rel_x = x % p.real_size.x
+    rel_y = y % p.real_size.y
+    return
+}
+
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     pos: Caret_Pos
     char_width, line_height := get_standard_character_size()
@@ -183,7 +204,6 @@ mouse_set_point :: proc(p: ^Pane, x, y: i32) {
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
-    mouse_set_point(pane, x, y)
     log.error("IMPLEMENT")
     // bow, eow := get_word_boundaries(strings.to_string(pane.contents), pane.input.buf.cursor)
 
@@ -194,7 +214,6 @@ mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
 }
 
 mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
-    mouse_set_point(pane, x, y)
     log.error("IMPLEMENT")
     // bol, eol := get_line_boundaries(pane.contents.buf[:], pane.input.buf.cursor)
 

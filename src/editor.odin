@@ -92,38 +92,13 @@ editor_reset_all_modes :: proc() {
 toggle_mark_on :: proc(p: ^Pane) {
     log.error("IMPLEMENT")
 }
-//     if _, ok := p.mode.(Mark_Mode); !ok {
-//         set_pane_mode(p, Mark_Mode{
-//             begin = p.input.buf.cursor,
-//         })
-//     }
-// }
 
 set_mark :: proc(pane: ^Pane) {
     log.error("IMPLEMENT")
 }
-//     if type_of(pane.mode) != Mark_Mode {
-//         set_pane_mode(pane, Mark_Mode{
-//             begin   = pane.input.buf.cursor,
-//             marking = true,
-//         })
-//     } else {
-//         set_pane_mode(pane, Edit_Mode{})
-//     }
-// }
 
 mark_buffer :: proc(pane: ^Pane) {
     log.error("IMPLEMENT")
-}
-//     pane.input.buf.cursor = 0
-//     set_pane_mode(pane, Mark_Mode{
-//         begin   = buffer_len(pane.input.buf),
-//         marking = true,
-//     })
-// }
-
-keyboard_quit :: proc(pane: ^Pane) {
-    // set_pane_mode(pane, Edit_Mode{})
 }
 
 kill_current_buffer :: proc(p: ^Pane) {
@@ -143,44 +118,9 @@ kill_current_buffer :: proc(p: ^Pane) {
     reset_viewport(p)
 }
 
-// kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
-//     bol, eol := get_line_boundaries(pane.contents.buf[:], pane.input.buf.cursor)
-//     line_length := eol - bol
-
-//     if line_length > 0 {
-//         set_pane_mode(pane, Mark_Mode{
-//             begin = eol,
-//         })
-//         kill_region(pane, true, callback)
-//     } else {
-//         delete_forward_char(pane)
-//     }
-// }
-
 kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
     log.error("IMPLEMENT")
 }
-
-kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
-    log.error("IMPLEMENT")
-}
-//     marker, ok := pane.mode.(Mark_Mode)
-
-//     if ok {
-//         marker := pane.mode.(Mark_Mode)
-//         start := min(pane.input.buf.cursor, marker.begin)
-//         end   := max(pane.input.buf.cursor, marker.begin)
-//         result := string(pane.contents.buf[start:end])
-
-//         if cut {
-//             remove(pane.input.buf, end, start - end)
-//         }
-
-//         pane.input.buf.cursor = start
-//         callback(result)
-//         keyboard_quit(pane)
-//     }
-// }
 
 search :: proc(p: ^Pane) {
     log.error("IMPLEMENT")
@@ -218,22 +158,10 @@ mouse_set_point :: proc(p: ^Pane, x, y: i32) {
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
     log.error("IMPLEMENT")
-    // bow, eow := get_word_boundaries(strings.to_string(pane.contents), pane.input.buf.cursor)
-
-    // pane.input.buf.cursor = eow
-    // set_pane_mode(pane, Mark_Mode{
-    //     begin = bow,
-    // })
 }
 
 mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
     log.error("IMPLEMENT")
-    // bol, eol := get_line_boundaries(pane.contents.buf[:], pane.input.buf.cursor)
-
-    // pane.input.buf.cursor = eol
-    // set_pane_mode(pane, Mark_Mode{
-    //     begin = bol,
-    // })
 }
 
 scroll :: proc(p: ^Pane, offset: i32) {

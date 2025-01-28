@@ -133,6 +133,7 @@ create_buffer_from_file :: proc(
 
     insert(result, 0, data)
     result.modified = false
+    result.cursor = 0
 
     // TODO: Because in debug I'm opening a file when running Bragi, I need
     // this to be temporarily false

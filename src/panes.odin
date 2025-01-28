@@ -21,16 +21,17 @@ import sdl "vendor:sdl2"
 // and the results will be pulled from.
 
 Caret_Pos :: [2]int
+Caret :: struct {
+    blinking:       bool,
+    blinking_count: int,
+    coords:         Caret_Pos,
+    last_keystroke: time.Tick,
+    last_offset:    int,
+    last_update:    time.Tick,
+}
 
 Pane :: struct {
-    caret: struct {
-        blinking:       bool,
-        blinking_count: int,
-        coords:         Caret_Pos,
-        last_keystroke: time.Tick,
-        last_offset:    int,
-        last_update:    time.Tick,
-    },
+    caret: Caret,
 
     // The pane contents, buffer and its cursor goes here. Cursor lives in the pane so,
     // users can navigate and edit the same buffer in two different panes.
@@ -67,14 +68,14 @@ pane_begin :: proc(p: ^Pane) {
     caret := &p.caret
     viewport := &p.viewport
 
-    p.relative_size.x = p.real_size.x / char_width
-    p.relative_size.y = p.real_size.y / line_height
+    p.relative_size.x = (p.real_size.x / char_width) - 2
+    p.relative_size.y = (p.real_size.y / line_height) - 2
 
     if buffer  != nil { buffer_begin(buffer) }
 
     if p.should_resync_caret {
         p.should_resync_caret = false
-        sync_buffer_cursor_to_caret(p)
+        sync_caret_coords(p)
     }
 
     if should_caret_reset_blink_timers(p) {
@@ -111,7 +112,7 @@ pane_end :: proc(p: ^Pane, index: int) {
     if p.mark_for_deletion {
         pane_destroy(p)
         ordered_remove(&bragi.panes, index)
-        recalculate_panes()
+        resize_panes()
     }
 }
 
@@ -119,24 +120,40 @@ pane_destroy :: proc(p: ^Pane) {
     p.buffer = nil
 }
 
-recalculate_panes :: proc() {
+resize_panes :: proc() {
+    // TODO: Move this to the bottom_pane
+    BOTTOM_PANE_SIZE :: 6
+    _, line_height := get_standard_character_size()
     window_size := bragi.ctx.window_size
+    size_y := window_size.y
+
+    if bragi.bottom_pane.enabled {
+        size_y = window_size.y - (BOTTOM_PANE_SIZE * line_height)
+    }
 
     for &p in bragi.panes {
         p.real_size.x = window_size.x / i32(len(bragi.panes))
-        p.real_size.y = window_size.y
+        p.real_size.y = size_y
     }
 
     sdl.DestroyTexture(bragi.ctx.pane_texture)
 
     bragi.ctx.pane_texture = sdl.CreateTexture(
         bragi.ctx.renderer, .RGBA8888, .TARGET,
-        window_size.x / i32(len(bragi.panes)), window_size.y,
+        window_size.x / i32(len(bragi.panes)), size_y,
     )
 }
 
-sync_buffer_cursor_to_caret :: proc(p: ^Pane) {
+sync_caret_coords :: proc(p: ^Pane) {
     p.caret.coords = buffer_cursor_to_caret(p.buffer, p.buffer.cursor)
+}
+
+reset_viewport :: proc(p: ^Pane) {
+    lines_count := i32(len(p.buffer.lines))
+
+    if p.relative_size.y > lines_count {
+        p.viewport = { 0, 0 }
+    }
 }
 
 should_caret_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {

@@ -114,23 +114,6 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     if is_caret_showing(p, x, y) {
                         set_fg(c.texture, background)
                     }
-                    // else {
-                        // switch mode in p.mode {
-                        // case Edit_Mode:
-
-                        // case Mark_Mode:
-                        //     start := min(mode.begin, p.input.buf.cursor)
-                        //     end   := max(mode.begin, p.input.buf.cursor)
-
-                        //     if start <= index && index < end {
-                        //         set_bg(region)
-                        //         dest_rect := sdl.Rect{
-                        //             col, row, char_width, line_height,
-                        //         }
-                        //         sdl.RenderFillRect(renderer, &dest_rect)
-                        //     }
-                        // }
-                    // }
                 }
 
                 sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
@@ -158,7 +141,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             settings_get_major_mode_name(buffer.major_mode),
         )
         rml_fmt_size := i32(len(rml_fmt)) * char_width
-        row := window_size.y - line_height
+        row := p.real_size.y - line_height
         dest_rect := sdl.Rect{
             0, row, p.real_size.x, line_height,
         }
@@ -196,4 +179,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     sdl.SetRenderTarget(renderer, nil)
 
     sdl.RenderCopy(renderer, bragi.ctx.pane_texture, nil, &pane_dest)
+}
+
+render_bottom_pane :: proc() {
+
 }

@@ -8,6 +8,8 @@ Command :: enum {
     modifier,
     quit,
 
+    quit_mode,
+
     find_file,
     kill_current_buffer,
     save_buffer,
@@ -66,6 +68,8 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .noop:                    log.error("NOT IMPLEMENTED")
     case .modifier:                add_modifier(data.(string))
     case .quit:                    bragi.ctx.running = false
+
+    case .quit_mode:               editor_reset_all_modes()
 
     case .find_file:               editor_find_file(p)
     case .kill_current_buffer:     kill_current_buffer(p)

@@ -24,12 +24,14 @@ open_file :: proc(p: ^Pane, filepath: string) {
         if b.filepath == filepath {
             p.buffer = &b
             buffer_found = true
+            sync_caret_coords(p)
             break
         }
     }
 
     if !buffer_found {
         p.buffer = create_buffer_from_file(filepath)
+        p.caret.coords = {}
     }
 }
 
@@ -64,7 +66,7 @@ editor_new_pane :: proc(p: ^Pane) {
     result := add(new_pane)
 
     bragi.focused_index = len(bragi.panes) - 1
-    recalculate_panes()
+    resize_panes()
 }
 
 editor_other_pane :: proc(p: ^Pane) {
@@ -76,7 +78,15 @@ editor_other_pane :: proc(p: ^Pane) {
 }
 
 editor_find_file :: proc(target: ^Pane) {
+    show_bottom_pane(target, .FILES)
+}
 
+editor_find_buffer :: proc(target: ^Pane) {
+    show_bottom_pane(target, .BUFFERS)
+}
+
+editor_reset_all_modes :: proc() {
+    hide_bottom_pane()
 }
 
 toggle_mark_on :: proc(p: ^Pane) {
@@ -129,6 +139,8 @@ kill_current_buffer :: proc(p: ^Pane) {
     }
 
     p.buffer = &bragi.buffers[len(bragi.buffers) - 1]
+    sync_caret_coords(p)
+    reset_viewport(p)
 }
 
 // kill_line :: proc(pane: ^Pane, callback: Copy_Proc) {
@@ -201,6 +213,7 @@ mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     pos.y = int(y / line_height + p.viewport.y)
 
     p.caret.coords = correct_out_of_bounds_caret(p, pos)
+    p.buffer.cursor = caret_to_buffer_cursor(p.buffer, p.caret.coords)
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
@@ -223,8 +236,20 @@ mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
     // })
 }
 
-scroll :: proc(pane: ^Pane, offset: i32) {
-    pane.viewport.y += offset
+scroll :: proc(p: ^Pane, offset: i32) {
+    lines_count := i32(len(p.buffer.lines))
+
+    if p.relative_size.y < lines_count {
+        p.viewport.y = clamp(p.viewport.y + offset, 0, lines_count - 10)
+        view_y := int(p.viewport.y)
+        rel_y := int(p.relative_size.y)
+
+        if p.caret.coords.y < view_y {
+            p.caret.coords.y = view_y
+        } else if p.caret.coords.y > view_y + rel_y {
+            p.caret.coords.y = view_y + rel_y
+        }
+    }
 }
 
 save_buffer :: proc(p: ^Pane) {

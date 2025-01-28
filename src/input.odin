@@ -135,8 +135,9 @@ handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
     return exists
 }
 
-update_input :: proc(p: ^Pane) {
+update_input :: proc() {
     e: sdl.Event
+    p := &bragi.panes[bragi.focused_index]
     input_handled := false
 
     for sdl.PollEvent(&e) {
@@ -155,7 +156,7 @@ update_input :: proc(p: ^Pane) {
                 } else if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
                     // TODO: Handle texture resizing
                     bragi.ctx.window_size = { e.window.data1, e.window.data2 }
-                    recalculate_panes()
+                    resize_panes()
                 }
                 return
             }

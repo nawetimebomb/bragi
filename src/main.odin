@@ -53,6 +53,7 @@ Program_Context :: struct {
 Bragi :: struct {
     buffers:         [dynamic]Buffer,
     panes:           [dynamic]Pane,
+    bottom_pane:     Bottom_Pane,
     focused_index:   int,
 
     ctx:             Program_Context,
@@ -147,6 +148,8 @@ initialize_editor :: proc() {
 
     bragi.buffers = make([dynamic]Buffer, 0, 10)
     bragi.panes   = make([dynamic]Pane, 0, 2)
+
+    bottom_pane_init()
 
     p := add(pane_init())
     p.buffer = add(buffer_init("*notes*", 0))
@@ -254,13 +257,25 @@ main :: proc() {
     for bragi.ctx.running {
         frame_start := sdl.GetPerformanceCounter()
 
+        set_bg(bragi.settings.colorscheme_table[.background])
+        sdl.RenderClear(bragi.ctx.renderer)
+
+        bottom_pane_begin()
+
+        for &p in bragi.panes {
+            pane_begin(&p)
+        }
+
+        update_input()
+
         for &p, index in bragi.panes {
             focused := bragi.focused_index == index
-            pane_begin(&p)
-            if focused { update_input(&p) }
             render_pane(&p, index, focused)
             pane_end(&p, index)
         }
+
+        render_bottom_pane()
+        bottom_pane_end()
 
         sdl.RenderPresent(bragi.ctx.renderer)
 

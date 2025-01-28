@@ -172,16 +172,16 @@ update_input :: proc(p: ^Pane) {
                 if mouse.button == 1 {
                     switch mouse.clicks {
                     case 1:
-                        found := find_pane_in_window_coords(mouse.x, mouse.y)
-                        bragi.focused_pane_id = found.uid
+                        found, index := find_pane_in_window_coords(mouse.x, mouse.y)
+                        bragi.focused_index = index
                         mouse_set_point(found, mouse.x, mouse.y)
                     case 2:
-                        found := find_pane_in_window_coords(mouse.x, mouse.y)
-                        bragi.focused_pane_id = found.uid
+                        found, index := find_pane_in_window_coords(mouse.x, mouse.y)
+                        bragi.focused_index = index
                         mouse_drag_word(found, mouse.x, mouse.y)
                     case 3:
-                        found := find_pane_in_window_coords(mouse.x, mouse.y)
-                        bragi.focused_pane_id = found.uid
+                        found, index := find_pane_in_window_coords(mouse.x, mouse.y)
+                        bragi.focused_index = index
                         mouse_drag_line(found, mouse.x, mouse.y)
                     }
                 }

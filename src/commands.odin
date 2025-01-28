@@ -15,6 +15,7 @@ Command :: enum {
     delete_this_pane,
     delete_other_panes,
     new_pane_to_the_right,
+    other_pane,
 
     undo,
     redo,
@@ -73,6 +74,7 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     case .delete_this_pane:        editor_close_panes(p, .CURRENT)
     case .delete_other_panes:      editor_close_panes(p, .OTHER)
     case .new_pane_to_the_right:   editor_new_pane(p)
+    case .other_pane:              editor_other_pane(p)
 
     case .undo:                    editor_undo_redo(p, .UNDO)
     case .redo:                    editor_undo_redo(p, .REDO)

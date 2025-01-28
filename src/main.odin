@@ -53,7 +53,7 @@ Program_Context :: struct {
 Bragi :: struct {
     buffers:         [dynamic]Buffer,
     panes:           [dynamic]Pane,
-    focused_pane_id: uuid.Identifier,
+    focused_index:   int,
 
     ctx:             Program_Context,
     keybinds:        Keybinds,
@@ -150,7 +150,7 @@ initialize_editor :: proc() {
 
     p := add(pane_init())
     p.buffer = add(buffer_init("*notes*", 0))
-    bragi.focused_pane_id = p.uid
+    bragi.focused_index = 0
 
     //    TODO: This is a debug only thing
     filepath := "C:/Code/bragi/demo/hello.odin"
@@ -255,7 +255,7 @@ main :: proc() {
         frame_start := sdl.GetPerformanceCounter()
 
         for &p, index in bragi.panes {
-            focused := bragi.focused_pane_id == p.uid
+            focused := bragi.focused_index == index
             pane_begin(&p)
             if focused { update_input(&p) }
             render_pane(&p, index, focused)

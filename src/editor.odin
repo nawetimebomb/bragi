@@ -34,17 +34,18 @@ open_file :: proc(p: ^Pane, filepath: string) {
 
 editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
     if w == .CURRENT {
-        other_pane: ^Pane
+        other_pane_index: int
+
 
         for &p1, index in bragi.panes {
             if p.uid != p1.uid {
-                other_pane = &p1
+                other_pane_index = index
                 break
             }
         }
 
         p.mark_for_deletion = true
-        bragi.focused_pane_id = other_pane.uid
+        bragi.focused_index = other_pane_index
     } else {
         for &p1 in bragi.panes {
             if p.uid != p1.uid {
@@ -61,8 +62,16 @@ editor_new_pane :: proc(p: ^Pane) {
     new_pane.caret = p.caret
     result := add(new_pane)
 
-    bragi.focused_pane_id = result.uid
+    bragi.focused_index = len(bragi.panes) - 1
     recalculate_panes()
+}
+
+editor_other_pane :: proc(p: ^Pane) {
+    bragi.focused_index += 1
+
+    if bragi.focused_index >= len(bragi.panes) {
+        bragi.focused_index = 0
+    }
 }
 
 editor_find_file :: proc(target: ^Pane) {

@@ -20,11 +20,6 @@ import sdl "vendor:sdl2"
 // These "search" panes will also have a targeting pane, where the search will be executed,
 // and the results will be pulled from.
 
-Caret_Position :: struct {
-    head: [2]int,
-    tail: [2]int,
-}
-
 Caret_Pos :: [2]int
 
 Pane :: struct {
@@ -44,6 +39,7 @@ Pane :: struct {
     // If this pane is marked for deletion, it will be deleted at the end of the frame.
     mark_for_deletion: bool,
 
+    // If the pane should align the caret to the buffer cursor
     should_resync_caret: bool,
 
     // Values that define the UI.
@@ -59,12 +55,10 @@ Pane :: struct {
 }
 
 pane_init :: proc() -> Pane {
-    p := Pane{
+    return  {
         real_size = bragi.ctx.window_size,
         uid       = uuid.generate_v7(),
     }
-
-    return p
 }
 
 pane_begin :: proc(p: ^Pane) {
@@ -73,15 +67,15 @@ pane_begin :: proc(p: ^Pane) {
     caret := &p.caret
     viewport := &p.viewport
 
+    p.relative_size.x = p.real_size.x / char_width
+    p.relative_size.y = p.real_size.y / line_height
+
     if buffer  != nil { buffer_begin(buffer) }
 
     if p.should_resync_caret {
         p.should_resync_caret = false
         sync_buffer_cursor_to_caret(p)
     }
-
-    p.relative_size.x = p.real_size.x / char_width
-    p.relative_size.y = p.real_size.y / line_height
 
     if should_caret_reset_blink_timers(p) {
         caret.last_update = time.tick_now()
@@ -159,16 +153,16 @@ should_caret_blink :: #force_inline proc(p: ^Pane) -> bool {
     return caret.blinking_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
 }
 
-find_pane_in_window_coords :: proc(x, y: i32) -> ^Pane {
+find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
     for &p, index in bragi.panes {
         origin := [2]i32{ p.real_size.x * i32(index), 0 }
         size := [2]i32{ origin.x + p.real_size.x, p.real_size.y }
 
         if origin.x <= x && size.x > x && origin.y <= y && size.y > y {
-            return &p
+            return &p, index
         }
     }
 
     log.errorf("Couldn't find a valid pane in coords [{0}, {1}]", x, y)
-    return nil
+    return nil, 0
 }

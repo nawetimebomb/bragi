@@ -80,10 +80,20 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         lexer_enabled := settings_is_lexer_enabled(mm)
         lex := settings_get_lexer_proc(mm)
         x, y: i32
+        screen_buffer := buffer.str
 
-        for r, index in buffer.str {
-                col := (x - viewport.x) * char_width
-                row := (y - viewport.y) * line_height
+        if len(buffer.lines) > int(p.relative_size.y) {
+            culling_start := max(p.viewport.y - 1, 0)
+            culling_end :=
+                min(int(p.viewport.y + p.relative_size.y + 3), len(buffer.lines) - 1)
+            top := buffer.lines[culling_start]
+            bottom := buffer.lines[culling_end]
+            screen_buffer = buffer.str[top:bottom]
+        }
+
+        for r, index in screen_buffer {
+                col := x * char_width
+                row := y * line_height
                 c := bragi.ctx.characters[r]
                 c.dest.x = col
                 c.dest.y = row

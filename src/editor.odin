@@ -16,6 +16,60 @@ Caret_Translation :: enum {
     WORD_END,
 }
 
+editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
+    #partial switch cmd {
+        case .find_file:               editor_find_file(p)
+        case .switch_buffer:           editor_switch_buffer(p)
+        case .kill_current_buffer:     kill_current_buffer(p)
+        case .save_buffer:             save_buffer(p)
+
+        case .delete_this_pane:        editor_close_panes(p, .CURRENT)
+        case .delete_other_panes:      editor_close_panes(p, .OTHER)
+        case .new_pane_to_the_right:   editor_new_pane(p)
+        case .other_pane:              editor_other_pane(p)
+
+        case .undo:                    editor_undo_redo(p, .UNDO)
+        case .redo:                    editor_undo_redo(p, .REDO)
+
+        case .kill_region:             log.error("NOT IMPLEMENTED")
+        case .kill_line:               delete_to(p, .LINE_END)
+        case .kill_ring_save:          log.error("NOT IMPLEMENTED")
+        case .yank:                    yank(p, handle_paste)
+        case .yank_from_history:       log.error("NOT IMPLEMENTED")
+
+        case .mark_backward_char:      log.error("NOT IMPLEMENTED")
+        case .mark_backward_word:      log.error("NOT IMPLEMENTED")
+        case .mark_backward_paragraph: log.error("NOT IMPLEMENTED")
+        case .mark_forward_char:       log.error("NOT IMPLEMENTED")
+        case .mark_forward_word:       log.error("NOT IMPLEMENTED")
+        case .mark_forward_paragraph:  log.error("NOT IMPLEMENTED")
+        case .mark_rectangle:          log.error("NOT IMPLEMENTED")
+        case .mark_set:                log.error("NOT IMPLEMENTED")
+        case .mark_whole_buffer:       log.error("NOT IMPLEMENTED")
+
+        case .delete_backward_char:    delete_to(p, .LEFT)
+        case .delete_backward_word:    delete_to(p, .WORD_START)
+        case .delete_forward_char:     delete_to(p, .RIGHT)
+        case .delete_forward_word:     delete_to(p, .WORD_END)
+
+        case .backward_char:           move_to(p, .LEFT)
+        case .backward_word:           move_to(p, .WORD_START)
+        case .backward_paragraph:      log.error("NOT IMPLEMENTED")
+        case .forward_char:            move_to(p, .RIGHT)
+        case .forward_word:            move_to(p, .WORD_END)
+        case .forward_paragraph:       log.error("NOT IMPLEMENTED")
+
+        case .next_line:               move_to(p, .DOWN)
+        case .previous_line:           move_to(p, .UP)
+
+        case .beginning_of_buffer:     move_to(p, .BUFFER_START)
+        case .beginning_of_line:       move_to(p, .LINE_START)
+        case .end_of_buffer:           move_to(p, .BUFFER_END)
+        case .end_of_line:             move_to(p, .LINE_END)
+
+        case .self_insert:             editor_self_insert(p, data.(string))
+    }
+}
 
 open_file :: proc(p: ^Pane, filepath: string) {
     buffer_found := false
@@ -36,23 +90,14 @@ open_file :: proc(p: ^Pane, filepath: string) {
 }
 
 editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
-    if w == .CURRENT {
-        other_pane_index: int
-
-
-        for &p1, index in bragi.panes {
-            if p.uid != p1.uid {
-                other_pane_index = index
-                break
-            }
-        }
-
-        p.mark_for_deletion = true
-        bragi.focused_index = other_pane_index
-    } else {
-        for &p1 in bragi.panes {
-            if p.uid != p1.uid {
-                p1.mark_for_deletion = true
+    if len(bragi.panes) > 1 {
+        if w == .CURRENT {
+            p.mark_for_deletion = true
+        } else {
+            for &p1, index in bragi.panes {
+                if bragi.focused_index != index {
+                    p1.mark_for_deletion = true
+                }
             }
         }
     }
@@ -82,11 +127,12 @@ editor_find_file :: proc(target: ^Pane) {
 }
 
 editor_switch_buffer :: proc(target: ^Pane) {
+    editor_set_buffer_cursor(target)
     show_bottom_pane(target, .BUFFERS)
 }
 
-editor_reset_all_modes :: proc() {
-    hide_bottom_pane()
+editor_set_buffer_cursor :: proc(p: ^Pane) {
+    p.buffer.cursor = caret_to_buffer_cursor(p.buffer, p.caret.coords)
 }
 
 toggle_mark_on :: proc(p: ^Pane) {
@@ -153,7 +199,7 @@ mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     pos.y = int(y / line_height + p.viewport.y)
 
     p.caret.coords = correct_out_of_bounds_caret(p, pos)
-    p.buffer.cursor = caret_to_buffer_cursor(p.buffer, p.caret.coords)
+    editor_set_buffer_cursor(p)
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
@@ -197,11 +243,11 @@ editor_undo_redo :: proc(p: ^Pane, a: enum { REDO, UNDO }) {
 }
 
 yank :: proc(p: ^Pane, callback: Paste_Proc) {
-    self_insert(p, callback())
+    editor_self_insert(p, callback())
     p.should_resync_caret = true
 }
 
-self_insert :: proc(p: ^Pane, s: string) {
+editor_self_insert :: proc(p: ^Pane, s: string) {
     cursor := caret_to_buffer_cursor(p.buffer, p.caret.coords)
     p.caret.coords.x += insert(p.buffer, cursor, s)
 }

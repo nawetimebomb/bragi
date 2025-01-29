@@ -1,8 +1,6 @@
 package main
 
 import     "base:runtime"
-import     "core:crypto"
-import     "core:encoding/uuid"
 import     "core:fmt"
 import     "core:log"
 import     "core:math"
@@ -228,7 +226,6 @@ destroy_profiling :: proc() {
 
 main :: proc() {
     context.logger = log.create_console_logger()
-    context.random_generator = crypto.random_generator()
 
     default_allocator := context.allocator
     tracking_allocator: mem.Tracking_Allocator

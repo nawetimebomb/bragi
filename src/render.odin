@@ -157,6 +157,13 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         sdl.RenderFillRect(renderer, &dest_rect)
 
+        set_bg(modeline_off_bg)
+        sdl.RenderDrawLine(
+            renderer,
+            0, window_size.y - line_height - 1,
+            window_size.x, window_size.y - line_height - 1,
+        )
+
         for r, index in lml_fmt {
             c := bragi.ctx.characters[r]
             c.dest.x = left_start_column + c.dest.w * i32(index)
@@ -217,7 +224,7 @@ render_bottom_pane :: proc() {
         for res, line_index in bp.results {
             row := window_size.y - 6 * line_height + i32(line_index) * line_height
 
-            if bp.selected_index == line_index {
+            if bp.selection_index == line_index {
                 select_rect := sdl.Rect{ 0, row, window_size.x, line_height }
                 set_bg(region)
                 sdl.RenderFillRect(renderer, &select_rect)
@@ -239,7 +246,7 @@ render_bottom_pane :: proc() {
             0, window_size.y - line_height, window_size.x, line_height,
         }
         prompt_fmt := fmt.tprintf(
-            "({0}/{1}) Switch to: ", bp.selected_index + 1, len(bp.results),
+            "({0}/{1}) Switch to: ", bp.selection_index + 1, len(bp.results),
         )
         full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, buffer.str)
         row := window_size.y - line_height

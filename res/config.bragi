@@ -1,7 +1,6 @@
 # C = Ctrl | M = Alt | S = Shift
 [keybindings]
 modifier                        <C-x>
-quit                            <ESC>
 
 quit_mode                       <C-g>
 
@@ -18,7 +17,7 @@ other_pane                      <C-x-o> <M-o>
 undo                            <C-/>
 redo                            <C-S-/>
 
-newline                         <RET>
+ui_select                       <RET>
 
 # kill_region
 kill_line                       <C-k>

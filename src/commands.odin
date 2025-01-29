@@ -4,9 +4,7 @@ import "core:log"
 import "core:strings"
 
 Command :: enum {
-    noop,
     modifier,
-    quit,
 
     quit_mode,
 
@@ -23,7 +21,7 @@ Command :: enum {
     undo,
     redo,
 
-    newline,
+    ui_select,
 
     kill_region,       // cut selection
     kill_line,         // cut the rest of the line
@@ -65,70 +63,30 @@ Command :: enum {
 }
 
 do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    switch cmd {
-    case .noop:                    log.error("NOT IMPLEMENTED")
-    case .modifier:                add_modifier(data.(string))
-    case .quit:                    bragi.ctx.running = false
+    bp_enabled := bragi.bottom_pane.enabled
 
-    case .quit_mode:               editor_reset_all_modes()
-
-    case .find_file:               editor_find_file(p)
-    case .switch_buffer:           editor_switch_buffer(p)
-    case .kill_current_buffer:     kill_current_buffer(p)
-    case .save_buffer:             save_buffer(p)
-
-    case .delete_this_pane:        editor_close_panes(p, .CURRENT)
-    case .delete_other_panes:      editor_close_panes(p, .OTHER)
-    case .new_pane_to_the_right:   editor_new_pane(p)
-    case .other_pane:              editor_other_pane(p)
-
-    case .undo:                    editor_undo_redo(p, .UNDO)
-    case .redo:                    editor_undo_redo(p, .REDO)
-
-    case .newline:                 newline(p)
-
-    case .kill_region:             log.error("NOT IMPLEMENTED")
-    case .kill_line:               delete_to(p, .LINE_END)
-    case .kill_ring_save:          log.error("NOT IMPLEMENTED")
-    case .yank:                    yank(p, handle_paste)
-    case .yank_from_history:       log.error("NOT IMPLEMENTED")
-
-    case .mark_backward_char:      log.error("NOT IMPLEMENTED")
-    case .mark_backward_word:      log.error("NOT IMPLEMENTED")
-    case .mark_backward_paragraph: log.error("NOT IMPLEMENTED")
-    case .mark_forward_char:       log.error("NOT IMPLEMENTED")
-    case .mark_forward_word:       log.error("NOT IMPLEMENTED")
-    case .mark_forward_paragraph:  log.error("NOT IMPLEMENTED")
-    case .mark_rectangle:          log.error("NOT IMPLEMENTED")
-    case .mark_set:                log.error("NOT IMPLEMENTED")
-    case .mark_whole_buffer:       log.error("NOT IMPLEMENTED")
-
-    case .delete_backward_char:    delete_to(p, .LEFT)
-    case .delete_backward_word:    delete_to(p, .WORD_START)
-    case .delete_forward_char:     delete_to(p, .RIGHT)
-    case .delete_forward_word:     delete_to(p, .WORD_END)
-
-    case .backward_char:           move_to(p, .LEFT)
-    case .backward_word:           move_to(p, .WORD_START)
-    case .backward_paragraph:      log.error("NOT IMPLEMENTED")
-    case .forward_char:            move_to(p, .RIGHT)
-    case .forward_word:            move_to(p, .WORD_END)
-    case .forward_paragraph:       log.error("NOT IMPLEMENTED")
-
-    case .next_line:               move_to(p, .DOWN)
-    case .previous_line:           move_to(p, .UP)
-
-    case .beginning_of_buffer:     move_to(p, .BUFFER_START)
-    case .beginning_of_line:       move_to(p, .LINE_START)
-    case .end_of_buffer:           move_to(p, .BUFFER_END)
-    case .end_of_line:             move_to(p, .LINE_END)
-
-    case .self_insert:             log.error("NOT IMPLEMENTED")
+    switch {
+    case cmd == .modifier:
+        command_add_modifier(data.(string))
+    case cmd == .quit_mode:
+        command_reset_modes(p)
+    case !bp_enabled && cmd == .ui_select:
+        // TODO: I don't like that I have to do this... but this is how inputs are
+        // being handled at the moment
+        newline(p)
+    case bp_enabled:
+        ui_do_command(cmd, p, data)
+    case :
+        editor_do_command(cmd, p, data)
     }
 }
 
-add_modifier :: proc(input: string) {
+command_add_modifier :: proc(input: string) {
     k := [2]string{input, "-"}
     s := strings.concatenate(k[:])
     append(&bragi.keybinds.modifiers, s)
+}
+
+command_reset_modes :: proc(p: ^Pane) {
+    hide_bottom_pane()
 }

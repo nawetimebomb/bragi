@@ -1,6 +1,5 @@
 package main
 
-import     "core:encoding/uuid"
 import     "core:fmt"
 import     "core:log"
 import     "core:strings"
@@ -51,14 +50,11 @@ Pane :: struct {
     real_size:      [2]i32,
     // The amount of scrolling the pane has done so far, depending of the caret.
     viewport:       [2]i32,
-
-    uid: uuid.Identifier,
 }
 
 pane_init :: proc() -> Pane {
     return  {
         real_size = bragi.ctx.window_size,
-        uid       = uuid.generate_v7(),
     }
 }
 
@@ -112,6 +108,7 @@ pane_end :: proc(p: ^Pane, index: int) {
     if p.mark_for_deletion {
         pane_destroy(p)
         ordered_remove(&bragi.panes, index)
+        bragi.focused_index = clamp(bragi.focused_index, 0, len(bragi.panes) - 1)
         resize_panes()
     }
 }

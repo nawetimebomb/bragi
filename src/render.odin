@@ -209,7 +209,7 @@ render_bottom_pane :: proc() {
     window_size := bragi.ctx.window_size
     viewport := bp.viewport
     caret := bp.caret
-    buffer := bp.buffer
+    query := strings.to_string(bp.query)
     pane_dest := sdl.Rect{
         window_size.x, window_size.y - 6 * line_height,
         window_size.x, 6 * line_height,
@@ -234,7 +234,7 @@ render_bottom_pane :: proc() {
         for res, line_index in bp.results {
             row := window_size.y - 6 * line_height + i32(line_index) * line_height
 
-            if bp.selection_index == line_index {
+            if bp.caret.coords.y == line_index {
                 select_rect := sdl.Rect{ 0, row, window_size.x, line_height }
                 set_bg(region)
                 sdl.RenderFillRect(renderer, &select_rect)
@@ -256,9 +256,9 @@ render_bottom_pane :: proc() {
             0, window_size.y - line_height, window_size.x, line_height,
         }
         prompt_fmt := fmt.tprintf(
-            "({0}/{1}) Switch to: ", bp.selection_index + 1, len(bp.results),
+            "({0}/{1}) Switch to: ", bp.caret.coords.y + 1, len(bp.results),
         )
-        full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, buffer.str)
+        full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, query)
         row := window_size.y - line_height
 
         set_bg(background)
@@ -282,7 +282,7 @@ render_bottom_pane :: proc() {
 
             if index < len(prompt_fmt) {
                 set_fg(c.texture, highlight)
-            } else if is_caret_showing(&caret, i32(caret.coords.x + len(prompt_fmt)), 0) {
+            } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0) {
                 set_fg(c.texture, background)
             } else {
                 set_fg(c.texture, default)

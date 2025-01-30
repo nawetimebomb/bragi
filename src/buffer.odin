@@ -35,7 +35,6 @@ Buffer :: struct {
     was_dirty_last_frame: bool,
     gap_end:              Buffer_Cursor,
     gap_start:            Buffer_Cursor,
-    single_line:          bool,
     lines:                [dynamic]int,
 
     enable_history:       bool,
@@ -187,18 +186,9 @@ buffer_destroy :: proc(b: ^Buffer) {
     delete(b.data)
     delete(b.lines)
     delete(b.name)
-    delete(b.str)
     delete(b.redo)
-    delete(b.undo)
-}
-
-buffer_reset :: proc(b: ^Buffer) {
-    clear_history(&b.undo)
-    clear_history(&b.redo)
-    delete(b.data)
     delete(b.str)
-    clear(&b.lines)
-    b.data = make([]u8, 0, b.allocator)
+    delete(b.undo)
 }
 
 update_buffer_time :: proc(b: ^Buffer) {

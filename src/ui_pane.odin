@@ -6,10 +6,16 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 
-Bottom_Pane_Action :: enum {
+UI_Pane_Action :: enum {
     NONE,
     BUFFERS,
     FILES,
+    SEARCH_IN_BUFFER,
+}
+
+Pane_State :: struct {
+    buffer: ^Buffer,
+    caret_coords: Caret_Pos,
 }
 
 Result_Buffer :: struct {
@@ -28,12 +34,12 @@ UI_Pane_Result :: struct {
     value: Result_Value,
 }
 
-Bottom_Pane :: struct {
-    action:          Bottom_Pane_Action,
+UI_Pane :: struct {
+    action:          UI_Pane_Action,
     caret:           Caret,
     enabled:         bool,
     did_select:      bool,
-    prev_value:      Result_Value,
+    prev_state:      Pane_State,
     temp_value:      strings.Builder,
     query:           strings.Builder,
     results:         [dynamic]UI_Pane_Result,
@@ -43,24 +49,24 @@ Bottom_Pane :: struct {
     relative_size:   [2]i32,
 }
 
-bottom_pane_init :: proc() {
-    bp := &bragi.bottom_pane
+ui_pane_init :: proc() {
+    bp := &bragi.ui_pane
 
     bp.query = strings.builder_make()
     bp.temp_value = strings.builder_make()
     bp.results = make([dynamic]UI_Pane_Result, 0)
 }
 
-bottom_pane_destroy :: proc() {
-    bp := &bragi.bottom_pane
+ui_pane_destroy :: proc() {
+    bp := &bragi.ui_pane
 
     strings.builder_destroy(&bp.query)
     strings.builder_destroy(&bp.temp_value)
     delete(bp.results)
 }
 
-bottom_pane_begin :: proc() {
-    bp := &bragi.bottom_pane
+ui_pane_begin :: proc() {
+    bp := &bragi.ui_pane
     caret := &bp.caret
 
     if !bp.enabled { return }
@@ -89,28 +95,30 @@ bottom_pane_begin :: proc() {
 
         sync_caret_coords(bp.target)
     case .FILES:
+    case .SEARCH_IN_BUFFER:
     }
 }
 
-bottom_pane_end :: proc() {
-    bp := &bragi.bottom_pane
+ui_pane_end :: proc() {
+    bp := &bragi.ui_pane
 
     if !bp.enabled { return }
 }
 
 rollback_to_prev_value :: proc() {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
 
     switch bp.action {
     case .NONE:
     case .BUFFERS:
-        bp.target.buffer = bp.prev_value.(Result_Buffer).buffer
+        bp.target.buffer = bp.prev_state.buffer
     case .FILES:
+    case .SEARCH_IN_BUFFER:
     }
 }
 
-show_bottom_pane :: proc(target: ^Pane, action: Bottom_Pane_Action) {
-    bp := &bragi.bottom_pane
+show_ui_pane :: proc(target: ^Pane, action: UI_Pane_Action) {
+    bp := &bragi.ui_pane
     bp.action = action
     bp.caret.coords = {}
     bp.enabled = true
@@ -119,16 +127,17 @@ show_bottom_pane :: proc(target: ^Pane, action: Bottom_Pane_Action) {
     switch action {
     case .NONE:
     case .BUFFERS:
-        bp.prev_value = Result_Buffer{ buffer = target.buffer }
+        bp.prev_state.buffer = target.buffer
     case .FILES:
+    case .SEARCH_IN_BUFFER:
     }
 
     ui_filter_results()
     resize_panes()
 }
 
-hide_bottom_pane :: proc() {
-    bp := &bragi.bottom_pane
+hide_ui_pane :: proc() {
+    bp := &bragi.ui_pane
 
     if !bp.did_select {
         rollback_to_prev_value()
@@ -147,7 +156,7 @@ hide_bottom_pane :: proc() {
 }
 
 ui_filter_results :: proc() {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
     query := strings.to_string(bp.query)
     query_has_value := len(query) > 0
 
@@ -157,7 +166,6 @@ ui_filter_results :: proc() {
     switch bp.action {
     case .NONE:
     case .BUFFERS:
-
         for &b, index in bragi.buffers {
             if query_has_value {
                 if !strings.contains(b.name, query) { continue }
@@ -178,13 +186,14 @@ ui_filter_results :: proc() {
             })
         }
     case .FILES:
+    case .SEARCH_IN_BUFFER:
     }
 
     bp.caret.coords.y = clamp(bp.caret.coords.y, 0, len(bp.results) - 1)
 }
 
 ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
     bp.caret.last_keystroke = time.tick_now()
 
     #partial switch cmd {
@@ -212,7 +221,7 @@ ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
 }
 
 ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
     pos = bp.caret.coords
     query := strings.to_string(bp.query)
     results := bp.results
@@ -256,7 +265,7 @@ ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
 }
 
 ui_delete_to :: proc(t: Caret_Translation) {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
     new_pos := ui_translate(t)
     start := min(bp.caret.coords.x, new_pos.x)
     end := max(bp.caret.coords.x, new_pos.x)
@@ -266,12 +275,12 @@ ui_delete_to :: proc(t: Caret_Translation) {
 }
 
 ui_move_to :: proc(t: Caret_Translation) {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
     bp.caret.coords = ui_translate(t)
 }
 
 ui_select :: proc() {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
     bp.did_select = true
 
     switch bp.action {
@@ -286,15 +295,16 @@ ui_select :: proc() {
             bp.target.buffer = add(buffer_init(strings.to_string(bp.query), 0))
         }
 
-        hide_bottom_pane()
+        hide_ui_pane()
     case .FILES:
+    case .SEARCH_IN_BUFFER:
     }
 
-    hide_bottom_pane()
+    hide_ui_pane()
 }
 
 ui_self_insert :: proc(s: string) {
-    bp := &bragi.bottom_pane
+    bp := &bragi.ui_pane
 
     if ok, _ := inject_at(&bp.query.buf, bp.caret.coords.x, s); ok {
         bp.caret.coords.x += len(s)

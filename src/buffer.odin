@@ -26,8 +26,6 @@ Buffer :: struct {
     allocator:            runtime.Allocator,
     internal:             bool,
 
-    marking:              bool,
-
     cursor:               Buffer_Cursor,
     data:                 []byte,
     str:                  string,

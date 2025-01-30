@@ -65,7 +65,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         set_bg(cursor)
 
-        if focused && !bragi.bottom_pane.enabled {
+        if focused && !bragi.ui_pane.enabled {
             if !caret.blinking {
                 sdl.RenderFillRect(renderer, &dest_rect)
             }
@@ -119,7 +119,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     set_fg(c.texture, default)
                 }
 
-                if focused && !bragi.bottom_pane.enabled {
+                if focused && !bragi.ui_pane.enabled {
                     if is_caret_showing(&caret, x, y) {
                         set_fg(c.texture, background)
                     }
@@ -198,8 +198,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     sdl.RenderCopy(renderer, bragi.ctx.pane_texture, nil, &pane_dest)
 }
 
-render_bottom_pane :: proc() {
-    bp := &bragi.bottom_pane
+render_ui_pane :: proc() {
+    bp := &bragi.ui_pane
 
     if !bp.enabled { return  }
 

@@ -191,7 +191,6 @@ update_input :: proc() {
             }
             case .TEXTINPUT: {
                 if !input_handled {
-                    bp := &bragi.bottom_pane
                     input_char := cstring(raw_data(e.text.text[:]))
                     str := string(input_char)
                     do_command(.self_insert, p, str)

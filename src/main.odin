@@ -51,7 +51,7 @@ Program_Context :: struct {
 Bragi :: struct {
     buffers:         [dynamic]Buffer,
     panes:           [dynamic]Pane,
-    bottom_pane:     Bottom_Pane,
+    ui_pane:         UI_Pane,
     focused_index:   int,
 
     ctx:             Program_Context,
@@ -82,7 +82,7 @@ destroy_editor :: proc() {
         // TODO: Save desktop configuration
     }
 
-    bottom_pane_destroy()
+    ui_pane_destroy()
 
     for &p in bragi.panes {
         pane_destroy(&p)
@@ -149,7 +149,7 @@ initialize_editor :: proc() {
     bragi.buffers = make([dynamic]Buffer, 0, 10)
     bragi.panes   = make([dynamic]Pane, 0, 2)
 
-    bottom_pane_init()
+    ui_pane_init()
 
     p := add(pane_init())
     p.buffer = add(buffer_init("*notes*", 0))
@@ -259,7 +259,7 @@ main :: proc() {
         set_bg(bragi.settings.colorscheme_table[.background])
         sdl.RenderClear(bragi.ctx.renderer)
 
-        bottom_pane_begin()
+        ui_pane_begin()
 
         for &p in bragi.panes {
             pane_begin(&p)
@@ -273,8 +273,8 @@ main :: proc() {
             pane_end(&p, index)
         }
 
-        render_bottom_pane()
-        bottom_pane_end()
+        render_ui_pane()
+        ui_pane_end()
 
         sdl.RenderPresent(bragi.ctx.renderer)
 

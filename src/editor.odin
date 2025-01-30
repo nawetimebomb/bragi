@@ -125,12 +125,12 @@ editor_other_pane :: proc(p: ^Pane) {
 }
 
 editor_find_file :: proc(target: ^Pane) {
-    show_bottom_pane(target, .FILES)
+    show_ui_pane(target, .FILES)
 }
 
 editor_switch_buffer :: proc(target: ^Pane) {
     editor_set_buffer_cursor(target)
-    show_bottom_pane(target, .BUFFERS)
+    show_ui_pane(target, .BUFFERS)
 }
 
 editor_set_buffer_cursor :: proc(p: ^Pane) {

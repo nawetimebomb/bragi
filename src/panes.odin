@@ -124,7 +124,7 @@ resize_panes :: proc() {
     window_size := bragi.ctx.window_size
     size_y := window_size.y
 
-    if bragi.bottom_pane.enabled {
+    if bragi.ui_pane.enabled {
         size_y = window_size.y - (BOTTOM_PANE_SIZE * line_height)
     }
 

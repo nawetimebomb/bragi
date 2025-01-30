@@ -63,7 +63,7 @@ Command :: enum {
 }
 
 do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    bp_enabled := bragi.bottom_pane.enabled
+    bp_enabled := bragi.ui_pane.enabled
 
     switch {
     case cmd == .modifier:
@@ -88,5 +88,5 @@ command_add_modifier :: proc(input: string) {
 }
 
 command_reset_modes :: proc(p: ^Pane) {
-    hide_bottom_pane()
+    hide_ui_pane()
 }

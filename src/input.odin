@@ -93,8 +93,6 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
 }
 
 handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
-    p.caret.last_keystroke = time.tick_now()
-
     // NOTE: Disallow mod keys as keystrokes
     disallowed_keystrokes := [?]sdl.Keycode{
             .LCTRL, .RCTRL, .LSHIFT, .RSHIFT, .LALT, .RALT, .LGUI, .RGUI,

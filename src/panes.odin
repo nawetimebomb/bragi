@@ -75,15 +75,15 @@ pane_begin :: proc(p: ^Pane) {
     }
 
     if should_caret_reset_blink_timers(caret) {
-        caret.last_update = time.tick_now()
         caret.blinking = false
         caret.blinking_count = 0
+        caret.last_update = time.tick_now()
     }
 
     if should_caret_blink(caret) {
-        caret.last_update = time.tick_now()
         caret.blinking = !caret.blinking
         caret.blinking_count += 1
+        caret.last_update = time.tick_now()
     }
 
     caret_x := i32(caret.coords.x)

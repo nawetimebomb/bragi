@@ -17,6 +17,8 @@ Caret_Translation :: enum {
 }
 
 editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
+    p.caret.last_keystroke = time.tick_now()
+
     #partial switch cmd {
         case .find_file:               editor_find_file(p)
         case .switch_buffer:           editor_switch_buffer(p)
@@ -52,20 +54,20 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .delete_forward_char:     delete_to(p, .RIGHT)
         case .delete_forward_word:     delete_to(p, .WORD_END)
 
-        case .backward_char:           move_to(p, .LEFT)
-        case .backward_word:           move_to(p, .WORD_START)
+        case .backward_char:           editor_move_to(p, .LEFT)
+        case .backward_word:           editor_move_to(p, .WORD_START)
         case .backward_paragraph:      log.error("NOT IMPLEMENTED")
-        case .forward_char:            move_to(p, .RIGHT)
-        case .forward_word:            move_to(p, .WORD_END)
+        case .forward_char:            editor_move_to(p, .RIGHT)
+        case .forward_word:            editor_move_to(p, .WORD_END)
         case .forward_paragraph:       log.error("NOT IMPLEMENTED")
 
-        case .next_line:               move_to(p, .DOWN)
-        case .previous_line:           move_to(p, .UP)
+        case .next_line:               editor_move_to(p, .DOWN)
+        case .previous_line:           editor_move_to(p, .UP)
 
-        case .beginning_of_buffer:     move_to(p, .BUFFER_START)
-        case .beginning_of_line:       move_to(p, .LINE_START)
-        case .end_of_buffer:           move_to(p, .BUFFER_END)
-        case .end_of_line:             move_to(p, .LINE_END)
+        case .beginning_of_buffer:     editor_move_to(p, .BUFFER_START)
+        case .beginning_of_line:       editor_move_to(p, .LINE_START)
+        case .end_of_buffer:           editor_move_to(p, .BUFFER_END)
+        case .end_of_line:             editor_move_to(p, .LINE_END)
 
         case .self_insert:             editor_self_insert(p, data.(string))
     }
@@ -266,7 +268,7 @@ delete_to :: proc(p: ^Pane, t: Caret_Translation) {
     p.should_resync_caret = true
 }
 
-move_to :: proc(p: ^Pane, t: Caret_Translation) {
+editor_move_to :: proc(p: ^Pane, t: Caret_Translation) {
     p.caret.coords = translate(p, t)
 }
 

@@ -65,10 +65,16 @@ bottom_pane_begin :: proc() {
 
     if !bp.enabled { return }
 
-    if should_caret_blink(caret) {
+    if should_caret_reset_blink_timers(caret) {
+        caret.blinking = false
+        caret.blinking_count = 0
         caret.last_update = time.tick_now()
+    }
+
+    if should_caret_blink(caret) {
         caret.blinking = !caret.blinking
         caret.blinking_count += 1
+        caret.last_update = time.tick_now()
     }
 
     switch bp.action {
@@ -173,22 +179,31 @@ ui_filter_results :: proc() {
         }
     case .FILES:
     }
+
+    bp.caret.coords.y = clamp(bp.caret.coords.y, 0, len(bp.results) - 1)
 }
 
 ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
+    bp := &bragi.bottom_pane
+    bp.caret.last_keystroke = time.tick_now()
+
     #partial switch cmd {
         case .ui_select:            ui_select()
 
         case .delete_backward_char: ui_delete_to(.LEFT)
+        case .delete_backward_word: ui_delete_to(.WORD_START)
         case .delete_forward_char:  ui_delete_to(.RIGHT)
+        case .delete_forward_word:  ui_delete_to(.WORD_END)
 
         case .beginning_of_line:    ui_move_to(.LINE_START)
-        case .beginning_of_buffer:  ui_move_to(.LINE_START)
+        case .beginning_of_buffer:  ui_move_to(.BUFFER_START)
         case .end_of_line:          ui_move_to(.LINE_END)
-        case .end_of_buffer:        ui_move_to(.LINE_END)
+        case .end_of_buffer:        ui_move_to(.BUFFER_END)
 
         case .backward_char:        ui_move_to(.LEFT)
+        case .backward_word:        ui_move_to(.WORD_START)
         case .forward_char:         ui_move_to(.RIGHT)
+        case .forward_word:         ui_move_to(.WORD_END)
         case .next_line:            ui_move_to(.DOWN)
         case .previous_line:        ui_move_to(.UP)
 
@@ -202,35 +217,39 @@ ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
     query := strings.to_string(bp.query)
     results := bp.results
 
-    #partial switch t {
-        case .DOWN: {
-            pos.y += 1
-            if pos.y >= len(results) {
-                pos.y = 0
-            }
+    switch t {
+    case .DOWN:
+        pos.y += 1
+        if pos.y >= len(results) {
+            pos.y = 0
         }
-        case .UP: {
-            pos.y -= 1
-            if pos.y < 0 {
-                pos.y = len(results) - 1
-            }
+    case .UP:
+        pos.y -= 1
+        if pos.y < 0 {
+            pos.y = len(results) - 1
         }
-        case .LEFT: {
-            if pos.x > 0 {
-                pos.x -= 1
-            }
+    case .LEFT:
+        if pos.x > 0 {
+            pos.x -= 1
         }
-        case .RIGHT: {
-            if pos.x < len(query) {
-                pos.x += 1
-            }
+    case .RIGHT:
+        if pos.x < len(query) {
+            pos.x += 1
         }
-        case .LINE_START: {
-            pos.x = 0
-        }
-        case .LINE_END: {
-            pos.x = len(query)
-        }
+    case .BUFFER_START:
+        pos.x = 0
+    case .BUFFER_END:
+        pos.x = len(query)
+    case .LINE_START:
+        pos.x = 0
+    case .LINE_END:
+        pos.x = len(query)
+    case .WORD_START:
+        for pos.x > 0 && is_whitespace(query[pos.x - 1])  { pos.x -= 1 }
+        for pos.x > 0 && !is_whitespace(query[pos.x - 1]) { pos.x -= 1 }
+    case .WORD_END:
+        for pos.x < len(query) && is_whitespace(query[pos.x])  { pos.x += 1 }
+        for pos.x < len(query) && !is_whitespace(query[pos.x]) { pos.x += 1 }
     }
 
     return

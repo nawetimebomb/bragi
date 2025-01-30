@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:log"
 import "core:slice"
 import "core:strings"
@@ -31,6 +32,9 @@ Bottom_Pane :: struct {
     action:          Bottom_Pane_Action,
     caret:           Caret,
     enabled:         bool,
+    did_select:      bool,
+    prev_value:      Result_Value,
+    temp_value:      strings.Builder,
     query:           strings.Builder,
     results:         [dynamic]UI_Pane_Result,
     target:          ^Pane,
@@ -43,14 +47,16 @@ bottom_pane_init :: proc() {
     bp := &bragi.bottom_pane
 
     bp.query = strings.builder_make()
+    bp.temp_value = strings.builder_make()
     bp.results = make([dynamic]UI_Pane_Result, 0)
 }
 
 bottom_pane_destroy :: proc() {
     bp := &bragi.bottom_pane
 
-    delete(bp.results)
     strings.builder_destroy(&bp.query)
+    strings.builder_destroy(&bp.temp_value)
+    delete(bp.results)
 }
 
 bottom_pane_begin :: proc() {
@@ -70,7 +76,11 @@ bottom_pane_begin :: proc() {
     case .BUFFERS:
         current_sel := bp.results[bp.caret.coords.y]
         b := current_sel.value.(Result_Buffer).buffer
-        bp.target.buffer = b
+
+        if b != nil {
+            bp.target.buffer = b
+        }
+
         sync_caret_coords(bp.target)
     case .FILES:
     }
@@ -82,41 +92,87 @@ bottom_pane_end :: proc() {
     if !bp.enabled { return }
 }
 
+rollback_to_prev_value :: proc() {
+    bp := &bragi.bottom_pane
+
+    switch bp.action {
+    case .NONE:
+    case .BUFFERS:
+        bp.target.buffer = bp.prev_value.(Result_Buffer).buffer
+    case .FILES:
+    }
+}
+
 show_bottom_pane :: proc(target: ^Pane, action: Bottom_Pane_Action) {
     bp := &bragi.bottom_pane
     bp.action = action
-    bp.target = target
-    bp.enabled = true
     bp.caret.coords = {}
+    bp.enabled = true
+    bp.target = target
 
     switch action {
     case .NONE:
-        log.error("NONE is not a valid type of bottom pane")
     case .BUFFERS:
-        for &b, index in bragi.buffers {
-            if !b.internal {
-                append(&bp.results, UI_Pane_Result{
-                    label = b.name,
-                    value = Result_Buffer{ buffer = &b },
-                })
-            }
-        }
-
+        bp.prev_value = Result_Buffer{ buffer = target.buffer }
     case .FILES:
     }
 
+    ui_filter_results()
     resize_panes()
 }
 
 hide_bottom_pane :: proc() {
     bp := &bragi.bottom_pane
+
+    if !bp.did_select {
+        rollback_to_prev_value()
+    }
+
     bp.action = .NONE
-    bp.target = nil
-    bp.enabled = false
     bp.caret.coords = {}
+    bp.did_select = false
+    bp.enabled = false
+    bp.target = nil
+
     strings.builder_reset(&bp.query)
+    strings.builder_reset(&bp.temp_value)
     clear(&bp.results)
     resize_panes()
+}
+
+ui_filter_results :: proc() {
+    bp := &bragi.bottom_pane
+    query := strings.to_string(bp.query)
+    query_has_value := len(query) > 0
+
+    clear(&bp.results)
+    strings.builder_reset(&bp.temp_value)
+
+    switch bp.action {
+    case .NONE:
+    case .BUFFERS:
+
+        for &b, index in bragi.buffers {
+            if query_has_value {
+                if !strings.contains(b.name, query) { continue }
+            }
+
+            append(&bp.results, UI_Pane_Result{
+                label = b.name,
+                value = Result_Buffer{ buffer = &b },
+            })
+        }
+
+        if query_has_value {
+            strings.write_string(&bp.temp_value, "Create buffer with name ")
+            strings.write_quoted_string(&bp.temp_value, query)
+            append(&bp.results, UI_Pane_Result{
+                label = strings.to_string(bp.temp_value),
+                value = Result_Buffer{ buffer = nil },
+            })
+        }
+    case .FILES:
+    }
 }
 
 ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
@@ -187,6 +243,7 @@ ui_delete_to :: proc(t: Caret_Translation) {
     end := max(bp.caret.coords.x, new_pos.x)
     remove_range(&bp.query.buf, start, end)
     bp.caret.coords.x = start
+    ui_filter_results()
 }
 
 ui_move_to :: proc(t: Caret_Translation) {
@@ -196,12 +253,20 @@ ui_move_to :: proc(t: Caret_Translation) {
 
 ui_select :: proc() {
     bp := &bragi.bottom_pane
+    bp.did_select = true
 
     switch bp.action {
     case .NONE:
     case .BUFFERS:
-        // NOTE: Buffer in pane changes as the user navigate through the open buffers,
-        // so just closing this should work.
+        // NOTE: We only care about the selection with nil pointer because the other ones are
+        // changed on the fly, but this one requires a new buffer to be created.
+        current_sel := bp.results[bp.caret.coords.y]
+        b := current_sel.value.(Result_Buffer).buffer
+
+        if b == nil {
+            bp.target.buffer = add(buffer_init(strings.to_string(bp.query), 0))
+        }
+
         hide_bottom_pane()
     case .FILES:
     }
@@ -215,4 +280,6 @@ ui_self_insert :: proc(s: string) {
     if ok, _ := inject_at(&bp.query.buf, bp.caret.coords.x, s); ok {
         bp.caret.coords.x += len(s)
     }
+
+    ui_filter_results()
 }

@@ -19,6 +19,8 @@ Pane_State :: struct {
 }
 
 Result_Buffer :: struct {
+    format: string,
+    label: string,
     buffer: ^Buffer,
 }
 
@@ -29,11 +31,6 @@ Result_Value :: union {
     Result_File,
 }
 
-UI_Pane_Result :: struct {
-    label: string,
-    value: Result_Value,
-}
-
 UI_Pane :: struct {
     action:          UI_Pane_Action,
     caret:           Caret,
@@ -42,11 +39,11 @@ UI_Pane :: struct {
     prev_state:      Pane_State,
     temp_value:      strings.Builder,
     query:           strings.Builder,
-    results:         [dynamic]UI_Pane_Result,
+    results:         [dynamic]Result_Value,
     target:          ^Pane,
-    viewport:        [2]i32,
     real_size:       [2]i32,
     relative_size:   [2]i32,
+    viewport:        [2]i32,
 }
 
 ui_pane_init :: proc() {
@@ -54,7 +51,7 @@ ui_pane_init :: proc() {
 
     bp.query = strings.builder_make()
     bp.temp_value = strings.builder_make()
-    bp.results = make([dynamic]UI_Pane_Result, 0)
+    bp.results = make([dynamic]Result_Value, 0)
 }
 
 ui_pane_destroy :: proc() {
@@ -86,11 +83,10 @@ ui_pane_begin :: proc() {
     switch bp.action {
     case .NONE:
     case .BUFFERS:
-        current_sel := bp.results[bp.caret.coords.y]
-        b := current_sel.value.(Result_Buffer).buffer
+        res := bp.results[bp.caret.coords.y].(Result_Buffer)
 
-        if b != nil {
-            bp.target.buffer = b
+        if res.buffer != nil {
+            bp.target.buffer = res.buffer
         }
 
         sync_caret_coords(bp.target)
@@ -123,13 +119,9 @@ show_ui_pane :: proc(target: ^Pane, action: UI_Pane_Action) {
     bp.caret.coords = {}
     bp.enabled = true
     bp.target = target
-
-    switch action {
-    case .NONE:
-    case .BUFFERS:
-        bp.prev_state.buffer = target.buffer
-    case .FILES:
-    case .SEARCH_IN_BUFFER:
+    bp.prev_state = {
+        buffer = target.buffer,
+        caret_coords = target.caret.coords,
     }
 
     ui_filter_results()
@@ -147,6 +139,7 @@ hide_ui_pane :: proc() {
     bp.caret.coords = {}
     bp.did_select = false
     bp.enabled = false
+    bp.prev_state = {}
     bp.target = nil
 
     strings.builder_reset(&bp.query)
@@ -171,18 +164,20 @@ ui_filter_results :: proc() {
                 if !strings.contains(b.name, query) { continue }
             }
 
-            append(&bp.results, UI_Pane_Result{
+            append(&bp.results, Result_Buffer{
+                buffer = &b,
+                format = "{0}",
                 label = b.name,
-                value = Result_Buffer{ buffer = &b },
             })
         }
 
         if query_has_value {
             strings.write_string(&bp.temp_value, "Create buffer with name ")
             strings.write_quoted_string(&bp.temp_value, query)
-            append(&bp.results, UI_Pane_Result{
-                label = strings.to_string(bp.temp_value),
-                value = Result_Buffer{ buffer = nil },
+            append(&bp.results, Result_Buffer{
+                buffer = nil,
+                format = "Create buffer with name \"{0}\"",
+                label = strings.to_string(bp.query),
             })
         }
     case .FILES:
@@ -288,10 +283,9 @@ ui_select :: proc() {
     case .BUFFERS:
         // NOTE: We only care about the selection with nil pointer because the other ones are
         // changed on the fly, but this one requires a new buffer to be created.
-        current_sel := bp.results[bp.caret.coords.y]
-        b := current_sel.value.(Result_Buffer).buffer
+        res := bp.results[bp.caret.coords.y].(Result_Buffer)
 
-        if b == nil {
+        if res.buffer == nil {
             bp.target.buffer = add(buffer_init(strings.to_string(bp.query), 0))
         }
 

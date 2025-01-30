@@ -231,8 +231,18 @@ render_ui_pane :: proc() {
     string          := colors[.string]
 
     { // Start Results
-        for res, line_index in bp.results {
+        for item, line_index in bp.results {
             row := window_size.y - 6 * line_height + i32(line_index) * line_height
+            s := ""
+
+            switch bp.action {
+            case .NONE:
+            case .BUFFERS:
+                result := item.(Result_Buffer)
+                s = fmt.tprintf(result.format, result.label)
+            case .FILES:
+            case .SEARCH_IN_BUFFER:
+            }
 
             if bp.caret.coords.y == line_index {
                 select_rect := sdl.Rect{ 0, row, window_size.x, line_height }
@@ -240,7 +250,7 @@ render_ui_pane :: proc() {
                 sdl.RenderFillRect(renderer, &select_rect)
             }
 
-            for r, char_index in res.label {
+            for r, char_index in s {
                 col := i32(char_index) * char_width
                 c := bragi.ctx.characters[r]
                 c.dest.x = col

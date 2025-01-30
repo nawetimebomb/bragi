@@ -24,7 +24,6 @@ History_State :: struct {
 
 Buffer :: struct {
     allocator:            runtime.Allocator,
-    internal:             bool,
 
     cursor:               Buffer_Cursor,
     data:                 []byte,
@@ -43,6 +42,7 @@ Buffer :: struct {
     last_edit_time:       time.Tick,
     undo_timeout:         time.Duration,
 
+    status:               string,
     filepath:             string,
     major_mode:           Major_Mode,
     name:                 string,
@@ -172,6 +172,8 @@ buffer_begin :: proc(b: ^Buffer) {
 }
 
 buffer_end :: proc(b: ^Buffer) {
+    b.status = get_buffer_status(b)
+
     if b.dirty {
         b.dirty = false
         b.was_dirty_last_frame = true
@@ -266,9 +268,14 @@ get_line_start_after_indent :: #force_inline proc(b: ^Buffer, line: int) -> (off
 
 get_buffer_status :: proc(b: ^Buffer) -> (status: string) {
     switch {
-    case b.modified: status = "*"
-    case b.readonly: status = "%"
-    case           : status = "-"
+    case b.modified && b.readonly:
+        status = "%*"
+    case b.modified:
+        status = "**"
+    case b.readonly:
+        status = "%%"
+    case :
+        status = "--"
     }
 
     return

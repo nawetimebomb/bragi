@@ -2,9 +2,14 @@ package main
 
 import "core:fmt"
 import "core:log"
+import "core:reflect"
 import "core:slice"
 import "core:strings"
 import "core:time"
+
+UI_View_Column_Parse_Proc :: #type proc(d: any) -> string
+
+UI_View_Justify :: enum { left, center, right }
 
 UI_Pane_Action :: enum {
     NONE,
@@ -18,17 +23,17 @@ Pane_State :: struct {
     caret_coords: Caret_Pos,
 }
 
-Result_Buffer :: struct {
-    format: string,
-    label: string,
-    buffer: ^Buffer,
+Result_View_Column :: struct {
+    field_name: string,
+    justify:    UI_View_Justify,
+    length:     int,
+    parse_proc: UI_View_Column_Parse_Proc,
 }
 
-Result_File :: struct {}
+Result_Buffer :: ^Buffer
 
 Result_Value :: union {
     Result_Buffer,
-    Result_File,
 }
 
 UI_Pane :: struct {
@@ -39,6 +44,7 @@ UI_Pane :: struct {
     prev_state:      Pane_State,
     temp_value:      strings.Builder,
     query:           strings.Builder,
+    view_columns:    [dynamic]Result_View_Column,
     results:         [dynamic]Result_Value,
     target:          ^Pane,
     real_size:       [2]i32,
@@ -47,26 +53,28 @@ UI_Pane :: struct {
 }
 
 ui_pane_init :: proc() {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
 
-    bp.query = strings.builder_make()
-    bp.temp_value = strings.builder_make()
-    bp.results = make([dynamic]Result_Value, 0)
+    p.query = strings.builder_make()
+    p.temp_value = strings.builder_make()
+    p.view_columns = make([dynamic]Result_View_Column, 0)
+    p.results = make([dynamic]Result_Value, 0)
 }
 
 ui_pane_destroy :: proc() {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
 
-    strings.builder_destroy(&bp.query)
-    strings.builder_destroy(&bp.temp_value)
-    delete(bp.results)
+    strings.builder_destroy(&p.query)
+    strings.builder_destroy(&p.temp_value)
+    delete(p.view_columns)
+    delete(p.results)
 }
 
 ui_pane_begin :: proc() {
-    bp := &bragi.ui_pane
-    caret := &bp.caret
+    p := &bragi.ui_pane
+    caret := &p.caret
 
-    if !bp.enabled { return }
+    if !p.enabled { return }
 
     if should_caret_reset_blink_timers(caret) {
         caret.blinking = false
@@ -80,83 +88,130 @@ ui_pane_begin :: proc() {
         caret.last_update = time.tick_now()
     }
 
-    switch bp.action {
+    switch p.action {
     case .NONE:
     case .BUFFERS:
-        res := bp.results[bp.caret.coords.y].(Result_Buffer)
+        item := p.results[p.caret.coords.y]
 
-        if res.buffer != nil {
-            bp.target.buffer = res.buffer
+        if item != nil {
+            p.target.buffer = item.(Result_Buffer)
         }
 
-        sync_caret_coords(bp.target)
+        sync_caret_coords(p.target)
     case .FILES:
     case .SEARCH_IN_BUFFER:
     }
 }
 
 ui_pane_end :: proc() {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
 
-    if !bp.enabled { return }
+    if !p.enabled { return }
+}
+
+create_view_columns :: proc() {
+    p := &bragi.ui_pane
+
+    switch p.action {
+    case .NONE:
+    case .BUFFERS:
+        MAJOR_MODE_PADDING :: 2
+        STATUS_LEN :: 10
+        name_len := 0
+        major_mode_len := 0
+
+        for b in bragi.buffers {
+            mms := as_major_mode_name(b.major_mode)
+            name_len = len(b.name) if len(b.name) > name_len else name_len
+            major_mode_len = len(mms) if len(mms) > major_mode_len else major_mode_len
+        }
+
+        append(&p.view_columns,
+               Result_View_Column{
+                   field_name = "name",
+                   justify    = .left,
+                   length     = name_len,
+                   parse_proc = as_string,
+               },
+               Result_View_Column{
+                   field_name = "status",
+                   justify    = .center,
+                   length     = STATUS_LEN,
+                   parse_proc = as_string,
+               },
+               Result_View_Column{
+                   field_name = "major_mode",
+                   justify    = .left,
+                   length     = major_mode_len + MAJOR_MODE_PADDING,
+                   parse_proc = as_major_mode_name,
+               },
+               Result_View_Column{
+                   field_name = "filepath",
+                   parse_proc = as_string,
+               })
+    case .FILES:
+    case .SEARCH_IN_BUFFER:
+    }
 }
 
 rollback_to_prev_value :: proc() {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
 
-    switch bp.action {
+    switch p.action {
     case .NONE:
     case .BUFFERS:
-        bp.target.buffer = bp.prev_state.buffer
+        p.target.buffer = p.prev_state.buffer
     case .FILES:
     case .SEARCH_IN_BUFFER:
     }
 }
 
 show_ui_pane :: proc(target: ^Pane, action: UI_Pane_Action) {
-    bp := &bragi.ui_pane
-    bp.action = action
-    bp.caret.coords = {}
-    bp.enabled = true
-    bp.target = target
-    bp.prev_state = {
+    p := &bragi.ui_pane
+    p.action = action
+    p.caret.coords = {}
+    p.enabled = true
+    p.target = target
+    p.prev_state = {
         buffer = target.buffer,
         caret_coords = target.caret.coords,
     }
 
     ui_filter_results()
+    create_view_columns()
     resize_panes()
 }
 
 hide_ui_pane :: proc() {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
 
-    if !bp.did_select {
+    if !p.did_select {
         rollback_to_prev_value()
     }
 
-    bp.action = .NONE
-    bp.caret.coords = {}
-    bp.did_select = false
-    bp.enabled = false
-    bp.prev_state = {}
-    bp.target = nil
+    p.action = .NONE
+    p.caret.coords = {}
+    p.did_select = false
+    p.enabled = false
+    p.prev_state = {}
+    p.target = nil
 
-    strings.builder_reset(&bp.query)
-    strings.builder_reset(&bp.temp_value)
-    clear(&bp.results)
+    strings.builder_reset(&p.query)
+    strings.builder_reset(&p.temp_value)
+    clear(&p.view_columns)
+    clear(&p.results)
     resize_panes()
 }
 
 ui_filter_results :: proc() {
-    bp := &bragi.ui_pane
-    query := strings.to_string(bp.query)
+    p := &bragi.ui_pane
+    query := strings.to_string(p.query)
     query_has_value := len(query) > 0
 
-    clear(&bp.results)
-    strings.builder_reset(&bp.temp_value)
+    clear(&p.results)
+    strings.builder_reset(&p.temp_value)
 
-    switch bp.action {
+    switch p.action {
     case .NONE:
     case .BUFFERS:
         for &b, index in bragi.buffers {
@@ -164,32 +219,24 @@ ui_filter_results :: proc() {
                 if !strings.contains(b.name, query) { continue }
             }
 
-            append(&bp.results, Result_Buffer{
-                buffer = &b,
-                format = "{0}",
-                label = b.name,
-            })
+            append(&p.results, Result_Buffer(&b))
         }
 
         if query_has_value {
-            strings.write_string(&bp.temp_value, "Create buffer with name ")
-            strings.write_quoted_string(&bp.temp_value, query)
-            append(&bp.results, Result_Buffer{
-                buffer = nil,
-                format = "Create buffer with name \"{0}\"",
-                label = strings.to_string(bp.query),
-            })
+            strings.write_string(&p.temp_value, "Create buffer with name ")
+            strings.write_quoted_string(&p.temp_value, query)
+            append(&p.results, Result_Buffer(nil))
         }
     case .FILES:
     case .SEARCH_IN_BUFFER:
     }
 
-    bp.caret.coords.y = clamp(bp.caret.coords.y, 0, len(bp.results) - 1)
+    p.caret.coords.y = clamp(p.caret.coords.y, 0, len(p.results) - 1)
 }
 
 ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    bp := &bragi.ui_pane
-    bp.caret.last_keystroke = time.tick_now()
+    p := &bragi.ui_pane
+    p.caret.last_keystroke = time.tick_now()
 
     #partial switch cmd {
         case .ui_select:            ui_select()
@@ -216,10 +263,10 @@ ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
 }
 
 ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
-    bp := &bragi.ui_pane
-    pos = bp.caret.coords
-    query := strings.to_string(bp.query)
-    results := bp.results
+    p := &bragi.ui_pane
+    pos = p.caret.coords
+    query := strings.to_string(p.query)
+    results := p.results
 
     switch t {
     case .DOWN:
@@ -260,33 +307,33 @@ ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
 }
 
 ui_delete_to :: proc(t: Caret_Translation) {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
     new_pos := ui_translate(t)
-    start := min(bp.caret.coords.x, new_pos.x)
-    end := max(bp.caret.coords.x, new_pos.x)
-    remove_range(&bp.query.buf, start, end)
-    bp.caret.coords.x = start
+    start := min(p.caret.coords.x, new_pos.x)
+    end := max(p.caret.coords.x, new_pos.x)
+    remove_range(&p.query.buf, start, end)
+    p.caret.coords.x = start
     ui_filter_results()
 }
 
 ui_move_to :: proc(t: Caret_Translation) {
-    bp := &bragi.ui_pane
-    bp.caret.coords = ui_translate(t)
+    p := &bragi.ui_pane
+    p.caret.coords = ui_translate(t)
 }
 
 ui_select :: proc() {
-    bp := &bragi.ui_pane
-    bp.did_select = true
+    p := &bragi.ui_pane
+    p.did_select = true
 
-    switch bp.action {
+    switch p.action {
     case .NONE:
     case .BUFFERS:
-        // NOTE: We only care about the selection with nil pointer because the other ones are
-        // changed on the fly, but this one requires a new buffer to be created.
-        res := bp.results[bp.caret.coords.y].(Result_Buffer)
+        // NOTE: We only care about the selection with nil pointer because the other ones
+        // are changed on the fly, but this one requires a new buffer to be created.
+        item := p.results[p.caret.coords.y]
 
-        if res.buffer == nil {
-            bp.target.buffer = add(buffer_init(strings.to_string(bp.query), 0))
+        if item == nil {
+            p.target.buffer = add(buffer_init(strings.to_string(p.query), 0))
         }
 
         hide_ui_pane()
@@ -298,11 +345,61 @@ ui_select :: proc() {
 }
 
 ui_self_insert :: proc(s: string) {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
 
-    if ok, _ := inject_at(&bp.query.buf, bp.caret.coords.x, s); ok {
-        bp.caret.coords.x += len(s)
+    if ok, _ := inject_at(&p.query.buf, p.caret.coords.x, s); ok {
+        p.caret.coords.x += len(s)
     }
 
     ui_filter_results()
+}
+
+ui_get_invalid_result_string :: proc() -> string {
+    p := &bragi.ui_pane
+    tmp := strings.builder_make(context.temp_allocator)
+
+    switch p.action {
+    case .NONE:
+    case .BUFFERS:
+        strings.write_string(&tmp, "Create a buffer with name ")
+        strings.write_quoted_string(&tmp, strings.to_string(p.query))
+    case .FILES:
+    case .SEARCH_IN_BUFFER:
+    }
+
+    return strings.to_string(tmp)
+}
+
+ui_get_valid_result_string :: proc(result: Result_Value) -> string {
+    p := &bragi.ui_pane
+    tmp := strings.builder_make(context.temp_allocator)
+
+    switch p.action {
+    case .NONE:
+    case .BUFFERS:
+        b := result.(Result_Buffer)
+
+        for col in p.view_columns {
+            v := reflect.struct_field_value_by_name(b^, col.field_name)
+            s := col.parse_proc(v)
+
+            if col.length > 0 {
+                switch col.justify {
+                case .left:
+                    s = strings.left_justify(s, col.length, " ", context.temp_allocator)
+                case .center:
+                    s = strings.center_justify(s, col.length, " ", context.temp_allocator)
+                case .right:
+                    s = strings.right_justify(s, col.length, " ", context.temp_allocator)
+                }
+            }
+
+            strings.write_string(&tmp, s)
+        }
+    case .FILES:
+    case .SEARCH_IN_BUFFER:
+
+    }
+
+    return strings.to_string(tmp)
 }

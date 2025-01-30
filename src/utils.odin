@@ -214,3 +214,11 @@ buffer_cursor_to_caret :: proc(b: ^Buffer, pos: Buffer_Cursor) -> (result: Caret
 caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
     return b.lines[pos.y] + pos.x
 }
+
+as_string :: #force_inline proc(d: any) -> string {
+    return d.(string)
+}
+
+as_major_mode_name :: #force_inline proc(d: any) -> string {
+    return bragi.settings.major_modes_table[d.(Major_Mode)].name
+}

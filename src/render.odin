@@ -238,8 +238,14 @@ render_ui_pane :: proc() {
             switch bp.action {
             case .NONE:
             case .BUFFERS:
-                result := item.(Result_Buffer)
-                s = fmt.tprintf(result.format, result.label)
+
+
+                if item != nil {
+                    s = ui_get_valid_result_string(item)
+                } else {
+                    s = ui_get_invalid_result_string()
+                }
+
             case .FILES:
             case .SEARCH_IN_BUFFER:
             }

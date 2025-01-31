@@ -233,17 +233,21 @@ render_ui_pane :: proc() {
     { // Start Results
         for item, line_index in bp.results {
             row := window_size.y - 6 * line_height + i32(line_index) * line_height
+            start := item.highlight[0]
+            end := item.highlight[1]
+            has_highlight := start != end
             s := ""
 
             switch bp.action {
             case .NONE:
             case .BUFFERS:
-
-
-                if item != nil {
-                    s = ui_get_valid_result_string(item)
+                if item.value != nil {
+                    s = ui_get_valid_result_string(item.value)
                 } else {
                     s = ui_get_invalid_result_string()
+                    has_highlight = true
+                    start = len(s) - len(query) - 1
+                    end = len(s) - 1
                 }
 
             case .FILES:
@@ -261,7 +265,13 @@ render_ui_pane :: proc() {
                 c := bragi.ctx.characters[r]
                 c.dest.x = col
                 c.dest.y = row
-                set_fg(c.texture, default)
+
+                if has_highlight && start <= char_index && end > char_index {
+                    set_fg(c.texture, highlight)
+                } else {
+                    set_fg(c.texture, default)
+                }
+
                 sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
             }
         }

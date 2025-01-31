@@ -36,16 +36,20 @@ Result_Value :: union {
     Result_Buffer,
 }
 
+Result :: struct {
+    highlight: Caret_Pos,
+    value: Result_Value,
+}
+
 UI_Pane :: struct {
     action:          UI_Pane_Action,
     caret:           Caret,
     enabled:         bool,
     did_select:      bool,
     prev_state:      Pane_State,
-    temp_value:      strings.Builder,
     query:           strings.Builder,
     view_columns:    [dynamic]Result_View_Column,
-    results:         [dynamic]Result_Value,
+    results:         [dynamic]Result,
     target:          ^Pane,
     real_size:       [2]i32,
     relative_size:   [2]i32,
@@ -56,16 +60,14 @@ ui_pane_init :: proc() {
     p := &bragi.ui_pane
 
     p.query = strings.builder_make()
-    p.temp_value = strings.builder_make()
     p.view_columns = make([dynamic]Result_View_Column, 0)
-    p.results = make([dynamic]Result_Value, 0)
+    p.results = make([dynamic]Result, 0)
 }
 
 ui_pane_destroy :: proc() {
     p := &bragi.ui_pane
 
     strings.builder_destroy(&p.query)
-    strings.builder_destroy(&p.temp_value)
     delete(p.view_columns)
     delete(p.results)
 }
@@ -93,8 +95,8 @@ ui_pane_begin :: proc() {
     case .BUFFERS:
         item := p.results[p.caret.coords.y]
 
-        if item != nil {
-            p.target.buffer = item.(Result_Buffer)
+        if item.value != nil {
+            p.target.buffer = item.value.(Result_Buffer)
         }
 
         sync_caret_coords(p.target)
@@ -197,7 +199,6 @@ hide_ui_pane :: proc() {
     p.target = nil
 
     strings.builder_reset(&p.query)
-    strings.builder_reset(&p.temp_value)
     clear(&p.view_columns)
     clear(&p.results)
     resize_panes()
@@ -209,7 +210,6 @@ ui_filter_results :: proc() {
     query_has_value := len(query) > 0
 
     clear(&p.results)
-    strings.builder_reset(&p.temp_value)
 
     switch p.action {
     case .NONE:
@@ -219,13 +219,19 @@ ui_filter_results :: proc() {
                 if !strings.contains(b.name, query) { continue }
             }
 
-            append(&p.results, Result_Buffer(&b))
+            start := strings.index(b.name, query)
+            end := start + len(query)
+
+            result := Result{
+                highlight = { start, end },
+                value = &b,
+            }
+
+            append(&p.results, result)
         }
 
         if query_has_value {
-            strings.write_string(&p.temp_value, "Create buffer with name ")
-            strings.write_quoted_string(&p.temp_value, query)
-            append(&p.results, Result_Buffer(nil))
+            append(&p.results, Result{})
         }
     case .FILES:
     case .SEARCH_IN_BUFFER:
@@ -332,7 +338,7 @@ ui_select :: proc() {
         // are changed on the fly, but this one requires a new buffer to be created.
         item := p.results[p.caret.coords.y]
 
-        if item == nil {
+        if item.value == nil {
             p.target.buffer = add(buffer_init(strings.to_string(p.query), 0))
         }
 

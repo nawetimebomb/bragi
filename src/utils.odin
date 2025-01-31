@@ -222,3 +222,18 @@ as_string :: #force_inline proc(d: any) -> string {
 as_major_mode_name :: #force_inline proc(d: any) -> string {
     return bragi.settings.major_modes_table[d.(Major_Mode)].name
 }
+
+as_size_length :: #force_inline proc(d: any) -> string {
+    s := d.(string)
+    length := f32(len(s))
+    result := ""
+
+    if length > 1000 {
+        length /= 1000
+        result = fmt.tprintf("%.1fk", length)
+    } else {
+        result = fmt.tprintf("{0}", length)
+    }
+
+    return result
+}

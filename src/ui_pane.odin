@@ -117,6 +117,7 @@ create_view_columns :: proc() {
     switch p.action {
     case .NONE:
     case .BUFFERS:
+        BUF_LENGTH_LEN :: 6
         MAJOR_MODE_PADDING :: 2
         STATUS_LEN :: 10
         name_len := 0
@@ -140,6 +141,12 @@ create_view_columns :: proc() {
                    justify    = .center,
                    length     = STATUS_LEN,
                    parse_proc = as_string,
+               },
+               Result_View_Column{
+                   field_name = "str",
+                   justify    = .left,
+                   length     = BUF_LENGTH_LEN,
+                   parse_proc = as_size_length,
                },
                Result_View_Column{
                    field_name = "major_mode",
@@ -216,7 +223,8 @@ ui_filter_results :: proc() {
     case .BUFFERS:
         for &b, index in bragi.buffers {
             if query_has_value {
-                if !strings.contains(b.name, query) { continue }
+                found := strings.contains(b.name, query)
+                if !found { continue }
             }
 
             start := strings.index(b.name, query)

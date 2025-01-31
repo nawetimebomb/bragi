@@ -126,7 +126,7 @@ create_buffer_from_file :: proc(
     }
 
     result := create_buffer(name, len(data), undo_timeout, allocator)
-    result.filepath = filepath
+    result.filepath = strings.clone(posix_filepath)
     result.major_mode = find_major_mode(extension)
 
     insert(result, 0, data)
@@ -184,6 +184,7 @@ buffer_destroy :: proc(b: ^Buffer) {
     clear_history(&b.undo)
     clear_history(&b.redo)
     delete(b.data)
+    delete(b.filepath)
     delete(b.lines)
     delete(b.name)
     delete(b.redo)

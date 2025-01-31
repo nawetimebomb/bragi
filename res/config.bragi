@@ -2,7 +2,7 @@
 [keybindings]
 modifier                        <C-x>
 
-quit_mode                       <C-g>
+quit_mode                       <C-g> <ESC>
 
 find_file                       <C-x-C-f>
 switch_buffer                   <C-x-b>

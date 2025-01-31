@@ -39,8 +39,9 @@ Result_Value :: union {
 }
 
 Result :: struct {
-    highlight: Caret_Pos,
-    value: Result_Value,
+    highlight:      Caret_Pos,
+    invalid_result: bool,
+    value:          Result_Value,
 }
 
 UI_Pane :: struct {
@@ -99,15 +100,16 @@ ui_pane_begin :: proc() {
     case .BUFFERS:
         item := p.results[p.caret.coords.y]
 
-        if item.value != nil {
+        if !item.invalid_result {
             p.target.buffer = item.value.(Result_Buffer_Pointer)
         }
 
         sync_caret_coords(p.target)
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        if len(p.results) > 0 {
-            item := p.results[p.caret.coords.y]
+        item := p.results[p.caret.coords.y]
+
+        if !item.invalid_result {
             p.target.caret.coords = item.value.(Result_Caret_Pos)
         }
     }
@@ -266,7 +268,9 @@ ui_filter_results :: proc() {
         }
 
         if query_has_value {
-            append(&p.results, Result{})
+            append(&p.results, Result{
+                invalid_result = true,
+            })
         }
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
@@ -299,6 +303,16 @@ ui_filter_results :: proc() {
 
                 s = s[found_index + len(query):]
             }
+
+            if len(p.results) == 0 {
+                append(&p.results, Result{
+                    invalid_result = true,
+                })
+            }
+        } else {
+            append(&p.results, Result{
+                invalid_result = true,
+            })
         }
     }
 
@@ -406,13 +420,18 @@ ui_select :: proc() {
         // are changed on the fly, but this one requires a new buffer to be created.
         item := p.results[p.caret.coords.y]
 
-        if item.value == nil {
+        if item.invalid_result {
             p.target.buffer = add(buffer_init(strings.to_string(p.query), 0))
         }
 
         ui_pane_hide()
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+        item := p.results[p.caret.coords.y]
+
+        if item.invalid_result {
+            p.target.caret.coords = p.prev_state.caret_coords
+        }
     }
 
     ui_pane_hide()
@@ -428,23 +447,30 @@ ui_self_insert :: proc(s: string) {
     ui_filter_results()
 }
 
-ui_get_invalid_result_string :: proc() -> string {
+ui_get_invalid_result_string :: #force_inline proc() -> string {
     p := &bragi.ui_pane
+    query := strings.to_string(p.query)
     tmp := strings.builder_make(context.temp_allocator)
 
     switch p.action {
     case .NONE:
     case .BUFFERS:
         strings.write_string(&tmp, "Create a buffer with name ")
-        strings.write_quoted_string(&tmp, strings.to_string(p.query))
+        strings.write_quoted_string(&tmp, query)
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+        if len(query) > 0 {
+            strings.write_string(&tmp, "No results found for ")
+            strings.write_quoted_string(&tmp, query)
+        } else {
+            strings.write_string(&tmp, "Enter a query to start searching...")
+        }
     }
 
     return strings.to_string(tmp)
 }
 
-ui_get_valid_result_string :: proc(result: Result_Value) -> string {
+ui_get_valid_result_string :: #force_inline proc(result: Result_Value) -> string {
     p := &bragi.ui_pane
     tmp := strings.builder_make(context.temp_allocator)
     s := ""
@@ -466,7 +492,7 @@ ui_view_column_highlighted_word :: #force_inline proc(result: Result_Value) -> s
     start_pos := caret_to_buffer_cursor(b, pos) - len(strings.to_string(p.query))
     end_pos := start_pos + 1
     for end_pos < len(s) && is_whitespace(s[end_pos])  { end_pos += 1 }
-    for end_pos < len(s) && !is_whitespace(s[end_pos]) { end_pos += 1}
+    for end_pos < len(s) && !is_whitespace(s[end_pos]) { end_pos += 1 }
     return s[start_pos:end_pos]
 }
 

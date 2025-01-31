@@ -241,18 +241,25 @@ render_ui_pane :: proc() {
             switch bp.action {
             case .NONE:
             case .BUFFERS:
-                if item.value != nil {
-                    s = ui_get_valid_result_string(item.value)
-                } else {
+                if item.invalid_result {
                     s = ui_get_invalid_result_string()
                     has_highlight = true
                     start = len(s) - len(query) - 1
-                    end = len(s) - 1
+                    end = len(s) -1
+                } else {
+                    s = ui_get_valid_result_string(item.value)
                 }
 
             case .FILES:
             case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-                s = ui_get_valid_result_string(item.value)
+                if item.invalid_result {
+                    s = ui_get_invalid_result_string()
+                    has_highlight = len(query) > 0
+                    start = len(s) - len(query) - 1
+                    end = len(s) -1
+                } else {
+                    s = ui_get_valid_result_string(item.value)
+                }
             }
 
             if bp.caret.coords.y == line_index {

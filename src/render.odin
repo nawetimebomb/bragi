@@ -245,14 +245,18 @@ render_ui_pane :: proc() {
                     s = ui_get_invalid_result_string()
                     has_highlight = true
                     start = len(s) - len(query) - 1
-                    end = len(s) -1
+                    end = len(s) - 1
                 } else {
                     s = ui_get_valid_result_string(item.value)
                 }
 
             case .FILES:
                 if item.invalid_result {
-
+                    s = ui_get_invalid_result_string()
+                    _, filename := get_dir_and_filename_from_fullpath(query)
+                    has_highlight = true
+                    start = len(s) - len(filename) - 1
+                    end = len(s) - 1
                 } else {
                     s = ui_get_valid_result_string(item.value)
                 }
@@ -261,7 +265,7 @@ render_ui_pane :: proc() {
                     s = ui_get_invalid_result_string()
                     has_highlight = len(query) > 0
                     start = len(s) - len(query) - 1
-                    end = len(s) -1
+                    end = len(s) - 1
                 } else {
                     s = ui_get_valid_result_string(item.value)
                 }

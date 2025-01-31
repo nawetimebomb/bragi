@@ -127,6 +127,8 @@ ui_pane_begin :: proc() {
         p.viewport.y = caret_y
     }
 
+    p.viewport.y = max(0, p.viewport.y)
+
     switch p.action {
     case .NONE:
     case .BUFFERS:
@@ -325,24 +327,44 @@ ui_filter_results :: proc() {
             p.caret.coords.x = len(query)
         }
 
-        v, _ := os.open(query)
-        fis, _ := os.read_dir(v, 0, context.temp_allocator)
+        last_slash_index := strings.last_index(query, "/")
 
-        for f in fis {
-            append(&p.results, Result{
-                highlight = {},
-                value = Result_File{
-                    filepath = strings.clone(f.fullpath),
-                    is_dir   = f.is_dir,
-                    mod_time = f.modification_time,
-                    name     = strings.clone(f.name),
-                    size     = f.size,
-                },
-            })
+        if last_slash_index == -1 {
+            last_slash_index = strings.last_index(query, "\\")
         }
 
-        os.close(v)
+        dir, filename_query := get_dir_and_filename_from_fullpath(query)
 
+        if os.is_dir(dir) {
+            v, _ := os.open(dir)
+            fis, _ := os.read_dir(v, 0, context.temp_allocator)
+
+            for f in fis {
+                if !strings.contains(f.name, filename_query) {
+                    continue
+                }
+
+                start := strings.index(f.name, filename_query)
+                end := start + len(filename_query)
+
+                append(&p.results, Result{
+                    highlight = { start, end },
+                    value = Result_File{
+                        filepath = strings.clone(f.fullpath),
+                        is_dir   = f.is_dir,
+                        mod_time = f.modification_time,
+                        name     = strings.clone(f.name),
+                        size     = f.size,
+                    },
+                })
+            }
+
+            os.close(v)
+        }
+
+        if len(p.results) == 0 {
+            append(&p.results, Result{ invalid_result = true })
+        }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         if query_has_value {
             b := p.target.buffer
@@ -484,6 +506,7 @@ ui_select :: proc() {
     p := &bragi.ui_pane
     p.did_select = true
     handled := true
+    query := strings.to_string(p.query)
 
     switch p.action {
     case .NONE:
@@ -493,22 +516,29 @@ ui_select :: proc() {
         item := p.results[p.caret.coords.y]
 
         if item.invalid_result {
-            p.target.buffer = add(buffer_init(strings.to_string(p.query), 0))
+            p.target.buffer = add(buffer_init(query, 0))
         }
 
         ui_pane_hide()
     case .FILES:
         item := p.results[p.caret.coords.y]
-        f := item.value.(Result_File)
-
-        if f.is_dir {
-            strings.builder_reset(&p.query)
-            strings.write_string(&p.query, f.filepath)
-            p.caret.coords.y = 0
-            ui_filter_results()
-            handled = false
+        if item.invalid_result {
+            _, filename := get_dir_and_filename_from_fullpath(query)
+            p.target.buffer = add(buffer_init(filename, 0))
         } else {
-            editor_open_file(p.target, f.filepath)
+            f := item.value.(Result_File)
+
+            if f.is_dir {
+                strings.builder_reset(&p.query)
+                strings.write_string(&p.query, f.filepath)
+                strings.write_string(&p.query, "\\")
+                p.caret.coords.y = 0
+                p.caret.coords.x = len(p.query.buf)
+                ui_filter_results()
+                handled = false
+            } else {
+                editor_open_file(p.target, f.filepath)
+            }
         }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         item := p.results[p.caret.coords.y]
@@ -544,6 +574,10 @@ ui_get_invalid_result_string :: #force_inline proc() -> string {
         strings.write_string(&tmp, "Create a buffer with name ")
         strings.write_quoted_string(&tmp, query)
     case .FILES:
+        dir, filename := get_dir_and_filename_from_fullpath(query)
+        prefix := fmt.tprintf("Create a file in {0} with name ", dir)
+        strings.write_string(&tmp, prefix)
+        strings.write_quoted_string(&tmp, filename)
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         if len(query) > 0 {
             strings.write_string(&tmp, "No results found for ")
@@ -658,9 +692,11 @@ clear_results :: proc() {
     case .BUFFERS:
     case .FILES:
         for &item in p.results {
-            v := item.value.(Result_File)
-            delete(v.filepath)
-            delete(v.name)
+            if !item.invalid_result {
+                v := item.value.(Result_File)
+                delete(v.filepath)
+                delete(v.name)
+            }
         }
     case .SEARCH_IN_BUFFER:
     case .SEARCH_REVERSE_IN_BUFFER:

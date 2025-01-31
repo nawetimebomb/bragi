@@ -243,3 +243,16 @@ justify_string :: proc(col: Result_View_Column, s: string) -> (res: string) {
 
     return
 }
+
+get_dir_and_filename_from_fullpath :: proc(s: string) -> (dir, filename: string) {
+    last_slash_index := strings.last_index(s, "/")
+
+    if last_slash_index == -1 {
+        last_slash_index = strings.last_index(s, "\\")
+    }
+
+    dir      = s[:last_slash_index]
+    filename = s[last_slash_index + 1:]
+
+    return
+}

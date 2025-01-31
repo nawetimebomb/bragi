@@ -217,6 +217,16 @@ caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
     return b.lines[pos.y] + pos.x
 }
 
+get_parsed_length_to_kb :: proc(value_in_bytes: f64) -> string {
+    if value_in_bytes > 1000 * 1000 {
+        return fmt.tprintf("%.1fm", value_in_bytes / (1000 * 1000))
+    } else if value_in_bytes > 1000 {
+        return fmt.tprintf("%.1fk", value_in_bytes / 1000)
+    } else {
+        return fmt.tprintf("{0}", value_in_bytes)
+    }
+}
+
 justify_string :: proc(col: Result_View_Column, s: string) -> (res: string) {
     res = s
 

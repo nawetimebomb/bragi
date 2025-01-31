@@ -126,7 +126,7 @@ create_buffer_from_file :: proc(
     }
 
     result := create_buffer(name, len(data), undo_timeout, allocator)
-    result.filepath = strings.clone(posix_filepath)
+    result.filepath = strings.clone(filepath)
     result.major_mode = find_major_mode(extension)
 
     insert(result, 0, data)

@@ -75,7 +75,7 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     }
 }
 
-open_file :: proc(p: ^Pane, filepath: string) {
+editor_open_file :: proc(p: ^Pane, filepath: string) {
     buffer_found := false
 
     for &b in bragi.buffers {

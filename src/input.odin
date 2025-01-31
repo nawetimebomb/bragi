@@ -152,7 +152,6 @@ update_input :: proc() {
                 } else if w.event == .FOCUS_GAINED {
                     bragi.ctx.window_focused = true
                 } else if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
-                    // TODO: Handle texture resizing
                     bragi.ctx.window_size = { e.window.data1, e.window.data2 }
                     resize_panes()
                 }
@@ -161,7 +160,7 @@ update_input :: proc() {
             case .DROPFILE: {
                 sdl.RaiseWindow(bragi.ctx.window)
                 filepath := string(e.drop.file)
-                open_file(p, filepath)
+                editor_open_file(p, filepath)
                 delete(e.drop.file)
                 return
             }

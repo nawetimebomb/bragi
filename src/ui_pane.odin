@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:log"
+import "core:os"
 import "core:reflect"
 import "core:slice"
 import "core:strings"
@@ -36,9 +37,18 @@ Result_View_Column :: struct {
 Result_Caret_Pos :: Caret_Pos
 Result_Buffer_Pointer :: ^Buffer
 
+Result_File :: struct {
+    filepath: string,
+    is_dir:   bool,
+    mod_time: time.Time,
+    name:     string,
+    size:     i64,
+}
+
 Result_Value :: union {
-    Result_Caret_Pos,
     Result_Buffer_Pointer,
+    Result_Caret_Pos,
+    Result_File,
 }
 
 Result :: struct {
@@ -84,6 +94,7 @@ ui_pane_init :: proc() {
 ui_pane_destroy :: proc() {
     p := &bragi.ui_pane
 
+    clear_results()
     strings.builder_destroy(&p.query)
     delete(p.view_columns)
     delete(p.results)
@@ -185,6 +196,19 @@ create_view_columns :: proc() {
                    value_proc = ui_view_column_buffer_filepath,
                })
     case .FILES:
+        FILE_LENGTH_LEN :: 6
+
+        append(&p.view_columns,
+               Result_View_Column{
+                   justify    = .left,
+                   length     = 16,
+                   value_proc = ui_view_column_file_name,
+               },
+               Result_View_Column{
+                   justify    = .left,
+                   length     = FILE_LENGTH_LEN,
+                   value_proc = ui_view_column_file_len,
+               })
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         append(&p.view_columns,
                Result_View_Column{
@@ -237,22 +261,22 @@ ui_pane_show :: proc(target: ^Pane, action: UI_Pane_Action) {
 
 ui_pane_hide :: proc() {
     p := &bragi.ui_pane
+    clear_results()
+    clear(&p.view_columns)
 
     if !p.did_select {
         rollback_to_prev_value()
     }
 
+    p.enabled = false
     p.action = .NONE
     p.caret.coords = {}
     p.did_select = false
-    p.enabled = false
     p.prev_state = {}
     p.target = nil
     p.viewport = {}
 
     strings.builder_reset(&p.query)
-    clear(&p.view_columns)
-    clear(&p.results)
     delete(p.prompt_text)
     resize_panes()
 }
@@ -262,8 +286,7 @@ ui_filter_results :: proc() {
     query := strings.to_string(p.query)
     query_has_value := len(query) > 0
     case_sensitive := strings.contains_any(query, UPPERCASE_CHARS)
-
-    clear(&p.results)
+    clear_results()
 
     switch p.action {
     case .NONE:
@@ -295,6 +318,31 @@ ui_filter_results :: proc() {
             })
         }
     case .FILES:
+        if !query_has_value {
+            // TODO: get directory from buffer filepath if exists
+            strings.write_string(&p.query, "C:\\Code\\bragi\\")
+            query = strings.to_string(p.query)
+            p.caret.coords.x = len(query)
+        }
+
+        v, _ := os.open(query)
+        fis, _ := os.read_dir(v, 0, context.temp_allocator)
+
+        for f in fis {
+            append(&p.results, Result{
+                highlight = {},
+                value = Result_File{
+                    filepath = strings.clone(f.fullpath),
+                    is_dir   = f.is_dir,
+                    mod_time = f.modification_time,
+                    name     = strings.clone(f.name),
+                    size     = f.size,
+                },
+            })
+        }
+
+        os.close(v)
+
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         if query_has_value {
             b := p.target.buffer
@@ -435,6 +483,7 @@ ui_move_to :: proc(t: Caret_Translation) {
 ui_select :: proc() {
     p := &bragi.ui_pane
     p.did_select = true
+    handled := true
 
     switch p.action {
     case .NONE:
@@ -449,6 +498,18 @@ ui_select :: proc() {
 
         ui_pane_hide()
     case .FILES:
+        item := p.results[p.caret.coords.y]
+        f := item.value.(Result_File)
+
+        if f.is_dir {
+            strings.builder_reset(&p.query)
+            strings.write_string(&p.query, f.filepath)
+            p.caret.coords.y = 0
+            ui_filter_results()
+            handled = false
+        } else {
+            editor_open_file(p.target, f.filepath)
+        }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         item := p.results[p.caret.coords.y]
 
@@ -457,7 +518,9 @@ ui_select :: proc() {
         }
     }
 
-    ui_pane_hide()
+    if handled {
+        ui_pane_hide()
+    }
 }
 
 ui_self_insert :: proc(s: string) {
@@ -507,6 +570,17 @@ ui_get_valid_result_string :: #force_inline proc(result: Result_Value) -> string
     return strings.to_string(tmp)
 }
 
+ui_view_column_file_name :: #force_inline proc(result: Result_Value) -> string {
+    f := result.(Result_File)
+    return f.name
+}
+
+ui_view_column_file_len :: #force_inline proc(result: Result_Value) -> string {
+    f := result.(Result_File)
+    size := f64(f.size)
+    return get_parsed_length_to_kb(size)
+}
+
 ui_view_column_highlighted_word :: #force_inline proc(result: Result_Value) -> string {
     p := &bragi.ui_pane
     b := p.target.buffer
@@ -544,16 +618,8 @@ ui_view_column_buffer_status :: #force_inline proc(result: Result_Value) -> stri
 
 ui_view_column_buffer_len :: #force_inline proc(result: Result_Value) -> string {
     b := result.(Result_Buffer_Pointer)
-    length := f32(len(b.str))
-    result := ""
-
-    if length > 1000 {
-        result = fmt.tprintf("%.1fk", length / 1000)
-    } else {
-        result = fmt.tprintf("{0}", length)
-    }
-
-    return result
+    length := f64(len(b.str))
+    return get_parsed_length_to_kb(length)
 }
 
 ui_view_column_buffer_major_mode :: #force_inline proc(result: Result_Value) -> string {
@@ -574,6 +640,7 @@ get_prompt_text :: #force_inline proc(t: ^Pane, action: UI_Pane_Action) -> strin
     case .BUFFERS:
         s = "Switch to"
     case .FILES:
+        s = "Find file"
     case .SEARCH_IN_BUFFER:
         s = fmt.aprintf("Search forward in \"{0}\"", t.buffer.name)
     case .SEARCH_REVERSE_IN_BUFFER:
@@ -581,4 +648,23 @@ get_prompt_text :: #force_inline proc(t: ^Pane, action: UI_Pane_Action) -> strin
     }
 
     return s
+}
+
+clear_results :: proc() {
+    p := &bragi.ui_pane
+
+    switch p.action {
+    case .NONE:
+    case .BUFFERS:
+    case .FILES:
+        for &item in p.results {
+            v := item.value.(Result_File)
+            delete(v.filepath)
+            delete(v.name)
+        }
+    case .SEARCH_IN_BUFFER:
+    case .SEARCH_REVERSE_IN_BUFFER:
+    }
+
+    clear(&p.results)
 }

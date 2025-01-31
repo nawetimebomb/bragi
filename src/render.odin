@@ -251,6 +251,11 @@ render_ui_pane :: proc() {
                 }
 
             case .FILES:
+                if item.invalid_result {
+
+                } else {
+                    s = ui_get_valid_result_string(item.value)
+                }
             case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
                 if item.invalid_result {
                     s = ui_get_invalid_result_string()

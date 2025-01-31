@@ -154,10 +154,6 @@ initialize_editor :: proc() {
     p := add(pane_init())
     p.buffer = add(buffer_init("*notes*", 0))
     bragi.focused_index = 0
-
-    //    TODO: This is a debug only thing
-    filepath := "C:/Code/bragi/demo/hello.odin"
-    open_file(p, filepath)
 }
 
 initialize_settings :: proc() {

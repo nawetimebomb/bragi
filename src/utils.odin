@@ -215,29 +215,6 @@ caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
     return b.lines[pos.y] + pos.x
 }
 
-// as_string :: #force_inline proc(d: any) -> string {
-//     return d.(string)
-// }
-
-// as_major_mode_name :: #force_inline proc(d: any) -> string {
-//     return bragi.settings.major_modes_table[d.(Major_Mode)].name
-// }
-
-// as_size_length :: #force_inline proc(d: any) -> string {
-//     s := d.(string)
-//     length := f32(len(s))
-//     result := ""
-
-//     if length > 1000 {
-//         length /= 1000
-//         result = fmt.tprintf("%.1fk", length)
-//     } else {
-//         result = fmt.tprintf("{0}", length)
-//     }
-
-//     return result
-// }
-
 justify_string :: proc(col: Result_View_Column, s: string) -> (res: string) {
     res = s
 

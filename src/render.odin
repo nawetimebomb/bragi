@@ -251,7 +251,8 @@ render_ui_pane :: proc() {
                 }
 
             case .FILES:
-            case .SEARCH_IN_BUFFER:
+            case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+                s = ui_get_valid_result_string(item.value)
             }
 
             if bp.caret.coords.y == line_index {

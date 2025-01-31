@@ -10,7 +10,8 @@ Command :: enum {
 
     find_file,
     switch_buffer,
-    search_in_buffer,
+    search_backward,
+    search_forward,
     kill_current_buffer,
     save_buffer,
 

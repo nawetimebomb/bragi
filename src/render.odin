@@ -5,8 +5,8 @@ import     "core:strings"
 import sdl "vendor:sdl2"
 import     "languages"
 
-is_caret_showing :: #force_inline proc(c: ^Caret, x, y: i32) -> bool {
-    return !c.blinking && i32(c.coords.x) == x && i32(c.coords.y) == y
+is_caret_showing :: #force_inline proc(c: ^Caret, x, y, offset: i32) -> bool {
+    return !c.blinking && i32(c.coords.x) == x && i32(c.coords.y) - offset == y
 }
 
 set_bg :: #force_inline proc(c: Color) {
@@ -120,7 +120,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             }
 
             if focused && !bragi.ui_pane.enabled {
-                if is_caret_showing(&caret, x, y) {
+                if is_caret_showing(&caret, x, y, viewport.y) {
                     set_fg(c.texture, background)
                 }
             }
@@ -319,7 +319,7 @@ render_ui_pane :: proc() {
 
             if index < len(prompt_fmt) {
                 set_fg(c.texture, highlight)
-            } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0) {
+            } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0, 0) {
                 set_fg(c.texture, background)
             } else {
                 set_fg(c.texture, default)

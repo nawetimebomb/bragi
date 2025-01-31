@@ -118,14 +118,11 @@ pane_destroy :: proc(p: ^Pane) {
 }
 
 resize_panes :: proc() {
-    // TODO: Move this to the bottom_pane
-    BOTTOM_PANE_SIZE :: 6
-    _, line_height := get_standard_character_size()
     window_size := bragi.ctx.window_size
     size_y := window_size.y
 
     if bragi.ui_pane.enabled {
-        size_y = window_size.y - (BOTTOM_PANE_SIZE * line_height)
+        size_y = window_size.y - bragi.ui_pane.real_size.y
     }
 
     for &p in bragi.panes {

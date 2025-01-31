@@ -92,47 +92,47 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         }
 
         for r, index in screen_buffer {
-                col := x * char_width
-                row := y * line_height
-                c := bragi.ctx.characters[r]
-                c.dest.x = col
-                c.dest.y = row
+            col := (x - p.viewport.x) * char_width
+            row := y * line_height
+            c := bragi.ctx.characters[r]
+            c.dest.x = col
+            c.dest.y = row
 
-                if lexer_enabled {
-                    switch lexer.state {
-                    case .Default:
-                        set_fg(c.texture, default)
-                    case .Builtin:
-                        set_fg(c.texture, builtin)
-                    case .Comment:
-                        set_fg(c.texture, comment)
-                    case .Constant:
-                        set_fg(c.texture, constant)
-                    case .Keyword:
-                        set_fg(c.texture, keyword)
-                    case .Highlight:
-                        set_fg(c.texture, highlight)
-                    case .String:
-                        set_fg(c.texture, string)
-                    }
-                } else {
+            if lexer_enabled {
+                switch lexer.state {
+                case .Default:
                     set_fg(c.texture, default)
+                case .Builtin:
+                    set_fg(c.texture, builtin)
+                case .Comment:
+                    set_fg(c.texture, comment)
+                case .Constant:
+                    set_fg(c.texture, constant)
+                case .Keyword:
+                    set_fg(c.texture, keyword)
+                case .Highlight:
+                    set_fg(c.texture, highlight)
+                case .String:
+                    set_fg(c.texture, string)
                 }
+            } else {
+                set_fg(c.texture, default)
+            }
 
-                if focused && !bragi.ui_pane.enabled {
-                    if is_caret_showing(&caret, x, y) {
-                        set_fg(c.texture, background)
-                    }
-                }
-
-                sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
-
-                x += 1
-                if r == '\n' {
-                    x = 0
-                    y += 1
+            if focused && !bragi.ui_pane.enabled {
+                if is_caret_showing(&caret, x, y) {
+                    set_fg(c.texture, background)
                 }
             }
+
+            sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+
+            x += 1
+            if r == '\n' {
+                x = 0
+                y += 1
+            }
+        }
     } // End Buffer
 
     { // Start Modeline
@@ -199,17 +199,17 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 }
 
 render_ui_pane :: proc() {
-    bp := &bragi.ui_pane
+    p := &bragi.ui_pane
 
-    if !bp.enabled { return  }
+    if !p.enabled { return  }
 
     colors := &bragi.settings.colorscheme_table
     char_width, line_height := get_standard_character_size()
     renderer := bragi.ctx.renderer
     window_size := bragi.ctx.window_size
-    viewport := bp.viewport
-    caret := bp.caret
-    query := strings.to_string(bp.query)
+    viewport := p.viewport
+    caret := p.caret
+    query := strings.to_string(p.query)
     pane_dest := sdl.Rect{
         window_size.x, window_size.y - 6 * line_height,
         window_size.x, 6 * line_height,
@@ -231,14 +231,14 @@ render_ui_pane :: proc() {
     string          := colors[.string]
 
     { // Start Results
-        for item, line_index in bp.results {
-            row := window_size.y - 6 * line_height + i32(line_index) * line_height
+        for item, line_index in p.results[p.viewport.y:] {
+            row := window_size.y - p.real_size.y + i32(line_index) * line_height
             start := item.highlight[0]
             end := item.highlight[1]
             has_highlight := start != end
             s := ""
 
-            switch bp.action {
+            switch p.action {
             case .NONE:
             case .BUFFERS:
                 if item.invalid_result {
@@ -262,7 +262,7 @@ render_ui_pane :: proc() {
                 }
             }
 
-            if bp.caret.coords.y == line_index {
+            if p.caret.coords.y - int(p.viewport.y) == line_index {
                 select_rect := sdl.Rect{ 0, row, window_size.x, line_height }
                 set_bg(region)
                 sdl.RenderFillRect(renderer, &select_rect)
@@ -291,9 +291,9 @@ render_ui_pane :: proc() {
         }
         prompt_fmt := fmt.tprintf(
             "({0}/{1}) {2}: ",
-            bp.caret.coords.y + 1,
-            len(bp.results),
-            bp.prompt_text,
+            p.caret.coords.y + 1,
+            len(p.results),
+            p.prompt_text,
         )
         full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, query)
         row := window_size.y - line_height

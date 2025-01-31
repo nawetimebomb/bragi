@@ -7,6 +7,9 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 
+VIEWPORT_MAX_ITEMS :: 8
+UI_PANE_SIZE :: 10
+
 UI_View_Column_Proc :: #type proc(Result_Value) -> string
 
 UI_View_Justify :: enum { left, center, right }
@@ -62,7 +65,17 @@ UI_Pane :: struct {
 
 ui_pane_init :: proc() {
     p := &bragi.ui_pane
+    window_size := bragi.ctx.window_size
+    char_width, line_height := get_standard_character_size()
 
+    p.real_size = {
+        window_size.x,
+        UI_PANE_SIZE * line_height,
+    }
+    p.relative_size = {
+        window_size.x / char_width,
+        UI_PANE_SIZE,
+    }
     p.query = strings.builder_make()
     p.view_columns = make([dynamic]Result_View_Column, 0)
     p.results = make([dynamic]Result, 0)
@@ -93,6 +106,14 @@ ui_pane_begin :: proc() {
         caret.blinking = !caret.blinking
         caret.blinking_count += 1
         caret.last_update = time.tick_now()
+    }
+
+    caret_y := i32(p.caret.coords.y)
+
+    if caret_y > p.viewport.y + VIEWPORT_MAX_ITEMS {
+        p.viewport.y = caret_y - VIEWPORT_MAX_ITEMS
+    } else if caret_y < p.viewport.y {
+        p.viewport.y = caret_y
     }
 
     switch p.action {
@@ -227,6 +248,7 @@ ui_pane_hide :: proc() {
     p.enabled = false
     p.prev_state = {}
     p.target = nil
+    p.viewport = {}
 
     strings.builder_reset(&p.query)
     clear(&p.view_columns)
@@ -317,6 +339,7 @@ ui_filter_results :: proc() {
     }
 
     p.caret.coords.y = clamp(p.caret.coords.y, 0, len(p.results) - 1)
+    p.viewport.y = 0
 }
 
 ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {

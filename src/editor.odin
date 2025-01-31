@@ -22,6 +22,7 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     #partial switch cmd {
         case .find_file:               editor_find_file(p)
         case .switch_buffer:           editor_switch_buffer(p)
+        case .search_in_buffer:        editor_search_in_buffer(p)
         case .kill_current_buffer:     kill_current_buffer(p)
         case .save_buffer:             save_buffer(p)
 
@@ -125,12 +126,15 @@ editor_other_pane :: proc(p: ^Pane) {
 }
 
 editor_find_file :: proc(target: ^Pane) {
-    show_ui_pane(target, .FILES)
+    ui_pane_show(target, .FILES)
 }
 
 editor_switch_buffer :: proc(target: ^Pane) {
-    editor_set_buffer_cursor(target)
-    show_ui_pane(target, .BUFFERS)
+    ui_pane_show(target, .BUFFERS)
+}
+
+editor_search_in_buffer :: proc(target: ^Pane) {
+    ui_pane_show(target, .SEARCH_IN_BUFFER)
 }
 
 editor_set_buffer_cursor :: proc(p: ^Pane) {

@@ -10,6 +10,7 @@ Command :: enum {
 
     find_file,
     switch_buffer,
+    search_in_buffer,
     kill_current_buffer,
     save_buffer,
 
@@ -88,5 +89,5 @@ command_add_modifier :: proc(input: string) {
 }
 
 command_reset_modes :: proc(p: ^Pane) {
-    hide_ui_pane()
+    ui_pane_hide()
 }

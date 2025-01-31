@@ -7,7 +7,7 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 
-UI_View_Column_Parse_Proc :: #type proc(d: any) -> string
+UI_View_Column_Proc :: #type proc(Result_Value) -> string
 
 UI_View_Justify :: enum { left, center, right }
 
@@ -24,16 +24,17 @@ Pane_State :: struct {
 }
 
 Result_View_Column :: struct {
-    field_name: string,
     justify:    UI_View_Justify,
     length:     int,
-    parse_proc: UI_View_Column_Parse_Proc,
+    value_proc: UI_View_Column_Proc,
 }
 
-Result_Buffer :: ^Buffer
+Result_Caret_Pos :: Caret_Pos
+Result_Buffer_Pointer :: ^Buffer
 
 Result_Value :: union {
-    Result_Buffer,
+    Result_Caret_Pos,
+    Result_Buffer_Pointer,
 }
 
 Result :: struct {
@@ -50,6 +51,7 @@ UI_Pane :: struct {
     query:           strings.Builder,
     view_columns:    [dynamic]Result_View_Column,
     results:         [dynamic]Result,
+    prompt_text:     string,
     target:          ^Pane,
     real_size:       [2]i32,
     relative_size:   [2]i32,
@@ -70,6 +72,7 @@ ui_pane_destroy :: proc() {
     strings.builder_destroy(&p.query)
     delete(p.view_columns)
     delete(p.results)
+    delete(p.prompt_text)
 }
 
 ui_pane_begin :: proc() {
@@ -96,12 +99,16 @@ ui_pane_begin :: proc() {
         item := p.results[p.caret.coords.y]
 
         if item.value != nil {
-            p.target.buffer = item.value.(Result_Buffer)
+            p.target.buffer = item.value.(Result_Buffer_Pointer)
         }
 
         sync_caret_coords(p.target)
     case .FILES:
     case .SEARCH_IN_BUFFER:
+        if len(p.results) > 0 {
+            item := p.results[p.caret.coords.y]
+            p.target.caret.coords = item.value.(Result_Caret_Pos)
+        }
     }
 }
 
@@ -124,42 +131,44 @@ create_view_columns :: proc() {
         major_mode_len := 0
 
         for b in bragi.buffers {
-            mms := as_major_mode_name(b.major_mode)
+            mms := settings_get_major_mode_name(b.major_mode)
             name_len = len(b.name) if len(b.name) > name_len else name_len
             major_mode_len = len(mms) if len(mms) > major_mode_len else major_mode_len
         }
 
         append(&p.view_columns,
                Result_View_Column{
-                   field_name = "name",
                    justify    = .left,
                    length     = name_len,
-                   parse_proc = as_string,
+                   value_proc = ui_view_get_this_buffer_name,
                },
                Result_View_Column{
-                   field_name = "status",
                    justify    = .center,
                    length     = STATUS_LEN,
-                   parse_proc = as_string,
+                   value_proc = ui_view_get_this_buffer_status,
                },
                Result_View_Column{
-                   field_name = "str",
                    justify    = .left,
                    length     = BUF_LENGTH_LEN,
-                   parse_proc = as_size_length,
+                   value_proc = ui_view_get_this_buffer_len,
                },
                Result_View_Column{
-                   field_name = "major_mode",
                    justify    = .left,
                    length     = major_mode_len + MAJOR_MODE_PADDING,
-                   parse_proc = as_major_mode_name,
+                   value_proc = ui_view_get_this_buffer_major_mode,
                },
                Result_View_Column{
-                   field_name = "filepath",
-                   parse_proc = as_string,
+                   value_proc = ui_view_get_this_buffer_filepath,
                })
     case .FILES:
     case .SEARCH_IN_BUFFER:
+        append(&p.view_columns,
+               Result_View_Column{
+                   justify    = .left,
+                   length     = 32,
+                   value_proc = ui_view_get_this_buffer_filepath,
+                   //value_proc = ui_view_get_this_found_word,
+               })
     }
 }
 
@@ -172,15 +181,19 @@ rollback_to_prev_value :: proc() {
         p.target.buffer = p.prev_state.buffer
     case .FILES:
     case .SEARCH_IN_BUFFER:
+        p.target.caret.coords = p.prev_state.caret_coords
     }
 }
 
-show_ui_pane :: proc(target: ^Pane, action: UI_Pane_Action) {
+ui_pane_show :: proc(target: ^Pane, action: UI_Pane_Action) {
+    editor_set_buffer_cursor(target)
+
     p := &bragi.ui_pane
     p.action = action
     p.caret.coords = {}
     p.enabled = true
     p.target = target
+    p.prompt_text = get_prompt_text(target, action)
     p.prev_state = {
         buffer = target.buffer,
         caret_coords = target.caret.coords,
@@ -191,7 +204,7 @@ show_ui_pane :: proc(target: ^Pane, action: UI_Pane_Action) {
     resize_panes()
 }
 
-hide_ui_pane :: proc() {
+ui_pane_hide :: proc() {
     p := &bragi.ui_pane
 
     if !p.did_select {
@@ -208,6 +221,7 @@ hide_ui_pane :: proc() {
     strings.builder_reset(&p.query)
     clear(&p.view_columns)
     clear(&p.results)
+    delete(p.prompt_text)
     resize_panes()
 }
 
@@ -221,7 +235,7 @@ ui_filter_results :: proc() {
     switch p.action {
     case .NONE:
     case .BUFFERS:
-        for &b, index in bragi.buffers {
+        for &b in bragi.buffers {
             if query_has_value {
                 found := strings.contains(b.name, query)
                 if !found { continue }
@@ -230,12 +244,10 @@ ui_filter_results :: proc() {
             start := strings.index(b.name, query)
             end := start + len(query)
 
-            result := Result{
+            append(&p.results, Result{
                 highlight = { start, end },
                 value = &b,
-            }
-
-            append(&p.results, result)
+            })
         }
 
         if query_has_value {
@@ -243,6 +255,23 @@ ui_filter_results :: proc() {
         }
     case .FILES:
     case .SEARCH_IN_BUFFER:
+        if query_has_value {
+            b := p.target.buffer
+            splits := strings.split_lines(b.str, context.temp_allocator)
+
+            for line, index in splits {
+                found := strings.contains(line, query)
+                if !found { continue }
+
+                start := strings.index(line, query)
+                end := start + len(query)
+
+                append(&p.results, Result{
+                    highlight = { start, end },
+                    value = Result_Caret_Pos({ end, index }),
+                })
+            }
+        }
     }
 
     p.caret.coords.y = clamp(p.caret.coords.y, 0, len(p.results) - 1)
@@ -350,12 +379,12 @@ ui_select :: proc() {
             p.target.buffer = add(buffer_init(strings.to_string(p.query), 0))
         }
 
-        hide_ui_pane()
+        ui_pane_hide()
     case .FILES:
     case .SEARCH_IN_BUFFER:
     }
 
-    hide_ui_pane()
+    ui_pane_hide()
 }
 
 ui_self_insert :: proc(s: string) {
@@ -387,33 +416,85 @@ ui_get_invalid_result_string :: proc() -> string {
 ui_get_valid_result_string :: proc(result: Result_Value) -> string {
     p := &bragi.ui_pane
     tmp := strings.builder_make(context.temp_allocator)
+    s := ""
 
-    switch p.action {
-    case .NONE:
-    case .BUFFERS:
-        b := result.(Result_Buffer)
-
-        for col in p.view_columns {
-            v := reflect.struct_field_value_by_name(b^, col.field_name)
-            s := col.parse_proc(v)
-
-            if col.length > 0 {
-                switch col.justify {
-                case .left:
-                    s = strings.left_justify(s, col.length, " ", context.temp_allocator)
-                case .center:
-                    s = strings.center_justify(s, col.length, " ", context.temp_allocator)
-                case .right:
-                    s = strings.right_justify(s, col.length, " ", context.temp_allocator)
-                }
-            }
-
-            strings.write_string(&tmp, s)
-        }
-    case .FILES:
-    case .SEARCH_IN_BUFFER:
-
+    for col in p.view_columns {
+        s := col.value_proc(result)
+        s = justify_string(col, s)
+        strings.write_string(&tmp, s)
     }
 
+    // switch p.action {
+    // case .NONE:
+    // case .BUFFERS:
+    //     b := result.(Result_Buffer_Pointer)
+
+    //     for col in p.view_columns {
+    //         v := reflect.struct_field_value_by_name(b^, col.field_name)
+    //         s = col.parse_proc(v)
+    //         s = justify_string(col, s)
+    //         strings.write_string(&tmp, s)
+    //     }
+    // case .FILES:
+    // case .SEARCH_IN_BUFFER:
+    //     b := p.target.buffer
+
+    //     for col in p.view_columns {
+    //         v := reflect.struct_field_value_by_name(b^, col.field_name)
+    //         s := col.parse_proc(v)
+    //         s = justify_string(col, s)
+    //         strings.write_string(&tmp, s)
+    //     }
+    // }
+
     return strings.to_string(tmp)
+}
+
+ui_view_get_this_buffer_name :: proc(result: Result_Value) -> string {
+    b := result.(Result_Buffer_Pointer)
+    return b.name
+}
+
+ui_view_get_this_buffer_status :: proc(result: Result_Value) -> string {
+    b := result.(Result_Buffer_Pointer)
+    return get_buffer_status(b)
+}
+
+ui_view_get_this_buffer_len :: proc(result: Result_Value) -> string {
+    b := result.(Result_Buffer_Pointer)
+    length := f32(len(b.str))
+    result := ""
+
+    if length > 1000 {
+        result = fmt.tprintf("%.1fk", length / 1000)
+    } else {
+        result = fmt.tprintf("{0}", length)
+    }
+
+    return result
+}
+
+ui_view_get_this_buffer_major_mode :: proc(result: Result_Value) -> string {
+    b := result.(Result_Buffer_Pointer)
+    return settings_get_major_mode_name(b.major_mode)
+}
+
+ui_view_get_this_buffer_filepath :: proc(result: Result_Value) -> string {
+    b := result.(Result_Buffer_Pointer)
+    return b.filepath
+}
+
+get_prompt_text :: proc(t: ^Pane, action: UI_Pane_Action) -> string {
+    s := ""
+
+    switch action {
+    case .NONE:
+    case .BUFFERS:
+        s = "Switch to"
+    case .FILES:
+    case .SEARCH_IN_BUFFER:
+        s = fmt.aprintf("Search in buffer \"{0}\"", t.buffer.name)
+    }
+
+    return s
 }

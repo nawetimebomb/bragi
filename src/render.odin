@@ -282,7 +282,10 @@ render_ui_pane :: proc() {
             0, window_size.y - line_height, window_size.x, line_height,
         }
         prompt_fmt := fmt.tprintf(
-            "({0}/{1}) Switch to: ", bp.caret.coords.y + 1, len(bp.results),
+            "({0}/{1}) {2}: ",
+            bp.caret.coords.y + 1,
+            len(bp.results),
+            bp.prompt_text,
         )
         full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, query)
         row := window_size.y - line_height

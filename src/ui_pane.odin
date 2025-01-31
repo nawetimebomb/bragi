@@ -237,6 +237,7 @@ ui_filter_results :: proc() {
     p := &bragi.ui_pane
     query := strings.to_string(p.query)
     query_has_value := len(query) > 0
+    case_sensitive := strings.contains_any(query, UPPERCASE_CHARS)
 
     clear(&p.results)
 
@@ -244,12 +245,18 @@ ui_filter_results :: proc() {
     case .NONE:
     case .BUFFERS:
         for &b in bragi.buffers {
+            buf_name := b.name
+
+            if !case_sensitive {
+                buf_name = strings.to_lower(b.name, context.temp_allocator)
+            }
+
             if query_has_value {
-                found := strings.contains(b.name, query)
+                found := strings.contains(buf_name, query)
                 if !found { continue }
             }
 
-            start := strings.index(b.name, query)
+            start := strings.index(buf_name, query)
             end := start + len(query)
 
             append(&p.results, Result{
@@ -265,25 +272,32 @@ ui_filter_results :: proc() {
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         if query_has_value {
             b := p.target.buffer
-            splits := strings.split_lines(b.str, context.temp_allocator)
+            s := ""
 
-            for line, line_index in splits {
-                found := strings.contains(line, query)
-                if !found { continue }
-
-                pos := Result_Caret_Pos{
-                    strings.index(line, query) + len(query),
-                    line_index,
-                }
-
-                append(&p.results, Result{
-                    highlight = { 0, len(query) },
-                    value = pos,
-                })
+            if case_sensitive {
+                s = strings.clone(b.str, context.temp_allocator)
+            } else {
+                s = strings.to_lower(b.str, context.temp_allocator)
             }
 
-            if p.action == .SEARCH_REVERSE_IN_BUFFER {
-                p.caret.coords.y = len(p.results) - 1
+            for strings.contains(s, query) {
+                found_index := strings.index(s, query)
+                cursor_pos := len(b.str) - len(s) + found_index + len(query)
+                pos := buffer_cursor_to_caret(b, cursor_pos)
+
+                if p.action == .SEARCH_REVERSE_IN_BUFFER {
+                    inject_at(&p.results, 0, Result{
+                        highlight = { 0, len(query) },
+                        value = pos,
+                    })
+                } else {
+                    append(&p.results, Result{
+                        highlight = { 0, len(query) },
+                        value = pos,
+                    })
+                }
+
+                s = s[found_index + len(query):]
             }
         }
     }

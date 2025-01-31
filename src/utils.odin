@@ -5,6 +5,8 @@ import "core:log"
 import "core:strings"
 import "core:unicode/utf8"
 
+UPPERCASE_CHARS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
 Direction :: enum int {
     left = -1, right = 1,
 }

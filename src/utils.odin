@@ -148,8 +148,17 @@ is_alpha_uppercase :: #force_inline proc(r: rune) -> bool {
     return r >= 'A' && r <= 'Z'
 }
 
-is_common_delimiter :: #force_inline proc(r: rune) -> bool {
-    DELIMITERS :: ".,()[]{}"
+is_common_delimiter :: proc{
+    is_common_delimiter_char,
+    is_common_delimiter_rune,
+}
+
+is_common_delimiter_char :: #force_inline proc(c: byte) -> bool {
+    return is_common_delimiter_rune(rune(c))
+}
+
+is_common_delimiter_rune :: #force_inline proc(r: rune) -> bool {
+    DELIMITERS :: " /\\.,()[]{}"
     return strings.contains_rune(DELIMITERS, r)
 }
 
@@ -218,7 +227,9 @@ caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
 }
 
 get_parsed_length_to_kb :: proc(value_in_bytes: f64) -> string {
-    if value_in_bytes > 1000 * 1000 {
+    if value_in_bytes == 0 {
+        return ""
+    } else if value_in_bytes > 1000 * 1000 {
         return fmt.tprintf("%.1fm", value_in_bytes / (1000 * 1000))
     } else if value_in_bytes > 1000 {
         return fmt.tprintf("%.1fk", value_in_bytes / 1000)
@@ -227,17 +238,17 @@ get_parsed_length_to_kb :: proc(value_in_bytes: f64) -> string {
     }
 }
 
-justify_string :: proc(col: Result_View_Column, s: string) -> (res: string) {
+justify_string :: proc(s: string, length: int, justify: UI_View_Justify) -> (res: string) {
     res = s
 
-    if col.length > 0 {
-        switch col.justify {
+    if length > 0 {
+        switch justify {
         case .left:
-            res = strings.left_justify(s, col.length, " ", context.temp_allocator)
+            res = strings.left_justify(s, length, " ", context.temp_allocator)
         case .center:
-            res = strings.center_justify(s, col.length, " ", context.temp_allocator)
+            res = strings.center_justify(s, length, " ", context.temp_allocator)
         case .right:
-            res = strings.right_justify(s, col.length, " ", context.temp_allocator)
+            res = strings.right_justify(s, length, " ", context.temp_allocator)
         }
     }
 
@@ -251,8 +262,18 @@ get_dir_and_filename_from_fullpath :: proc(s: string) -> (dir, filename: string)
         last_slash_index = strings.last_index(s, "\\")
     }
 
-    dir      = s[:last_slash_index]
+    dir      = s[:last_slash_index + 1]
     filename = s[last_slash_index + 1:]
 
     return
+}
+
+get_base_os_dir :: proc() -> string {
+    BASE_DIR := "/"
+
+    when ODIN_OS == .Windows {
+        BASE_DIR = "C:\\"
+    }
+
+    return BASE_DIR
 }

@@ -132,6 +132,7 @@ handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
 
     strings.write_string(&keydown, get_key_representation(key.sym))
     match := strings.to_string(keydown)
+
     command, exists := bragi.settings.keybindings_table[match]
 
     if exists {

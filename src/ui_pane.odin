@@ -29,15 +29,17 @@ Pane_State :: struct {
 }
 
 Result_View_Column :: struct {
-    justify:    UI_View_Justify,
-    length:     int,
-    value_proc: UI_View_Column_Proc,
+    calc_length: bool,
+    justify:     UI_View_Justify,
+    length:      int,
+    padding:     int,
+    value_proc:  UI_View_Column_Proc,
 }
 
 Result_Caret_Pos :: Caret_Pos
 Result_Buffer_Pointer :: ^Buffer
 
-Result_File :: struct {
+Result_File_Info :: struct {
     filepath: string,
     is_dir:   bool,
     mod_time: time.Time,
@@ -48,7 +50,7 @@ Result_File :: struct {
 Result_Value :: union {
     Result_Buffer_Pointer,
     Result_Caret_Pos,
-    Result_File,
+    Result_File_Info,
 }
 
 Result :: struct {
@@ -167,10 +169,13 @@ create_view_columns :: proc() {
         name_len := 0
         major_mode_len := 0
 
-        for b in bragi.buffers {
-            mms := settings_get_major_mode_name(b.major_mode)
-            name_len = len(b.name) if len(b.name) > name_len else name_len
-            major_mode_len = len(mms) if len(mms) > major_mode_len else major_mode_len
+        for r in p.results {
+            if !r.invalid_result {
+                b := r.value.(Result_Buffer_Pointer)
+                mms := settings_get_major_mode_name(b.major_mode)
+                name_len = len(b.name) if len(b.name) > name_len else name_len
+                major_mode_len = len(mms) if len(mms) > major_mode_len else major_mode_len
+            }
         }
 
         append(&p.view_columns,
@@ -198,33 +203,42 @@ create_view_columns :: proc() {
                    value_proc = ui_view_column_buffer_filepath,
                })
     case .FILES:
-        FILE_LENGTH_LEN :: 6
+        FILE_LENGTH_LEN :: 9
+        FILE_NAME_PADDING :: 2
 
         append(&p.view_columns,
                Result_View_Column{
-                   justify    = .left,
-                   length     = 16,
-                   value_proc = ui_view_column_file_name,
+                   calc_length = true,
+                   justify     = .left,
+                   padding     = FILE_NAME_PADDING,
+                   value_proc  = ui_view_column_file_name,
                },
                Result_View_Column{
                    justify    = .left,
                    length     = FILE_LENGTH_LEN,
                    value_proc = ui_view_column_file_len,
+               },
+               Result_View_Column{
+                   justify    = .left,
+                   value_proc = ui_view_column_file_mod_time,
                })
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+        SEARCH_HIGHLIGHTED_WORD_PADDING :: 2
+
         append(&p.view_columns,
                Result_View_Column{
-                   justify    = .left,
-                   length     = 16,
-                   value_proc = ui_view_column_highlighted_word,
+                   calc_length = true,
+                   justify     = .left,
+                   padding     = SEARCH_HIGHLIGHTED_WORD_PADDING,
+                   value_proc  = ui_view_column_highlighted_word,
                },
                Result_View_Column{
-                   justify    = .left,
-                   length     = 9,
-                   value_proc = ui_view_column_line_column_number,
+                   justify     = .left,
+                   length      = 9,
+                   value_proc  = ui_view_column_line_column_number,
                },
                Result_View_Column{
-                   value_proc = ui_view_column_whole_line,
+                   value_proc  = ui_view_column_whole_line,
                })
     }
 }
@@ -322,15 +336,15 @@ ui_filter_results :: proc() {
     case .FILES:
         if !query_has_value {
             // TODO: get directory from buffer filepath if exists
-            strings.write_string(&p.query, "C:\\Code\\bragi\\")
+            if len(p.target.buffer.filepath) > 0 {
+                dir, _ := get_dir_and_filename_from_fullpath(p.target.buffer.filepath)
+                strings.write_string(&p.query, dir)
+            } else {
+                strings.write_string(&p.query, get_base_os_dir())
+            }
+
             query = strings.to_string(p.query)
             p.caret.coords.x = len(query)
-        }
-
-        last_slash_index := strings.last_index(query, "/")
-
-        if last_slash_index == -1 {
-            last_slash_index = strings.last_index(query, "\\")
         }
 
         dir, filename_query := get_dir_and_filename_from_fullpath(query)
@@ -343,17 +357,24 @@ ui_filter_results :: proc() {
                 if !strings.contains(f.name, filename_query) {
                     continue
                 }
+                tmp_name := strings.builder_make(context.temp_allocator)
 
                 start := strings.index(f.name, filename_query)
                 end := start + len(filename_query)
 
+                strings.write_string(&tmp_name, f.name)
+
+                if f.is_dir {
+                    strings.write_string(&tmp_name, "/")
+                }
+
                 append(&p.results, Result{
                     highlight = { start, end },
-                    value = Result_File{
+                    value = Result_File_Info{
                         filepath = strings.clone(f.fullpath),
                         is_dir   = f.is_dir,
                         mod_time = f.modification_time,
-                        name     = strings.clone(f.name),
+                        name     = strings.clone(strings.to_string(tmp_name)),
                         size     = f.size,
                     },
                 })
@@ -362,7 +383,7 @@ ui_filter_results :: proc() {
             os.close(v)
         }
 
-        if len(p.results) == 0 {
+        if len(p.results) == 0 && len(filename_query) > 0 {
             append(&p.results, Result{ invalid_result = true })
         }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
@@ -380,17 +401,12 @@ ui_filter_results :: proc() {
                 found_index := strings.index(s, query)
                 cursor_pos := len(b.str) - len(s) + found_index + len(query)
                 pos := buffer_cursor_to_caret(b, cursor_pos)
+                result := Result{ highlight = { 0, len(query) }, value = pos }
 
                 if p.action == .SEARCH_REVERSE_IN_BUFFER {
-                    inject_at(&p.results, 0, Result{
-                        highlight = { 0, len(query) },
-                        value = pos,
-                    })
+                    inject_at(&p.results, 0, result)
                 } else {
-                    append(&p.results, Result{
-                        highlight = { 0, len(query) },
-                        value = pos,
-                    })
+                    append(&p.results, result)
                 }
 
                 s = s[found_index + len(query):]
@@ -477,11 +493,11 @@ ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
     case .LINE_END:
         pos.x = len(query)
     case .WORD_START:
-        for pos.x > 0 && is_whitespace(query[pos.x - 1])  { pos.x -= 1 }
-        for pos.x > 0 && !is_whitespace(query[pos.x - 1]) { pos.x -= 1 }
+        for pos.x > 0 && is_common_delimiter(query[pos.x - 1])  { pos.x -= 1 }
+        for pos.x > 0 && !is_common_delimiter(query[pos.x - 1]) { pos.x -= 1 }
     case .WORD_END:
-        for pos.x < len(query) && is_whitespace(query[pos.x])  { pos.x += 1 }
-        for pos.x < len(query) && !is_whitespace(query[pos.x]) { pos.x += 1 }
+        for pos.x < len(query) && is_common_delimiter(query[pos.x])  { pos.x += 1 }
+        for pos.x < len(query) && !is_common_delimiter(query[pos.x]) { pos.x += 1 }
     }
 
     return
@@ -526,7 +542,7 @@ ui_select :: proc() {
             _, filename := get_dir_and_filename_from_fullpath(query)
             p.target.buffer = add(buffer_init(filename, 0))
         } else {
-            f := item.value.(Result_File)
+            f := item.value.(Result_File_Info)
 
             if f.is_dir {
                 strings.builder_reset(&p.query)
@@ -597,22 +613,35 @@ ui_get_valid_result_string :: #force_inline proc(result: Result_Value) -> string
 
     for col in p.view_columns {
         s := col.value_proc(result)
-        s = justify_string(col, s)
-        strings.write_string(&tmp, s)
+        length := col.length
+
+        if col.calc_length {
+            length = get_length_from_values_in_proc(col.value_proc)
+        }
+
+        strings.write_string(&tmp, justify_string(s, length + col.padding, col.justify))
     }
 
     return strings.to_string(tmp)
 }
 
 ui_view_column_file_name :: #force_inline proc(result: Result_Value) -> string {
-    f := result.(Result_File)
+    f := result.(Result_File_Info)
     return f.name
 }
 
 ui_view_column_file_len :: #force_inline proc(result: Result_Value) -> string {
-    f := result.(Result_File)
+    f := result.(Result_File_Info)
     size := f64(f.size)
     return get_parsed_length_to_kb(size)
+}
+
+ui_view_column_file_mod_time :: #force_inline proc(result: Result_Value) -> string {
+    buf: [time.MIN_HMS_LEN]u8
+    f := result.(Result_File_Info)
+    duration := time.since(f.mod_time)
+    minutes_ago := time.duration_minutes(duration)
+    return fmt.tprintf("{0} minutes ago", int(minutes_ago))
 }
 
 ui_view_column_highlighted_word :: #force_inline proc(result: Result_Value) -> string {
@@ -693,7 +722,7 @@ clear_results :: proc() {
     case .FILES:
         for &item in p.results {
             if !item.invalid_result {
-                v := item.value.(Result_File)
+                v := item.value.(Result_File_Info)
                 delete(v.filepath)
                 delete(v.name)
             }
@@ -703,4 +732,18 @@ clear_results :: proc() {
     }
 
     clear(&p.results)
+}
+
+get_length_from_values_in_proc :: #force_inline proc(test_proc: UI_View_Column_Proc) -> int {
+    p := &bragi.ui_pane
+    length := 0
+
+    for r in p.results {
+        if !r.invalid_result {
+            s := test_proc(r.value)
+            length = len(s) if len(s) > length else length
+        }
+    }
+
+    return length
 }

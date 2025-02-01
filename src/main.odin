@@ -206,6 +206,7 @@ set_characters_textures :: proc() {
 }
 
 initialize_profiling :: proc() {
+    log.debug("Initializing profiling")
 	bragi.ctx.spall_ctx = spall.context_create("profile.spall")
 	buf := make([]u8, spall.BUFFER_DEFAULT_SIZE)
 	bragi.ctx.spall_buf = spall.buffer_create(buf)
@@ -213,6 +214,7 @@ initialize_profiling :: proc() {
 }
 
 destroy_profiling :: proc() {
+    log.debug("Destroying profiling")
     buf := bragi.ctx.spall_buf.data
     spall.buffer_destroy(&bragi.ctx.spall_ctx, &bragi.ctx.spall_buf)
     delete(buf)

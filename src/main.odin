@@ -243,7 +243,6 @@ main :: proc() {
     initialize_context()
     initialize_settings()
     initialize_editor()
-    //initialize_profiling()
     load_keybinds()
 
     last_update_time := time.tick_now()
@@ -301,7 +300,6 @@ main :: proc() {
         }
     }
 
-    //destroy_profiling()
     destroy_editor()
     destroy_settings()
     destroy_context()

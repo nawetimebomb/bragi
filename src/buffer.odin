@@ -158,7 +158,6 @@ get_or_create_buffer :: proc(
 
 buffer_begin :: proc(b: ^Buffer) {
     assert(b.dirty == false)
-    profiling_start("buffer_begin")
 
     update_buffer_time(b)
 
@@ -167,8 +166,6 @@ buffer_begin :: proc(b: ^Buffer) {
         refresh_string_buffer(b)
         recalculate_lines(b)
     }
-
-    profiling_end()
 }
 
 buffer_end :: proc(b: ^Buffer) {
@@ -202,15 +199,17 @@ update_buffer_time :: proc(b: ^Buffer) {
 }
 
 recalculate_lines :: proc(b: ^Buffer) {
+    profiling_start("buffer.odin:recalculate_lines")
     buf := transmute([]u8)b.str
     clear(&b.lines)
     append(&b.lines, 0)
 
     for c, index in buf {
-        if buf[index] == '\n' {
+        if c == '\n' {
             append(&b.lines, index + 1)
         }
     }
+    profiling_end()
 }
 
 is_between_line :: #force_inline proc(b: ^Buffer, line, pos: Buffer_Cursor) -> bool {
@@ -413,8 +412,10 @@ buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
 }
 
 refresh_string_buffer :: proc(b: ^Buffer) {
+    profiling_start("buffer.odin:refresh_string_buffer")
     delete(b.str)
     flush_range(b, 0, buffer_len(b))
+    profiling_end()
 }
 
 // Deletes X characters. If positive, deletes forward

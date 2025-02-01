@@ -102,6 +102,14 @@ handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
         return false
     }
 
+    if key.sym == .F3 {
+        if bragi.ctx.profiling {
+            destroy_profiling()
+        } else {
+            initialize_profiling()
+        }
+    }
+
     keydown := strings.builder_make(context.temp_allocator)
 
     for len(bragi.keybinds.modifiers) > 0 {

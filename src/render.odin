@@ -22,6 +22,7 @@ set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
 }
 
 render_pane :: proc(p: ^Pane, index: int, focused: bool) {
+    profiling_start("render.odin:render_pane")
     colors := &bragi.settings.colorscheme_table
     char_width, line_height := get_standard_character_size()
     renderer := bragi.ctx.renderer
@@ -196,6 +197,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     sdl.SetRenderTarget(renderer, nil)
 
     sdl.RenderCopy(renderer, bragi.ctx.pane_texture, nil, &pane_dest)
+    profiling_end()
 }
 
 render_ui_pane :: proc() {
@@ -231,43 +233,38 @@ render_ui_pane :: proc() {
     string          := colors[.string]
 
     { // Start Results
+        profiling_start("render.odin:render_ui_pane_results")
         for item, line_index in p.results[p.viewport.y:] {
+            COLUMN_PADDING :: 2
             row := window_size.y - p.real_size.y + i32(line_index) * line_height
             start := item.highlight[0]
             end := item.highlight[1]
             has_highlight := start != end
-            s := ""
+            row_builder := strings.builder_make(context.temp_allocator)
+            cl0 := p.columns_len[0] + COLUMN_PADDING
+            cl1 := cl0 + p.columns_len[1] + COLUMN_PADDING
+            cl2 := cl1 + p.columns_len[2] + COLUMN_PADDING
+            cl3 := cl2 + p.columns_len[3] + COLUMN_PADDING
 
-            switch p.action {
-            case .NONE:
-            case .BUFFERS:
-                if item.invalid_result {
-                    s = ui_get_invalid_result_string()
-                    has_highlight = true
-                    start = len(s) - len(query) - 1
-                    end = len(s) - 1
-                } else {
-                    s = ui_get_valid_result_string(item.value)
-                }
+            if item.invalid {
+                strings.write_string(&row_builder, item.format)
+            } else {
+                splits := strings.split(item.format, "\n", context.temp_allocator)
 
-            case .FILES:
-                if item.invalid_result {
-                    s = ui_get_invalid_result_string()
-                    _, filename := get_dir_and_filename_from_fullpath(query)
-                    has_highlight = true
-                    start = len(s) - len(filename) - 1
-                    end = len(s) - 1
-                } else {
-                    s = ui_get_valid_result_string(item.value)
-                }
-            case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-                if item.invalid_result {
-                    s = ui_get_invalid_result_string()
-                    has_highlight = len(query) > 0
-                    start = len(s) - len(query) - 1
-                    end = len(s) - 1
-                } else {
-                    s = ui_get_valid_result_string(item.value)
+                for col_str, col_index in splits {
+                    justify_proc := strings.left_justify
+
+                    if col_index == len(splits) - 1  {
+                        justify_proc = strings.right_justify
+                    }
+
+                    s := justify_proc(
+                        col_str,
+                        p.columns_len[col_index] + COLUMN_PADDING,
+                        " ",
+                        context.temp_allocator,
+                    )
+                    strings.write_string(&row_builder, s)
                 }
             }
 
@@ -277,14 +274,22 @@ render_ui_pane :: proc() {
                 sdl.RenderFillRect(renderer, &select_rect)
             }
 
-            for r, char_index in s {
+            for r, char_index in strings.to_string(row_builder) {
                 col := i32(char_index) * char_width
                 c := bragi.ctx.characters[r]
                 c.dest.x = col
                 c.dest.y = row
 
-                if has_highlight && start <= char_index && end > char_index {
-                    set_fg(c.texture, highlight)
+                if !item.invalid {
+                    if has_highlight && start <= char_index && end > char_index {
+                        set_fg(c.texture, highlight)
+                    } else if char_index >= cl1 {
+                        set_fg(c.texture, keyword)
+                    } else if char_index >= cl0 {
+                        set_fg(c.texture, highlight)
+                    } else {
+                        set_fg(c.texture, default)
+                    }
                 } else {
                     set_fg(c.texture, default)
                 }
@@ -292,6 +297,8 @@ render_ui_pane :: proc() {
                 sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
             }
         }
+
+        profiling_end()
     } // End Results
 
     { // Start Prompt

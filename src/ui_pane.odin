@@ -8,12 +8,9 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 
+MAX_VIEW_COLUMNS :: 4
 VIEWPORT_MAX_ITEMS :: 8
 UI_PANE_SIZE :: 10
-
-UI_View_Column_Proc :: #type proc(Result_Value) -> string
-
-UI_View_Justify :: enum { left, center, right }
 
 UI_Pane_Action :: enum {
     NONE,
@@ -26,14 +23,6 @@ UI_Pane_Action :: enum {
 Pane_State :: struct {
     buffer: ^Buffer,
     caret_coords: Caret_Pos,
-}
-
-Result_View_Column :: struct {
-    calc_length: bool,
-    justify:     UI_View_Justify,
-    length:      int,
-    padding:     int,
-    value_proc:  UI_View_Column_Proc,
 }
 
 Result_Caret_Pos :: Caret_Pos
@@ -54,9 +43,10 @@ Result_Value :: union {
 }
 
 Result :: struct {
-    highlight:      Caret_Pos,
-    invalid_result: bool,
-    value:          Result_Value,
+    format:    string,
+    highlight: Caret_Pos,
+    invalid:   bool,
+    value:     Result_Value,
 }
 
 UI_Pane :: struct {
@@ -66,7 +56,7 @@ UI_Pane :: struct {
     did_select:      bool,
     prev_state:      Pane_State,
     query:           strings.Builder,
-    view_columns:    [dynamic]Result_View_Column,
+    columns_len:     [MAX_VIEW_COLUMNS]int,
     results:         [dynamic]Result,
     prompt_text:     string,
     target:          ^Pane,
@@ -89,7 +79,6 @@ ui_pane_init :: proc() {
         UI_PANE_SIZE,
     }
     p.query = strings.builder_make()
-    p.view_columns = make([dynamic]Result_View_Column, 0)
     p.results = make([dynamic]Result, 0)
 }
 
@@ -98,7 +87,6 @@ ui_pane_destroy :: proc() {
 
     clear_results()
     strings.builder_destroy(&p.query)
-    delete(p.view_columns)
     delete(p.results)
     delete(p.prompt_text)
 }
@@ -136,7 +124,7 @@ ui_pane_begin :: proc() {
     case .BUFFERS:
         item := p.results[p.caret.coords.y]
 
-        if !item.invalid_result {
+        if !item.invalid {
             p.target.buffer = item.value.(Result_Buffer_Pointer)
         }
 
@@ -145,7 +133,7 @@ ui_pane_begin :: proc() {
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         item := p.results[p.caret.coords.y]
 
-        if !item.invalid_result {
+        if !item.invalid {
             p.target.caret.coords = item.value.(Result_Caret_Pos)
         }
     }
@@ -155,92 +143,6 @@ ui_pane_end :: proc() {
     p := &bragi.ui_pane
 
     if !p.enabled { return }
-}
-
-create_view_columns :: proc() {
-    p := &bragi.ui_pane
-
-    switch p.action {
-    case .NONE:
-    case .BUFFERS:
-        BUF_LENGTH_LEN :: 6
-        MAJOR_MODE_PADDING :: 2
-        STATUS_LEN :: 10
-        name_len := 0
-        major_mode_len := 0
-
-        for r in p.results {
-            if !r.invalid_result {
-                b := r.value.(Result_Buffer_Pointer)
-                mms := settings_get_major_mode_name(b.major_mode)
-                name_len = len(b.name) if len(b.name) > name_len else name_len
-                major_mode_len = len(mms) if len(mms) > major_mode_len else major_mode_len
-            }
-        }
-
-        append(&p.view_columns,
-               Result_View_Column{
-                   justify    = .left,
-                   length     = name_len,
-                   value_proc = ui_view_column_buffer_name,
-               },
-               Result_View_Column{
-                   justify    = .center,
-                   length     = STATUS_LEN,
-                   value_proc = ui_view_column_buffer_status,
-               },
-               Result_View_Column{
-                   justify    = .left,
-                   length     = BUF_LENGTH_LEN,
-                   value_proc = ui_view_column_buffer_len,
-               },
-               Result_View_Column{
-                   justify    = .left,
-                   length     = major_mode_len + MAJOR_MODE_PADDING,
-                   value_proc = ui_view_column_buffer_major_mode,
-               },
-               Result_View_Column{
-                   value_proc = ui_view_column_buffer_filepath,
-               })
-    case .FILES:
-        FILE_LENGTH_LEN :: 9
-        FILE_NAME_PADDING :: 2
-
-        append(&p.view_columns,
-               Result_View_Column{
-                   calc_length = true,
-                   justify     = .left,
-                   padding     = FILE_NAME_PADDING,
-                   value_proc  = ui_view_column_file_name,
-               },
-               Result_View_Column{
-                   justify    = .left,
-                   length     = FILE_LENGTH_LEN,
-                   value_proc = ui_view_column_file_len,
-               },
-               Result_View_Column{
-                   justify    = .left,
-                   value_proc = ui_view_column_file_mod_time,
-               })
-    case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        SEARCH_HIGHLIGHTED_WORD_PADDING :: 2
-
-        append(&p.view_columns,
-               Result_View_Column{
-                   calc_length = true,
-                   justify     = .left,
-                   padding     = SEARCH_HIGHLIGHTED_WORD_PADDING,
-                   value_proc  = ui_view_column_highlighted_word,
-               },
-               Result_View_Column{
-                   justify     = .left,
-                   length      = 9,
-                   value_proc  = ui_view_column_line_column_number,
-               },
-               Result_View_Column{
-                   value_proc  = ui_view_column_whole_line,
-               })
-    }
 }
 
 rollback_to_prev_value :: proc() {
@@ -270,15 +172,13 @@ ui_pane_show :: proc(target: ^Pane, action: UI_Pane_Action) {
         caret_coords = target.caret.coords,
     }
 
-    ui_filter_results()
-    create_view_columns()
+    filter_results()
     resize_panes()
 }
 
 ui_pane_hide :: proc() {
     p := &bragi.ui_pane
     clear_results()
-    clear(&p.view_columns)
 
     if !p.did_select {
         rollback_to_prev_value()
@@ -297,7 +197,7 @@ ui_pane_hide :: proc() {
     resize_panes()
 }
 
-ui_filter_results :: proc() {
+filter_results :: proc() {
     p := &bragi.ui_pane
     query := strings.to_string(p.query)
     query_has_value := len(query) > 0
@@ -323,14 +223,16 @@ ui_filter_results :: proc() {
             end := start + len(query)
 
             append(&p.results, Result{
+                format    = ui_pane_get_buffer_row_format(&b),
                 highlight = { start, end },
-                value = &b,
+                value     = &b,
             })
         }
 
         if query_has_value {
             append(&p.results, Result{
-                invalid_result = true,
+                format  = fmt.aprintf("Create a buffer with name \"{0}\"", query),
+                invalid = true,
             })
         }
     case .FILES:
@@ -368,15 +270,18 @@ ui_filter_results :: proc() {
                     strings.write_string(&tmp_name, "/")
                 }
 
+                value := Result_File_Info{
+                    filepath = strings.clone(f.fullpath),
+                    is_dir   = f.is_dir,
+                    mod_time = f.modification_time,
+                    name     = strings.clone(strings.to_string(tmp_name)),
+                    size     = f.size,
+                }
+
                 append(&p.results, Result{
+                    format    = ui_pane_get_file_row_format(&value),
                     highlight = { start, end },
-                    value = Result_File_Info{
-                        filepath = strings.clone(f.fullpath),
-                        is_dir   = f.is_dir,
-                        mod_time = f.modification_time,
-                        name     = strings.clone(strings.to_string(tmp_name)),
-                        size     = f.size,
-                    },
+                    value     = value,
                 })
             }
 
@@ -384,7 +289,12 @@ ui_filter_results :: proc() {
         }
 
         if len(p.results) == 0 && len(filename_query) > 0 {
-            append(&p.results, Result{ invalid_result = true })
+            append(&p.results, Result{
+                format  = fmt.aprintf(
+                    "Create a file in {0} with name {1}", dir, filename_query,
+                ),
+                invalid = true,
+            })
         }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         if query_has_value {
@@ -401,7 +311,11 @@ ui_filter_results :: proc() {
                 found_index := strings.index(s, query)
                 cursor_pos := len(b.str) - len(s) + found_index + len(query)
                 pos := buffer_cursor_to_caret(b, cursor_pos)
-                result := Result{ highlight = { 0, len(query) }, value = pos }
+                result := Result{
+                    format    = ui_pane_get_search_row_format(b, pos),
+                    highlight = { 0, len(query) },
+                    value     = pos,
+                }
 
                 if p.action == .SEARCH_REVERSE_IN_BUFFER {
                     inject_at(&p.results, 0, result)
@@ -414,12 +328,14 @@ ui_filter_results :: proc() {
 
             if len(p.results) == 0 {
                 append(&p.results, Result{
-                    invalid_result = true,
+                    format  = fmt.aprintf("No results found for \"{0}\"", query),
+                    invalid = true,
                 })
             }
         } else {
             append(&p.results, Result{
-                invalid_result = true,
+                format  = "Enter a query to start searching...",
+                invalid = true,
             })
         }
     }
@@ -510,7 +426,7 @@ ui_delete_to :: proc(t: Caret_Translation) {
     end := max(p.caret.coords.x, new_pos.x)
     remove_range(&p.query.buf, start, end)
     p.caret.coords.x = start
-    ui_filter_results()
+    filter_results()
 }
 
 ui_move_to :: proc(t: Caret_Translation) {
@@ -531,14 +447,14 @@ ui_select :: proc() {
         // are changed on the fly, but this one requires a new buffer to be created.
         item := p.results[p.caret.coords.y]
 
-        if item.invalid_result {
+        if item.invalid {
             p.target.buffer = add(buffer_init(query, 0))
         }
 
         ui_pane_hide()
     case .FILES:
         item := p.results[p.caret.coords.y]
-        if item.invalid_result {
+        if item.invalid {
             _, filename := get_dir_and_filename_from_fullpath(query)
             p.target.buffer = add(buffer_init(filename, 0))
         } else {
@@ -550,7 +466,7 @@ ui_select :: proc() {
                 strings.write_string(&p.query, "\\")
                 p.caret.coords.y = 0
                 p.caret.coords.x = len(p.query.buf)
-                ui_filter_results()
+                filter_results()
                 handled = false
             } else {
                 editor_open_file(p.target, f.filepath)
@@ -559,7 +475,7 @@ ui_select :: proc() {
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         item := p.results[p.caret.coords.y]
 
-        if item.invalid_result {
+        if item.invalid {
             p.target.caret.coords = p.prev_state.caret_coords
         }
     }
@@ -576,123 +492,7 @@ ui_self_insert :: proc(s: string) {
         p.caret.coords.x += len(s)
     }
 
-    ui_filter_results()
-}
-
-ui_get_invalid_result_string :: #force_inline proc() -> string {
-    p := &bragi.ui_pane
-    query := strings.to_string(p.query)
-    tmp := strings.builder_make(context.temp_allocator)
-
-    switch p.action {
-    case .NONE:
-    case .BUFFERS:
-        strings.write_string(&tmp, "Create a buffer with name ")
-        strings.write_quoted_string(&tmp, query)
-    case .FILES:
-        dir, filename := get_dir_and_filename_from_fullpath(query)
-        prefix := fmt.tprintf("Create a file in {0} with name ", dir)
-        strings.write_string(&tmp, prefix)
-        strings.write_quoted_string(&tmp, filename)
-    case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        if len(query) > 0 {
-            strings.write_string(&tmp, "No results found for ")
-            strings.write_quoted_string(&tmp, query)
-        } else {
-            strings.write_string(&tmp, "Enter a query to start searching...")
-        }
-    }
-
-    return strings.to_string(tmp)
-}
-
-ui_get_valid_result_string :: #force_inline proc(result: Result_Value) -> string {
-    p := &bragi.ui_pane
-    tmp := strings.builder_make(context.temp_allocator)
-    s := ""
-
-    for col in p.view_columns {
-        s := col.value_proc(result)
-        length := col.length
-
-        if col.calc_length {
-            length = get_length_from_values_in_proc(col.value_proc)
-        }
-
-        strings.write_string(&tmp, justify_string(s, length + col.padding, col.justify))
-    }
-
-    return strings.to_string(tmp)
-}
-
-ui_view_column_file_name :: #force_inline proc(result: Result_Value) -> string {
-    f := result.(Result_File_Info)
-    return f.name
-}
-
-ui_view_column_file_len :: #force_inline proc(result: Result_Value) -> string {
-    f := result.(Result_File_Info)
-    size := f64(f.size)
-    return get_parsed_length_to_kb(size)
-}
-
-ui_view_column_file_mod_time :: #force_inline proc(result: Result_Value) -> string {
-    buf: [time.MIN_HMS_LEN]u8
-    f := result.(Result_File_Info)
-    duration := time.since(f.mod_time)
-    minutes_ago := time.duration_minutes(duration)
-    return fmt.tprintf("{0} minutes ago", int(minutes_ago))
-}
-
-ui_view_column_highlighted_word :: #force_inline proc(result: Result_Value) -> string {
-    p := &bragi.ui_pane
-    b := p.target.buffer
-    s := b.str
-    pos := result.(Result_Caret_Pos)
-    start_pos := caret_to_buffer_cursor(b, pos) - len(strings.to_string(p.query))
-    end_pos := start_pos + 1
-    for end_pos < len(s) && is_whitespace(s[end_pos])  { end_pos += 1 }
-    for end_pos < len(s) && !is_whitespace(s[end_pos]) { end_pos += 1 }
-    return s[start_pos:end_pos]
-}
-
-ui_view_column_line_column_number :: #force_inline proc(result: Result_Value) -> string {
-    pos := result.(Result_Caret_Pos)
-    return fmt.tprintf("{0}:{1}", pos.y + 1, pos.x)
-}
-
-ui_view_column_whole_line :: #force_inline proc(result: Result_Value) -> string {
-    p := &bragi.ui_pane
-    b := p.target.buffer
-    pos := result.(Result_Caret_Pos)
-    split := strings.split_lines(b.str, context.temp_allocator)
-    return split[pos.y]
-}
-
-ui_view_column_buffer_name :: #force_inline proc(result: Result_Value) -> string {
-    b := result.(Result_Buffer_Pointer)
-    return b.name
-}
-
-ui_view_column_buffer_status :: #force_inline proc(result: Result_Value) -> string {
-    b := result.(Result_Buffer_Pointer)
-    return get_buffer_status(b)
-}
-
-ui_view_column_buffer_len :: #force_inline proc(result: Result_Value) -> string {
-    b := result.(Result_Buffer_Pointer)
-    length := f64(len(b.str))
-    return get_parsed_length_to_kb(length)
-}
-
-ui_view_column_buffer_major_mode :: #force_inline proc(result: Result_Value) -> string {
-    b := result.(Result_Buffer_Pointer)
-    return settings_get_major_mode_name(b.major_mode)
-}
-
-ui_view_column_buffer_filepath :: #force_inline proc(result: Result_Value) -> string {
-    b := result.(Result_Buffer_Pointer)
-    return b.filepath
+    filter_results()
 }
 
 get_prompt_text :: #force_inline proc(t: ^Pane, action: UI_Pane_Action) -> string {
@@ -716,34 +516,142 @@ get_prompt_text :: #force_inline proc(t: ^Pane, action: UI_Pane_Action) -> strin
 clear_results :: proc() {
     p := &bragi.ui_pane
 
-    switch p.action {
-    case .NONE:
-    case .BUFFERS:
-    case .FILES:
-        for &item in p.results {
-            if !item.invalid_result {
+    p.columns_len = {
+        16, 6, 6, 0,
+    }
+
+    for &item in p.results {
+        delete(item.format)
+
+        if p.action == .FILES {
+            if !item.invalid {
                 v := item.value.(Result_File_Info)
                 delete(v.filepath)
                 delete(v.name)
             }
         }
-    case .SEARCH_IN_BUFFER:
-    case .SEARCH_REVERSE_IN_BUFFER:
     }
 
     clear(&p.results)
 }
 
-get_length_from_values_in_proc :: #force_inline proc(test_proc: UI_View_Column_Proc) -> int {
+ui_pane_set_column_sizes :: #force_inline proc(cl0, cl1, cl2, cl3: int) {
     p := &bragi.ui_pane
-    length := 0
 
-    for r in p.results {
-        if !r.invalid_result {
-            s := test_proc(r.value)
-            length = len(s) if len(s) > length else length
+    p.columns_len[0] = cl0 if cl0 > p.columns_len[0] else p.columns_len[0]
+    p.columns_len[1] = cl1 if cl1 > p.columns_len[1] else p.columns_len[1]
+    p.columns_len[2] = cl2 if cl2 > p.columns_len[2] else p.columns_len[2]
+    p.columns_len[3] = cl3 if cl3 > p.columns_len[3] else p.columns_len[3]
+}
+
+ui_pane_get_buffer_row_format :: #force_inline proc(b: ^Buffer) -> string {
+    fmt_string := strings.builder_make(context.temp_allocator)
+    c0 := b.name
+    c1 := b.status
+    c2 := settings_get_major_mode_name(b.major_mode)
+    c3 := b.filepath
+
+    strings.write_string(&fmt_string, c0)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c1)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c2)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c3)
+
+    ui_pane_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
+
+    return strings.clone(strings.to_string(fmt_string))
+}
+
+ui_pane_get_file_row_format :: #force_inline proc(f: ^Result_File_Info) -> string {
+    fmt_string := strings.builder_make(context.temp_allocator)
+    c0 := f.name
+    c1 := ""
+    c2 := ""
+    c3 := ""
+
+    { // c3
+        HOURS_IN_A_DAY     :: 24
+        HOURS_IN_A_WEEK    :: HOURS_IN_A_DAY * 7
+        now := time.now()
+        diff_from_now := time.diff(f.mod_time, now)
+        current_year := time.year(now)
+        mod_year := time.year(f.mod_time)
+        hours := int(time.duration_hours(diff_from_now))
+        minutes := int(time.duration_minutes(diff_from_now))
+
+        if mod_year < current_year {
+            c3 = fmt.tprintf(
+                "%i %s %2i",
+                mod_year,
+                get_month_string(time.month(f.mod_time)),
+                time.day(f.mod_time),
+            )
+        } else if hours > HOURS_IN_A_WEEK {
+            buf: [time.MIN_HMS_LEN]u8
+            c3 = fmt.tprintf(
+                "%s %2i %s",
+                get_month_string(time.month(f.mod_time)),
+                time.day(f.mod_time),
+                time.time_to_string_hms(f.mod_time, buf[:])[:5],
+            )
+        } else if hours > HOURS_IN_A_DAY {
+            days := hours / HOURS_IN_A_DAY
+            c3 = fmt.tprintf("%i %s ago", days, days > 1 ? "days" : "day")
+        } else if hours > 0 {
+            c3 = fmt.tprintf("%i %s ago", hours, hours > 1 ? "hours" : "hour")
+        } else if minutes > 0 {
+            c3 = fmt.tprintf("%i %s ago", minutes, minutes > 1 ? "minutes" : "minute")
+        } else {
+            c3 = "less than a minute ago"
         }
     }
 
-    return length
+    strings.write_string(&fmt_string, c0)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c1)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c2)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c3)
+
+    ui_pane_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
+
+    return strings.clone(strings.to_string(fmt_string))
+}
+
+ui_pane_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) -> string {
+    p := &bragi.ui_pane
+    fmt_string := strings.builder_make(context.temp_allocator)
+    c0 := ""
+    c1 := fmt.tprintf("{0}:{1}", pos.y + 1, pos.x)
+    c2 := ""
+    c3 := ""
+
+    { // c0
+        start_pos := caret_to_buffer_cursor(b, pos) - len(strings.to_string(p.query))
+        end_pos := start_pos + 1
+        for end_pos < len(b.str) && is_whitespace(b.str[end_pos])  { end_pos += 1 }
+        for end_pos < len(b.str) && !is_whitespace(b.str[end_pos]) { end_pos += 1 }
+        c0 = b.str[start_pos:end_pos]
+    }
+
+    { // c2
+        line_start := get_line_start_after_indent(b, pos.y)
+        line_end := get_line_end(b, pos.y)
+        c2 = b.str[line_start:line_end - 1]
+    }
+
+    strings.write_string(&fmt_string, c0)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c1)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c2)
+    strings.write_byte(&fmt_string, '\n')
+    strings.write_string(&fmt_string, c3)
+
+    ui_pane_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
+
+    return strings.clone(strings.to_string(fmt_string))
 }

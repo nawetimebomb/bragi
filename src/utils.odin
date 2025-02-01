@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:log"
 import "core:strings"
+import "core:time"
 import "core:unicode/utf8"
 
 UPPERCASE_CHARS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -238,23 +239,6 @@ get_parsed_length_to_kb :: proc(value_in_bytes: f64) -> string {
     }
 }
 
-justify_string :: proc(s: string, length: int, justify: UI_View_Justify) -> (res: string) {
-    res = s
-
-    if length > 0 {
-        switch justify {
-        case .left:
-            res = strings.left_justify(s, length, " ", context.temp_allocator)
-        case .center:
-            res = strings.center_justify(s, length, " ", context.temp_allocator)
-        case .right:
-            res = strings.right_justify(s, length, " ", context.temp_allocator)
-        }
-    }
-
-    return
-}
-
 get_dir_and_filename_from_fullpath :: proc(s: string) -> (dir, filename: string) {
     last_slash_index := strings.last_index(s, "/")
 
@@ -262,18 +246,33 @@ get_dir_and_filename_from_fullpath :: proc(s: string) -> (dir, filename: string)
         last_slash_index = strings.last_index(s, "\\")
     }
 
-    dir      = s[:last_slash_index + 1]
+    dir = s[:last_slash_index + 1]
     filename = s[last_slash_index + 1:]
 
     return
 }
 
-get_base_os_dir :: proc() -> string {
-    BASE_DIR := "/"
+get_base_os_dir :: #force_inline proc() -> string {
+    return "/"
+}
 
-    when ODIN_OS == .Windows {
-        BASE_DIR = "C:\\"
+get_month_string :: #force_inline proc(m: time.Month) -> string {
+    mstr := ""
+
+    switch m {
+    case .January:   mstr = "Jan"
+	case .February:  mstr = "Feb"
+	case .March:     mstr = "Mar"
+	case .April:     mstr = "Apr"
+	case .May:       mstr = "May"
+	case .June:      mstr = "Jun"
+	case .July:      mstr = "Jul"
+	case .August:    mstr = "Aug"
+	case .September: mstr = "Sep"
+	case .October:   mstr = "Oct"
+	case .November:  mstr = "Nov"
+	case .December:  mstr = "Dec"
     }
 
-    return BASE_DIR
+    return mstr
 }

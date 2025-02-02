@@ -67,15 +67,14 @@ UI_Pane :: struct {
 
 ui_pane_init :: proc() {
     p := &bragi.ui_pane
-    window_size := bragi.ctx.window_size
     char_width, line_height := get_standard_character_size()
 
     p.real_size = {
-        window_size.x,
+        window_size_in_pixels.x,
         UI_PANE_SIZE * line_height,
     }
     p.relative_size = {
-        window_size.x / char_width,
+        window_size_in_pixels.x / char_width,
         UI_PANE_SIZE,
     }
     p.query = strings.builder_make()
@@ -637,8 +636,9 @@ ui_pane_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) 
 
     { // c2
         line_start := get_line_start_after_indent(b, pos.y)
-        line_end := get_line_end(b, pos.y)
-        c2 = b.str[line_start:line_end - 1]
+        line_end := line_start
+        for line_end < len(b.str) && b.str[line_end] != '\n' { line_end += 1 }
+        c2 = b.str[line_start:line_end]
     }
 
     strings.write_string(&fmt_string, c0)

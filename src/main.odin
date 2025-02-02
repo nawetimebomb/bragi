@@ -18,9 +18,7 @@ TITLE   :: "Bragi"
 VERSION :: 0
 
 DEFAULT_FONT_DATA     :: #load("../res/font/FiraCode-Retina.ttf")
-DEFAULT_FONT_SIZE     :: 24
-DEFAULT_WINDOW_WIDTH  :: 1024
-DEFAULT_WINDOW_HEIGHT :: 768
+DEFAULT_FONT_SIZE     :: 20
 
 SETTINGS_DATA     :: #load("../res/config.bragi")
 SETTINGS_FILENAME :: "config.bragi"
@@ -34,16 +32,12 @@ Character_Texture :: struct {
 
 Program_Context :: struct {
     delta_time:     time.Duration,
-    undo_allocator: runtime.Allocator,
     font:           ^ttf.Font,
     characters:     map[rune]Character_Texture,
     profiling:      bool,
     spall_buf:      spall.Buffer,
     spall_ctx:      spall.Context,
-    running:        bool,
     pane_texture:   ^sdl.Texture,
-    window_size:    [2]i32,
-    window_focused: bool,
 }
 
 Bragi :: struct {
@@ -56,6 +50,50 @@ Bragi :: struct {
     keybinds:        Keybinds,
     settings:        Settings,
 }
+
+MINIMUM_WINDOW_SIZE      :: 100
+DEFAULT_BASE_WINDOW_SIZE :: 900
+
+Char_Texture :: struct {
+    dest:    sdl.Rect,
+    texture: ^sdl.Texture,
+}
+
+Font :: struct {
+    chars: map[rune]Char_Texture,
+    font:  ^ttf.Font,
+}
+
+DEFAULT_FONT_BASE_SIZE   :: 16
+DEFAULT_FONT_XSMALL_SIZE :: 12
+DEFAULT_FONT_SMALL_SIZE  :: 14
+DEFAULT_FONT_LARGE_SIZE  :: 18
+DEFAULT_FONT_XLARGE_SIZE :: 22
+DEFAULT_FONT_JUMBO_SIZE  :: 30
+
+font_base:      Font
+font_base_bold: Font
+font_small:     Font
+font_xsmall:    Font
+font_large:     Font
+font_xlarge:    Font
+
+// font base size is the one configured by the user, the other ones are derived
+font_base_size   := DEFAULT_FONT_BASE_SIZE
+font_small_size  := DEFAULT_FONT_SMALL_SIZE
+font_xsmall_size := DEFAULT_FONT_XSMALL_SIZE
+font_large_size  := DEFAULT_FONT_LARGE_SIZE
+font_xlarge_size := DEFAULT_FONT_XLARGE_SIZE
+
+char_width:  i32
+line_height: i32
+
+window_size_in_pixels: [2]i32
+window_in_focus:       bool
+
+bragi_allocator: runtime.Allocator
+bragi_is_running: bool
+
 
 bragi: Bragi
 
@@ -115,8 +153,8 @@ initialize_context :: proc() {
     assert(ttf.Init() == 0, sdl.GetErrorString())
 
     window = sdl.CreateWindow(TITLE, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
-                              DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
-                              {.SHOWN, .RESIZABLE, .ALLOW_HIGHDPI})
+                              DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
+                              {.SHOWN, .RESIZABLE})
     assert(window != nil, "Cannot open window")
 
     renderer = sdl.CreateRenderer(window, -1, {.ACCELERATED, .PRESENTVSYNC})
@@ -134,12 +172,10 @@ initialize_context :: proc() {
 
     bragi.ctx.pane_texture = sdl.CreateTexture(
         renderer, .RGBA8888, .TARGET,
-        DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
+        DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
     )
 
-    bragi.ctx.running        = true
-    bragi.ctx.undo_allocator = context.allocator
-    bragi.ctx.window_size    = { DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT }
+    bragi_is_running = true
 }
 
 initialize_editor :: proc() {
@@ -241,6 +277,13 @@ main :: proc() {
         return err
     }
 
+    bragi_allocator = context.allocator
+
+    window_in_focus = true
+    window_size_in_pixels = {
+        DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
+    }
+
     initialize_context()
     initialize_settings()
     initialize_editor()
@@ -249,7 +292,7 @@ main :: proc() {
     last_update_time := time.tick_now()
     previous_frame_time := time.tick_now()
 
-    for bragi.ctx.running {
+    for bragi_is_running {
         frame_start := sdl.GetPerformanceCounter()
 
         set_bg(bragi.settings.colorscheme_table[.background])
@@ -292,7 +335,7 @@ main :: proc() {
 
         frame_end := sdl.GetPerformanceCounter()
 
-        if !bragi.ctx.window_focused {
+        if !window_in_focus {
             FRAMETIME_LIMIT :: 100 // 10 FPS
 
             elapsed :=

@@ -54,7 +54,7 @@ Pane :: struct {
 
 pane_init :: proc() -> Pane {
     return  {
-        real_size = bragi.ctx.window_size,
+        real_size = window_size_in_pixels,
     }
 }
 
@@ -118,23 +118,22 @@ pane_destroy :: proc(p: ^Pane) {
 }
 
 resize_panes :: proc() {
-    window_size := bragi.ctx.window_size
-    size_y := window_size.y
+    size_y := window_size_in_pixels.y
+    size_x := window_size_in_pixels.x / i32(len(bragi.panes))
 
     if bragi.ui_pane.enabled {
-        size_y = window_size.y - bragi.ui_pane.real_size.y
+        size_y = window_size_in_pixels.y - bragi.ui_pane.real_size.y
     }
 
     for &p in bragi.panes {
-        p.real_size.x = window_size.x / i32(len(bragi.panes))
+        p.real_size.x = window_size_in_pixels.x / i32(len(bragi.panes))
         p.real_size.y = size_y
     }
 
     sdl.DestroyTexture(bragi.ctx.pane_texture)
 
     bragi.ctx.pane_texture = sdl.CreateTexture(
-        renderer, .RGBA8888, .TARGET,
-        window_size.x / i32(len(bragi.panes)), size_y,
+        renderer, .RGBA8888, .TARGET, size_x, size_y,
     )
 }
 

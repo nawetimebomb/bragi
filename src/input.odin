@@ -150,21 +150,30 @@ update_input :: proc() {
     for sdl.PollEvent(&e) {
         #partial switch e.type {
             case .QUIT: {
-                bragi.ctx.running = false
+                bragi_is_running = false
                 return
             }
             case .WINDOWEVENT: {
                 w := e.window
 
-                if w.event == .FOCUS_LOST {
-                    bragi.ctx.window_focused = false
-                } else if w.event == .FOCUS_GAINED {
-                    bragi.ctx.window_focused = true
-                } else if w.event == .RESIZED && w.data1 != 0 && w.data2 != 0 {
-                    bragi.ctx.window_size = { e.window.data1, e.window.data2 }
-                    resize_panes()
+                #partial switch w.event {
+                    case .FOCUS_LOST: {
+                        window_in_focus = false
+                        return
+                    }
+                    case .FOCUS_GAINED: {
+                        window_in_focus = true
+                        return
+                    }
+                    case .RESIZED: {
+                        if w.data1 <= MINIMUM_WINDOW_SIZE ||
+                            w.data2 <= MINIMUM_WINDOW_SIZE { return }
+
+                        window_size_in_pixels = { e.window.data1, e.window.data2 }
+                        resize_panes()
+                        return
+                    }
                 }
-                return
             }
             case .DROPFILE: {
                 sdl.RaiseWindow(window)

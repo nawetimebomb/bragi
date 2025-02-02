@@ -25,7 +25,6 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     profiling_start("render.odin:render_pane")
     colors := &bragi.settings.colorscheme_table
     char_width, line_height := get_standard_character_size()
-    window_size := bragi.ctx.window_size
     pane_dest := sdl.Rect{ p.real_size.x * i32(index), 0, p.real_size.x, p.real_size.y }
     viewport := p.viewport
     caret := p.caret
@@ -53,7 +52,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
     if index > 0 {
         set_bg(comment)
-        sdl.RenderDrawLine(renderer, 0, 0, 0, window_size.y)
+        sdl.RenderDrawLine(renderer, 0, 0, 0, window_size_in_pixels.y)
     }
 
     { // Start Caret
@@ -170,8 +169,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         set_bg(modeline_off_bg)
         sdl.RenderDrawLine(
             renderer,
-            0, window_size.y - line_height - 1,
-            window_size.x, window_size.y - line_height - 1,
+            0, window_size_in_pixels.y - line_height - 1,
+            window_size_in_pixels.x, window_size_in_pixels.y - line_height - 1,
         )
 
         for r, index in lml_fmt {
@@ -206,13 +205,12 @@ render_ui_pane :: proc() {
 
     colors := &bragi.settings.colorscheme_table
     char_width, line_height := get_standard_character_size()
-    window_size := bragi.ctx.window_size
     viewport := p.viewport
     caret := p.caret
     query := strings.to_string(p.query)
     pane_dest := sdl.Rect{
-        window_size.x, window_size.y - 6 * line_height,
-        window_size.x, 6 * line_height,
+        window_size_in_pixels.x, window_size_in_pixels.y - 6 * line_height,
+        window_size_in_pixels.x, 6 * line_height,
     }
 
     background      := colors[.background]
@@ -234,7 +232,7 @@ render_ui_pane :: proc() {
         profiling_start("render.odin:render_ui_pane_results")
         for item, line_index in p.results[p.viewport.y:] {
             COLUMN_PADDING :: 2
-            row := window_size.y - p.real_size.y + i32(line_index) * line_height
+            row := window_size_in_pixels.y - p.real_size.y + i32(line_index) * line_height
             start := item.highlight[0]
             end := item.highlight[1]
             has_highlight := start != end
@@ -249,7 +247,8 @@ render_ui_pane :: proc() {
             } else {
                 splits := strings.split(item.format, "\n", context.temp_allocator)
 
-                for col_str, col_index in splits {
+                for col_len, col_index in p.columns_len {
+                    col_str := splits[col_index]
                     justify_proc := strings.left_justify
 
                     if col_index == len(splits) - 1  {
@@ -258,7 +257,7 @@ render_ui_pane :: proc() {
 
                     s := justify_proc(
                         col_str,
-                        p.columns_len[col_index] + COLUMN_PADDING,
+                        col_len + COLUMN_PADDING,
                         " ",
                         context.temp_allocator,
                     )
@@ -267,7 +266,7 @@ render_ui_pane :: proc() {
             }
 
             if p.caret.coords.y - int(p.viewport.y) == line_index {
-                select_rect := sdl.Rect{ 0, row, window_size.x, line_height }
+                select_rect := sdl.Rect{ 0, row, window_size_in_pixels.x, line_height }
                 set_bg(region)
                 sdl.RenderFillRect(renderer, &select_rect)
             }
@@ -301,7 +300,7 @@ render_ui_pane :: proc() {
 
     { // Start Prompt
         prompt_rect := sdl.Rect{
-            0, window_size.y - line_height, window_size.x, line_height,
+            0, window_size_in_pixels.y - line_height, window_size_in_pixels.x, line_height,
         }
         prompt_fmt := fmt.tprintf(
             "({0}/{1}) {2}: ",
@@ -310,7 +309,7 @@ render_ui_pane :: proc() {
             p.prompt_text,
         )
         full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, query)
-        row := window_size.y - line_height
+        row := window_size_in_pixels.y - line_height
 
         set_bg(background)
         sdl.RenderFillRect(renderer, &prompt_rect)

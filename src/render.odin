@@ -161,10 +161,10 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             "{0}",
             settings_get_major_mode_name(buffer.major_mode),
         )
-        rml_fmt_size := i32(len(rml_fmt)) * char_width
-        row := p.real_size.y - line_height
+        rml_fmt_size := i32(len(rml_fmt)) * font_ui.em_width
+        row := p.real_size.y - font_ui.line_height
         dest_rect := sdl.Rect{
-            0, row, p.real_size.x, line_height,
+            0, row, p.real_size.x, font_ui.line_height,
         }
 
         left_start_column  :: PADDING
@@ -181,8 +181,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         set_bg(modeline_off_bg)
         sdl.RenderDrawLine(
             renderer,
-            0, window_height - line_height - 1,
-            window_width, window_height - line_height - 1,
+            0, window_height - font_ui.line_height - 1,
+            window_width, window_height - font_ui.line_height - 1,
         )
 
         { // Left side
@@ -220,6 +220,9 @@ render_ui_pane :: proc() {
     p := &bragi.ui_pane
 
     if !p.enabled { return  }
+
+    char_width := font_ui.em_width
+    line_height := font_ui.line_height
 
     colors := &bragi.settings.colorscheme_table
     viewport := p.viewport

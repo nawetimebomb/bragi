@@ -46,7 +46,8 @@ map_glyphs_in_font :: proc(font: ^Font) {
     font.line_height  = ttf.FontHeight(font.face)
     font.texture      = sdl.CreateTextureFromSurface(renderer, base_surface)
     font.texture_size = FONT_TEXTURE_SIZE
-    font.x_advance    = rect.w
+    ttf.GlyphMetrics32(font.face, 'M', nil, nil, nil, nil, &font.x_advance)
+
     sdl.FreeSurface(base_surface)
 }
 

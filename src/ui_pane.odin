@@ -516,9 +516,7 @@ get_prompt_text :: #force_inline proc(t: ^Pane, action: UI_Pane_Action) -> strin
 clear_results :: proc() {
     p := &bragi.ui_pane
 
-    p.columns_len = {
-        16, 6, 6, 0,
-    }
+    p.columns_len = { 16, 6, 6, 0 }
 
     for &item in p.results {
         delete(item.format)

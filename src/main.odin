@@ -17,7 +17,7 @@ import ttf "vendor:sdl2/ttf"
 TITLE   :: "Bragi"
 VERSION :: 0
 
-DEFAULT_FONT_DATA     :: #load("../res/font/firacode.ttf")
+DEFAULT_FONT_DATA     :: #load("../res/font/FiraCode-Retina.ttf")
 DEFAULT_FONT_SIZE     :: 24
 DEFAULT_WINDOW_WIDTH  :: 1024
 DEFAULT_WINDOW_HEIGHT :: 768

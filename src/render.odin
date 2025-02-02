@@ -24,7 +24,6 @@ set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
 render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     profiling_start("render.odin:render_pane")
     colors := &bragi.settings.colorscheme_table
-    char_width, line_height := get_standard_character_size()
     pane_dest := sdl.Rect{ p.real_size.x * i32(index), 0, p.real_size.x, p.real_size.y }
     viewport := p.viewport
     caret := p.caret
@@ -52,7 +51,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
     if index > 0 {
         set_bg(comment)
-        sdl.RenderDrawLine(renderer, 0, 0, 0, window_size_in_pixels.y)
+        sdl.RenderDrawLine(renderer, 0, 0, 0, window_height)
     }
 
     { // Start Caret
@@ -91,46 +90,59 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         }
 
         for r, index in screen_buffer {
-            col := (x - p.viewport.x) * char_width
-            row := y * line_height
-            c := font_editor.chars[r]
-            c.rect.x = col
-            c.rect.y = row
+            glyph_rect := font_editor.glyphs[r].rect
+            dest := sdl.Rect{ x, y, glyph_rect.w, glyph_rect.h }
 
-            if lexer_enabled {
-                switch lexer.state {
-                case .Default:
-                    set_fg(c.texture, default)
-                case .Builtin:
-                    set_fg(c.texture, builtin)
-                case .Comment:
-                    set_fg(c.texture, comment)
-                case .Constant:
-                    set_fg(c.texture, constant)
-                case .Keyword:
-                    set_fg(c.texture, keyword)
-                case .Highlight:
-                    set_fg(c.texture, highlight)
-                case .String:
-                    set_fg(c.texture, string)
-                }
-            } else {
-                set_fg(c.texture, default)
-            }
+            set_fg(font_editor.texture, default)
 
             if focused && !bragi.ui_pane.enabled {
-                if is_caret_showing(&caret, x, y, viewport.y) {
-                    set_fg(c.texture, background)
+                coords_x := x / char_width
+                coords_y := y / line_height
+
+                if is_caret_showing(&caret, coords_x, coords_y, viewport.y) {
+                    set_fg(font_editor.texture, background)
                 }
             }
 
-            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
+            sdl.RenderCopy(renderer, font_editor.texture, &glyph_rect, &dest)
 
-            x += 1
+            x += char_x_advance
             if r == '\n' {
                 x = 0
-                y += 1
+                y += line_height
             }
+
+            // col := x - p.viewport.x * char_width
+            // row := y
+            // c.rect.x = col
+            // c.rect.y = row
+
+            // if lexer_enabled {
+            //     switch lexer.state {
+            //     case .Default:
+            //         set_fg(c.texture, default)
+            //     case .Builtin:
+            //         set_fg(c.texture, builtin)
+            //     case .Comment:
+            //         set_fg(c.texture, comment)
+            //     case .Constant:
+            //         set_fg(c.texture, constant)
+            //     case .Keyword:
+            //         set_fg(c.texture, keyword)
+            //     case .Highlight:
+            //         set_fg(c.texture, highlight)
+            //     case .String:
+            //         set_fg(c.texture, string)
+            //     }
+            // } else {
+            //     set_fg(c.texture, default)
+            // }
+
+            // x += char_width
+            // if r == '\n' {
+            //     x = 0
+            //     y += line_height
+            // }
         }
     } // End Buffer
 
@@ -169,26 +181,32 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         set_bg(modeline_off_bg)
         sdl.RenderDrawLine(
             renderer,
-            0, window_size_in_pixels.y - line_height - 1,
-            window_size_in_pixels.x, window_size_in_pixels.y - line_height - 1,
+            0, window_height - line_height - 1,
+            window_width, window_height - line_height - 1,
         )
 
-        for r, index in lml_fmt {
-            c := font_ui.chars[r]
-            c.rect.x = left_start_column + c.rect.w * i32(index)
-            c.rect.y = row
+        { // Left side
+            x := i32(left_start_column)
 
-            set_fg(c.texture, focused ? modeline_on_fg : modeline_off_fg)
-            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
+            for r, index in lml_fmt {
+                glyph_rect := font_ui.glyphs[r].rect
+                dest := sdl.Rect{ x, row, glyph_rect.w, glyph_rect.h }
+                set_fg(font_ui.texture, focused ? modeline_on_fg : modeline_off_fg)
+                sdl.RenderCopy(renderer, font_ui.texture, &glyph_rect, &dest)
+                x += font_ui.x_advance
+            }
         }
 
-        for r, index in rml_fmt {
-            c := font_ui.chars[r]
-            c.rect.x = right_start_column + c.rect.w * i32(index)
-            c.rect.y = row
+        { // Right side
+            x := i32(right_start_column)
 
-            set_fg(c.texture, focused ? modeline_on_fg : modeline_off_fg)
-            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
+            for r, index in rml_fmt {
+                glyph_rect := font_ui.glyphs[r].rect
+                dest := sdl.Rect{ x, row, glyph_rect.w, glyph_rect.h }
+                set_fg(font_ui.texture, focused ? modeline_on_fg : modeline_off_fg)
+                sdl.RenderCopy(renderer, font_ui.texture, &glyph_rect, &dest)
+                x += font_ui.x_advance
+            }
         }
     } // End Modeline
 
@@ -204,13 +222,12 @@ render_ui_pane :: proc() {
     if !p.enabled { return  }
 
     colors := &bragi.settings.colorscheme_table
-    char_width, line_height := get_standard_character_size()
     viewport := p.viewport
     caret := p.caret
     query := strings.to_string(p.query)
     pane_dest := sdl.Rect{
-        window_size_in_pixels.x, window_size_in_pixels.y - 6 * line_height,
-        window_size_in_pixels.x, 6 * line_height,
+        window_width, window_height - 6 * line_height,
+        window_width, 6 * line_height,
     }
 
     background      := colors[.background]
@@ -232,7 +249,7 @@ render_ui_pane :: proc() {
         profiling_start("render.odin:render_ui_pane_results")
         for item, line_index in p.results[p.viewport.y:] {
             COLUMN_PADDING :: 2
-            row := window_size_in_pixels.y - p.real_size.y + i32(line_index) * line_height
+            row := window_height - p.real_size.y + i32(line_index) * line_height
             start := item.highlight[0]
             end := item.highlight[1]
             has_highlight := start != end
@@ -266,32 +283,33 @@ render_ui_pane :: proc() {
             }
 
             if p.caret.coords.y - int(p.viewport.y) == line_index {
-                select_rect := sdl.Rect{ 0, row, window_size_in_pixels.x, line_height }
+                select_rect := sdl.Rect{ 0, row, window_width, line_height }
                 set_bg(region)
                 sdl.RenderFillRect(renderer, &select_rect)
             }
 
+            x: i32
+
             for r, char_index in strings.to_string(row_builder) {
-                col := i32(char_index) * char_width
-                c := font_ui.chars[r]
-                c.rect.x = col
-                c.rect.y = row
+                glyph_rect := font_ui.glyphs[r].rect
+                dest := sdl.Rect{ x, row, glyph_rect.w, glyph_rect.h }
 
                 if !item.invalid {
                     if has_highlight && start <= char_index && end > char_index {
-                        set_fg(c.texture, highlight)
+                        set_fg(font_ui.texture, highlight)
                     } else if char_index >= cl1 {
-                        set_fg(c.texture, keyword)
+                        set_fg(font_ui.texture, keyword)
                     } else if char_index >= cl0 {
-                        set_fg(c.texture, highlight)
+                        set_fg(font_ui.texture, highlight)
                     } else {
-                        set_fg(c.texture, default)
+                        set_fg(font_ui.texture, default)
                     }
                 } else {
-                    set_fg(c.texture, default)
+                    set_fg(font_ui.texture, default)
                 }
 
-                sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
+                sdl.RenderCopy(renderer, font_ui.texture, &glyph_rect, &dest)
+                x += font_ui.x_advance
             }
         }
 
@@ -300,7 +318,7 @@ render_ui_pane :: proc() {
 
     { // Start Prompt
         prompt_rect := sdl.Rect{
-            0, window_size_in_pixels.y - line_height, window_size_in_pixels.x, line_height,
+            0, window_height - line_height, window_width, line_height,
         }
         prompt_fmt := fmt.tprintf(
             "({0}/{1}) {2}: ",
@@ -309,7 +327,7 @@ render_ui_pane :: proc() {
             p.prompt_text,
         )
         full_fmt := fmt.tprintf("{0}{1}", prompt_fmt, query)
-        row := window_size_in_pixels.y - line_height
+        row := window_height - line_height
 
         set_bg(background)
         sdl.RenderFillRect(renderer, &prompt_rect)
@@ -324,21 +342,22 @@ render_ui_pane :: proc() {
             sdl.RenderFillRect(renderer, &cursor_rect)
         }
 
+        x: i32
+
         for r, index in full_fmt {
-            col := i32(index) * char_width
-            c := font_ui.chars[r]
-            c.rect.x = col
-            c.rect.y = row
+            glyph_rect := font_ui.glyphs[r].rect
+            dest := sdl.Rect{ x, row, glyph_rect.w, glyph_rect.h }
 
             if index < len(prompt_fmt) {
-                set_fg(c.texture, highlight)
+                set_fg(font_ui.texture, highlight)
             } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0, 0) {
-                set_fg(c.texture, background)
+                set_fg(font_ui.texture, background)
             } else {
-                set_fg(c.texture, default)
+                set_fg(font_ui.texture, default)
             }
 
-            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
+            sdl.RenderCopy(renderer, font_ui.texture, &glyph_rect, &dest)
+            x += font_ui.x_advance
         }
     } // End Prompt
 }

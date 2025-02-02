@@ -67,14 +67,13 @@ UI_Pane :: struct {
 
 ui_pane_init :: proc() {
     p := &bragi.ui_pane
-    char_width, line_height := get_standard_character_size()
 
     p.real_size = {
-        window_size_in_pixels.x,
+        window_width,
         UI_PANE_SIZE * line_height,
     }
     p.relative_size = {
-        window_size_in_pixels.x / char_width,
+        window_width / char_width,
         UI_PANE_SIZE,
     }
     p.query = strings.builder_make()

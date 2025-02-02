@@ -169,7 +169,8 @@ update_input :: proc() {
                         if w.data1 <= MINIMUM_WINDOW_SIZE ||
                             w.data2 <= MINIMUM_WINDOW_SIZE { return }
 
-                        window_size_in_pixels = { e.window.data1, e.window.data2 }
+                        window_width = e.window.data1
+                        window_height = e.window.data2
                         resize_panes()
                         return
                     }

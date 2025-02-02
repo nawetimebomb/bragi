@@ -54,12 +54,11 @@ Pane :: struct {
 
 pane_init :: proc() -> Pane {
     return  {
-        real_size = window_size_in_pixels,
+        real_size = { window_width, window_height },
     }
 }
 
 pane_begin :: proc(p: ^Pane) {
-    char_width, line_height := get_standard_character_size()
     buffer := p.buffer
     caret := &p.caret
     viewport := &p.viewport
@@ -118,15 +117,15 @@ pane_destroy :: proc(p: ^Pane) {
 }
 
 resize_panes :: proc() {
-    size_y := window_size_in_pixels.y
-    size_x := window_size_in_pixels.x / i32(len(bragi.panes))
+    size_y := window_height
+    size_x := window_width / i32(len(bragi.panes))
 
     if bragi.ui_pane.enabled {
-        size_y = window_size_in_pixels.y - bragi.ui_pane.real_size.y
+        size_y = window_height - bragi.ui_pane.real_size.y
     }
 
     for &p in bragi.panes {
-        p.real_size.x = window_size_in_pixels.x / i32(len(bragi.panes))
+        p.real_size.x = window_width / i32(len(bragi.panes))
         p.real_size.y = size_y
     }
 

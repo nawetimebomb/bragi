@@ -205,7 +205,6 @@ get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32
 
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     pos: Caret_Pos
-    char_width, line_height := get_standard_character_size()
     pos.x = int(x / char_width + p.viewport.x)
     pos.y = int(y / line_height + p.viewport.y)
 

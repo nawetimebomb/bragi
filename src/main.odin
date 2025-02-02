@@ -47,34 +47,42 @@ FONT_EDITOR  :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI      :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI_BOLD :: #load("../res/FiraCode-SemiBold.ttf")
 
-Char :: struct {
-    rect:    sdl.Rect,
-    texture: ^sdl.Texture,
+NUM_GLYPHS :: 128
+
+Glyph :: struct {
+    rect: sdl.Rect,
 }
 
 Font :: struct {
-    chars:     map[rune]Char,
-    face:      ^ttf.Font,
-    em_width:  int,
-    x_advance: int,
+    em_width:     i32,
+    face:         ^ttf.Font,
+    glyphs:       [NUM_GLYPHS]Glyph,
+    line_height:  i32,
+    name:         string,
+    texture:      ^sdl.Texture,
+    texture_size: i32,
+    x_advance:    i32,
 }
 
 font_editor:  Font
 font_ui:      Font
 font_ui_bold: Font
 
-DEFAULT_FONT_EDITOR_SIZE :: 16
-DEFAULT_FONT_UI_SIZE     :: 16
+DEFAULT_FONT_EDITOR_SIZE :: 14
+DEFAULT_FONT_UI_SIZE     :: 15
 
 // font base size is the one configured by the user, the other ones are derived
 font_editor_size : i32 = DEFAULT_FONT_EDITOR_SIZE
 font_ui_size     : i32 = DEFAULT_FONT_UI_SIZE
 
-char_width:  i32
-line_height: i32
+char_width:     i32
+char_x_advance: i32
+line_height:    i32
 
-window_size_in_pixels: [2]i32
-window_in_focus:       bool
+window_width: i32
+window_height: i32
+dpi_scale: f32
+window_in_focus: bool
 
 bragi_allocator:  runtime.Allocator
 bragi_is_running: bool
@@ -225,9 +233,9 @@ main :: proc() {
     bragi_allocator = context.allocator
 
     window_in_focus = true
-    window_size_in_pixels = {
-        DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
-    }
+    window_width = DEFAULT_BASE_WINDOW_SIZE
+    window_height = DEFAULT_BASE_WINDOW_SIZE
+
 
     // TODO: this should happen after we initialize settings, because we want to
     // load the prefered user fonts

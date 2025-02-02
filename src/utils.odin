@@ -70,11 +70,6 @@ canonicalize_coords :: proc(d: []u8, rel_x, rel_y: int) -> (point: int) {
     return
 }
 
-get_standard_character_size :: proc() -> (char_width, line_length: i32) {
-    M_char_rect := font_editor.chars['M'].rect
-    return M_char_rect.w, M_char_rect.h
-}
-
 get_next_line_start_index :: proc(d: []u8, pos: int) -> (index: int) {
     _, eol := get_line_boundaries(d, pos)
     return eol + 1

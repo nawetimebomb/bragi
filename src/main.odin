@@ -17,23 +17,12 @@ import ttf "vendor:sdl2/ttf"
 TITLE   :: "Bragi"
 VERSION :: 0
 
-DEFAULT_FONT_DATA     :: #load("../res/font/FiraCode-Retina.ttf")
-DEFAULT_FONT_SIZE     :: 20
-
 SETTINGS_DATA     :: #load("../res/config.bragi")
 SETTINGS_FILENAME :: "config.bragi"
 
 TITLE_TIMEOUT :: 1 * time.Second
 
-Character_Texture :: struct {
-    dest:    sdl.Rect,
-    texture: ^sdl.Texture,
-}
-
 Program_Context :: struct {
-    delta_time:     time.Duration,
-    font:           ^ttf.Font,
-    characters:     map[rune]Character_Texture,
     profiling:      bool,
     spall_buf:      spall.Buffer,
     spall_ctx:      spall.Context,
@@ -51,39 +40,35 @@ Bragi :: struct {
     settings:        Settings,
 }
 
-MINIMUM_WINDOW_SIZE      :: 100
+MINIMUM_WINDOW_SIZE      :: 800
 DEFAULT_BASE_WINDOW_SIZE :: 900
 
-Char_Texture :: struct {
-    dest:    sdl.Rect,
+FONT_EDITOR  :: #load("../res/FiraCode-Retina.ttf")
+FONT_UI      :: #load("../res/FiraCode-Retina.ttf")
+FONT_UI_BOLD :: #load("../res/FiraCode-SemiBold.ttf")
+
+Char :: struct {
+    rect:    sdl.Rect,
     texture: ^sdl.Texture,
 }
 
 Font :: struct {
-    chars: map[rune]Char_Texture,
-    font:  ^ttf.Font,
+    chars:     map[rune]Char,
+    face:      ^ttf.Font,
+    em_width:  int,
+    x_advance: int,
 }
 
-DEFAULT_FONT_BASE_SIZE   :: 16
-DEFAULT_FONT_XSMALL_SIZE :: 12
-DEFAULT_FONT_SMALL_SIZE  :: 14
-DEFAULT_FONT_LARGE_SIZE  :: 18
-DEFAULT_FONT_XLARGE_SIZE :: 22
-DEFAULT_FONT_JUMBO_SIZE  :: 30
+font_editor:  Font
+font_ui:      Font
+font_ui_bold: Font
 
-font_base:      Font
-font_base_bold: Font
-font_small:     Font
-font_xsmall:    Font
-font_large:     Font
-font_xlarge:    Font
+DEFAULT_FONT_EDITOR_SIZE :: 16
+DEFAULT_FONT_UI_SIZE     :: 16
 
 // font base size is the one configured by the user, the other ones are derived
-font_base_size   := DEFAULT_FONT_BASE_SIZE
-font_small_size  := DEFAULT_FONT_SMALL_SIZE
-font_xsmall_size := DEFAULT_FONT_XSMALL_SIZE
-font_large_size  := DEFAULT_FONT_LARGE_SIZE
-font_xlarge_size := DEFAULT_FONT_XLARGE_SIZE
+font_editor_size : i32 = DEFAULT_FONT_EDITOR_SIZE
+font_ui_size     : i32 = DEFAULT_FONT_UI_SIZE
 
 char_width:  i32
 line_height: i32
@@ -91,9 +76,10 @@ line_height: i32
 window_size_in_pixels: [2]i32
 window_in_focus:       bool
 
-bragi_allocator: runtime.Allocator
+bragi_allocator:  runtime.Allocator
 bragi_is_running: bool
 
+delta_time: time.Duration
 
 bragi: Bragi
 
@@ -102,14 +88,8 @@ window:   ^sdl.Window
 
 destroy_context :: proc() {
     log.debug("Destroying context")
-    for _, char in bragi.ctx.characters {
-        sdl.DestroyTexture(char.texture)
-    }
-    delete(bragi.ctx.characters)
-
     sdl.DestroyRenderer(renderer)
     sdl.DestroyWindow(window)
-    ttf.CloseFont(bragi.ctx.font)
     ttf.Quit()
     sdl.Quit()
 }
@@ -154,19 +134,11 @@ initialize_context :: proc() {
 
     window = sdl.CreateWindow(TITLE, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
                               DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
-                              {.SHOWN, .RESIZABLE})
+                              {.SHOWN, .RESIZABLE, .ALLOW_HIGHDPI})
     assert(window != nil, "Cannot open window")
 
     renderer = sdl.CreateRenderer(window, -1, {.ACCELERATED, .PRESENTVSYNC})
     assert(renderer != nil, "Cannot create renderer")
-
-
-    src_data :=
-        sdl.RWFromConstMem(raw_data(DEFAULT_FONT_DATA), i32(len(DEFAULT_FONT_DATA)))
-    bragi.ctx.font = ttf.OpenFontRW(src_data, true, DEFAULT_FONT_SIZE)
-    assert(bragi.ctx.font != nil, sdl.GetErrorString())
-
-    set_characters_textures()
 
     sdl.SetCursor(sdl.CreateSystemCursor(.IBEAM))
 
@@ -213,33 +185,6 @@ initialize_settings :: proc() {
     load_settings_from_internal_data()
 }
 
-// NOTE: This function should run every time the user changes the font
-set_characters_textures :: proc() {
-    COLOR_WHITE : sdl.Color : { 255, 255, 255, 255 }
-    ascii := " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~áéíóúÁÉÍÓÚ"
-
-    clear(&bragi.ctx.characters)
-    log.debug("Generating new character textures")
-
-    for c in ascii[:] {
-        ostr := utf8.runes_to_string([]rune{c})
-        cstr := cstring(raw_data(ostr))
-        surface := ttf.RenderGlyph32_Blended(bragi.ctx.font, c, COLOR_WHITE)
-        texture := sdl.CreateTextureFromSurface(renderer, surface)
-        sdl.SetTextureScaleMode(texture, .Best)
-        dest_rect := sdl.Rect{}
-        ttf.SizeUTF8(bragi.ctx.font, cstr, &dest_rect.w, &dest_rect.h)
-
-        bragi.ctx.characters[c] = Character_Texture{
-            dest    = dest_rect,
-            texture = texture,
-        }
-
-        sdl.FreeSurface(surface)
-        delete(ostr)
-    }
-}
-
 initialize_profiling :: proc() {
     log.debug("Initializing profiling")
 	bragi.ctx.spall_ctx = spall.context_create("profile.spall")
@@ -284,7 +229,13 @@ main :: proc() {
         DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
     }
 
+    // TODO: this should happen after we initialize settings, because we want to
+    // load the prefered user fonts
+
     initialize_context()
+
+    platform_init_fonts()
+
     initialize_settings()
     initialize_editor()
     load_keybinds()
@@ -319,7 +270,7 @@ main :: proc() {
 
         free_all(context.temp_allocator)
 
-        bragi.ctx.delta_time = time.tick_lap_time(&previous_frame_time)
+        delta_time = time.tick_lap_time(&previous_frame_time)
 
         if time.tick_diff(last_update_time, time.tick_now()) > TITLE_TIMEOUT {
             last_update_time = time.tick_now()
@@ -327,7 +278,7 @@ main :: proc() {
 
             window_title := fmt.ctprintf(
                 "Bragi v{0} | frametime: {1} | memory: {2}kb",
-                VERSION, bragi.ctx.delta_time,
+                VERSION, delta_time,
                 tracking_allocator.current_memory_allocated / 1024,
             )
             sdl.SetWindowTitle(window, window_title)
@@ -343,6 +294,8 @@ main :: proc() {
             sdl.Delay(u32(math.floor(FRAMETIME_LIMIT - elapsed)))
         }
     }
+
+    platform_deinit_fonts()
 
     destroy_editor()
     destroy_settings()

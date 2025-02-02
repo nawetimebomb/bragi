@@ -93,9 +93,9 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         for r, index in screen_buffer {
             col := (x - p.viewport.x) * char_width
             row := y * line_height
-            c := bragi.ctx.characters[r]
-            c.dest.x = col
-            c.dest.y = row
+            c := font_editor.chars[r]
+            c.rect.x = col
+            c.rect.y = row
 
             if lexer_enabled {
                 switch lexer.state {
@@ -124,7 +124,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                 }
             }
 
-            sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
 
             x += 1
             if r == '\n' {
@@ -174,21 +174,21 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         )
 
         for r, index in lml_fmt {
-            c := bragi.ctx.characters[r]
-            c.dest.x = left_start_column + c.dest.w * i32(index)
-            c.dest.y = row
+            c := font_ui.chars[r]
+            c.rect.x = left_start_column + c.rect.w * i32(index)
+            c.rect.y = row
 
             set_fg(c.texture, focused ? modeline_on_fg : modeline_off_fg)
-            sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
         }
 
         for r, index in rml_fmt {
-            c := bragi.ctx.characters[r]
-            c.dest.x = right_start_column + c.dest.w * i32(index)
-            c.dest.y = row
+            c := font_ui.chars[r]
+            c.rect.x = right_start_column + c.rect.w * i32(index)
+            c.rect.y = row
 
             set_fg(c.texture, focused ? modeline_on_fg : modeline_off_fg)
-            sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
         }
     } // End Modeline
 
@@ -273,9 +273,9 @@ render_ui_pane :: proc() {
 
             for r, char_index in strings.to_string(row_builder) {
                 col := i32(char_index) * char_width
-                c := bragi.ctx.characters[r]
-                c.dest.x = col
-                c.dest.y = row
+                c := font_ui.chars[r]
+                c.rect.x = col
+                c.rect.y = row
 
                 if !item.invalid {
                     if has_highlight && start <= char_index && end > char_index {
@@ -291,7 +291,7 @@ render_ui_pane :: proc() {
                     set_fg(c.texture, default)
                 }
 
-                sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+                sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
             }
         }
 
@@ -326,9 +326,9 @@ render_ui_pane :: proc() {
 
         for r, index in full_fmt {
             col := i32(index) * char_width
-            c := bragi.ctx.characters[r]
-            c.dest.x = col
-            c.dest.y = row
+            c := font_ui.chars[r]
+            c.rect.x = col
+            c.rect.y = row
 
             if index < len(prompt_fmt) {
                 set_fg(c.texture, highlight)
@@ -338,7 +338,7 @@ render_ui_pane :: proc() {
                 set_fg(c.texture, default)
             }
 
-            sdl.RenderCopy(renderer, c.texture, nil, &c.dest)
+            sdl.RenderCopy(renderer, c.texture, nil, &c.rect)
         }
     } // End Prompt
 }

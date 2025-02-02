@@ -71,7 +71,7 @@ canonicalize_coords :: proc(d: []u8, rel_x, rel_y: int) -> (point: int) {
 }
 
 get_standard_character_size :: proc() -> (char_width, line_length: i32) {
-    M_char_rect := bragi.ctx.characters['M'].dest
+    M_char_rect := font_editor.chars['M'].rect
     return M_char_rect.w, M_char_rect.h
 }
 

@@ -141,6 +141,8 @@ ui_pane_end :: proc() {
     p := &bragi.ui_pane
 
     if !p.enabled { return }
+
+    ui_pane_render()
 }
 
 rollback_to_prev_value :: proc() {
@@ -651,4 +653,130 @@ ui_pane_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) 
     ui_pane_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
 
     return strings.clone(strings.to_string(fmt_string))
+}
+
+ui_pane_render :: proc() {
+    p := &bragi.ui_pane
+
+    caret := p.caret
+    colors := &bragi.settings.colorscheme_table
+    font := &font_ui
+    font_bold := &font_ui_bold
+    viewport := p.viewport
+
+    // TODO: Move this to its own texture
+    pane_dest := make_rect(
+        window_width, window_height - 6 * font.line_height,
+        window_width, 6 * line_height,
+    )
+
+    { // Start Results
+        profiling_start("ui_pane.odin:ui_pane_render")
+
+        for item, line_index in p.results[p.viewport.y:] {
+            COLUMN_PADDING :: 2
+
+            row := window_height - p.real_size.y + i32(line_index) * font.line_height
+            hl_start := item.highlight[0]
+            hl_end := item.highlight[1]
+            has_highlight := hl_start != hl_end
+            row_builder := strings.builder_make(context.temp_allocator)
+            cl0 := p.columns_len[0] + COLUMN_PADDING
+            cl1 := cl0 + p.columns_len[1] + COLUMN_PADDING
+            cl2 := cl1 + p.columns_len[2] + COLUMN_PADDING
+            cl3 := cl2 + p.columns_len[3] + COLUMN_PADDING
+            x: i32
+
+            if item.invalid {
+                strings.write_string(&row_builder, item.format)
+            } else {
+                splits := strings.split(item.format, "\n", context.temp_allocator)
+
+                for col_len, col_index in p.columns_len {
+                    col_str := splits[col_index]
+                    justify_proc := strings.left_justify
+
+                    if col_index == len(splits) - 1  {
+                        justify_proc = strings.right_justify
+                    }
+
+                    s := justify_proc(
+                        col_str,
+                        col_len + COLUMN_PADDING,
+                        " ",
+                        context.temp_allocator,
+                    )
+                    strings.write_string(&row_builder, s)
+                }
+            }
+
+            if caret.coords.y - int(viewport.y) == line_index {
+                set_bg(colors[.region])
+                render_fill_rect(0, row, window_width, font.line_height)
+            }
+
+            for r, char_index in strings.to_string(row_builder) {
+                used_font := font
+
+                if !item.invalid {
+                    if has_highlight && hl_start <= char_index && hl_end > char_index {
+                        used_font = font_bold
+                        set_fg(used_font.texture, colors[.highlight])
+                    } else if char_index >= cl1 {
+                        set_fg(used_font.texture, colors[.keyword])
+                    } else if char_index >= cl0 {
+                        set_fg(used_font.texture, colors[.highlight])
+                    } else {
+                        set_fg(used_font.texture, colors[.default])
+                    }
+                }
+
+                glyph_rect := used_font.glyphs[r].rect
+                dest := make_rect(x, row, glyph_rect.w, glyph_rect.h)
+                render_copy(used_font.texture, &glyph_rect, &dest)
+                x += used_font.x_advance
+            }
+        }
+
+        profiling_end()
+    } // End Results
+
+    { // Start Prompt
+        font := &font_ui
+        font_bold := &font_ui_bold
+        prompt_fmt := fmt.tprintf(
+            "({0}/{1}) {2}: ", caret.coords.y + 1, len(p.results), p.prompt_text,
+        )
+        prompt_str := fmt.tprintf("{0}{1}", prompt_fmt, strings.to_string(p.query))
+        row := window_height - font.line_height
+        x: i32
+
+        set_bg(colors[.background])
+        render_fill_rect(
+            0, window_height - font.line_height, window_width, font.line_height,
+        )
+
+        if !caret.blinking {
+            set_bg(colors[.cursor])
+            render_fill_rect(
+                i32(caret.coords.x + len(prompt_fmt)) * font.em_width, row,
+                font.em_width, font.line_height,
+            )
+        }
+
+        for r, index in prompt_str {
+            if index < len(prompt_fmt) {
+                set_fg(font.texture, colors[.highlight])
+            } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0, 0) {
+                set_fg(font.texture, colors[.background])
+            } else {
+                set_fg(font.texture, colors[.default])
+            }
+
+            glyph_rect := font.glyphs[r].rect
+            dest := make_rect(x, row, glyph_rect.w, glyph_rect.h)
+            render_copy(font.texture, &glyph_rect, &dest)
+            x += font.x_advance
+        }
+    } // End Prompt
 }

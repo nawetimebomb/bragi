@@ -271,7 +271,6 @@ main :: proc() {
             pane_end(&p, index)
         }
 
-        render_ui_pane()
         ui_pane_end()
 
         sdl.RenderPresent(renderer)

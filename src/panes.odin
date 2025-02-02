@@ -133,7 +133,7 @@ resize_panes :: proc() {
     sdl.DestroyTexture(bragi.ctx.pane_texture)
 
     bragi.ctx.pane_texture = sdl.CreateTexture(
-        bragi.ctx.renderer, .RGBA8888, .TARGET,
+        renderer, .RGBA8888, .TARGET,
         window_size.x / i32(len(bragi.panes)), size_y,
     )
 }

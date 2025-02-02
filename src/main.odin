@@ -42,8 +42,6 @@ Program_Context :: struct {
     spall_ctx:      spall.Context,
     running:        bool,
     pane_texture:   ^sdl.Texture,
-    renderer:       ^sdl.Renderer,
-    window:         ^sdl.Window,
     window_size:    [2]i32,
     window_focused: bool,
 }
@@ -61,6 +59,9 @@ Bragi :: struct {
 
 bragi: Bragi
 
+renderer: ^sdl.Renderer
+window:   ^sdl.Window
+
 destroy_context :: proc() {
     log.debug("Destroying context")
     for _, char in bragi.ctx.characters {
@@ -68,8 +69,8 @@ destroy_context :: proc() {
     }
     delete(bragi.ctx.characters)
 
-    sdl.DestroyRenderer(bragi.ctx.renderer)
-    sdl.DestroyWindow(bragi.ctx.window)
+    sdl.DestroyRenderer(renderer)
+    sdl.DestroyWindow(window)
     ttf.CloseFont(bragi.ctx.font)
     ttf.Quit()
     sdl.Quit()
@@ -113,15 +114,13 @@ initialize_context :: proc() {
     assert(sdl.Init({.VIDEO}) == 0, sdl.GetErrorString())
     assert(ttf.Init() == 0, sdl.GetErrorString())
 
-    bragi.ctx.window =
-        sdl.CreateWindow(TITLE, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
-                         DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
-                         {.SHOWN, .RESIZABLE, .ALLOW_HIGHDPI})
-    assert(bragi.ctx.window != nil, "Cannot open window")
+    window = sdl.CreateWindow(TITLE, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
+                              DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
+                              {.SHOWN, .RESIZABLE, .ALLOW_HIGHDPI})
+    assert(window != nil, "Cannot open window")
 
-    bragi.ctx.renderer =
-        sdl.CreateRenderer(bragi.ctx.window, -1, {.ACCELERATED, .PRESENTVSYNC})
-    assert(bragi.ctx.renderer != nil, "Cannot create renderer")
+    renderer = sdl.CreateRenderer(window, -1, {.ACCELERATED, .PRESENTVSYNC})
+    assert(renderer != nil, "Cannot create renderer")
 
 
     src_data :=
@@ -134,7 +133,7 @@ initialize_context :: proc() {
     sdl.SetCursor(sdl.CreateSystemCursor(.IBEAM))
 
     bragi.ctx.pane_texture = sdl.CreateTexture(
-        bragi.ctx.renderer, .RGBA8888, .TARGET,
+        renderer, .RGBA8888, .TARGET,
         DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT,
     )
 
@@ -190,7 +189,7 @@ set_characters_textures :: proc() {
         ostr := utf8.runes_to_string([]rune{c})
         cstr := cstring(raw_data(ostr))
         surface := ttf.RenderGlyph32_Blended(bragi.ctx.font, c, COLOR_WHITE)
-        texture := sdl.CreateTextureFromSurface(bragi.ctx.renderer, surface)
+        texture := sdl.CreateTextureFromSurface(renderer, surface)
         sdl.SetTextureScaleMode(texture, .Best)
         dest_rect := sdl.Rect{}
         ttf.SizeUTF8(bragi.ctx.font, cstr, &dest_rect.w, &dest_rect.h)
@@ -254,7 +253,7 @@ main :: proc() {
         frame_start := sdl.GetPerformanceCounter()
 
         set_bg(bragi.settings.colorscheme_table[.background])
-        sdl.RenderClear(bragi.ctx.renderer)
+        sdl.RenderClear(renderer)
 
         ui_pane_begin()
 
@@ -273,7 +272,7 @@ main :: proc() {
         render_ui_pane()
         ui_pane_end()
 
-        sdl.RenderPresent(bragi.ctx.renderer)
+        sdl.RenderPresent(renderer)
 
         free_all(context.temp_allocator)
 
@@ -288,7 +287,7 @@ main :: proc() {
                 VERSION, bragi.ctx.delta_time,
                 tracking_allocator.current_memory_allocated / 1024,
             )
-            sdl.SetWindowTitle(bragi.ctx.window, window_title)
+            sdl.SetWindowTitle(window, window_title)
         }
 
         frame_end := sdl.GetPerformanceCounter()

@@ -11,7 +11,7 @@ is_caret_showing :: #force_inline proc(c: ^Caret, x, y, offset: i32) -> bool {
 
 set_bg :: #force_inline proc(c: Color) {
     if c.a != 0 {
-        sdl.SetRenderDrawColor(bragi.ctx.renderer, c.r, c.g, c.b, c.a)
+        sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
     }
 }
 
@@ -25,7 +25,6 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     profiling_start("render.odin:render_pane")
     colors := &bragi.settings.colorscheme_table
     char_width, line_height := get_standard_character_size()
-    renderer := bragi.ctx.renderer
     window_size := bragi.ctx.window_size
     pane_dest := sdl.Rect{ p.real_size.x * i32(index), 0, p.real_size.x, p.real_size.y }
     viewport := p.viewport
@@ -207,7 +206,6 @@ render_ui_pane :: proc() {
 
     colors := &bragi.settings.colorscheme_table
     char_width, line_height := get_standard_character_size()
-    renderer := bragi.ctx.renderer
     window_size := bragi.ctx.window_size
     viewport := p.viewport
     caret := p.caret

@@ -167,7 +167,7 @@ update_input :: proc() {
                 return
             }
             case .DROPFILE: {
-                sdl.RaiseWindow(bragi.ctx.window)
+                sdl.RaiseWindow(window)
                 filepath := string(e.drop.file)
                 editor_open_file(p, filepath)
                 delete(e.drop.file)

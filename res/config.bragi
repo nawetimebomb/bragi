@@ -2,6 +2,10 @@
 [keybindings]
 modifier                        <C-x>
 
+increase_font_size              <C-S-=>
+decrease_font_size              <C-->
+reset_font_size                 <C-0>
+
 quit_mode                       <C-g> <ESC>
 
 find_file                       <C-x-C-f>

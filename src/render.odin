@@ -90,6 +90,12 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         }
 
         for r, index in screen_buffer {
+            if r == '\n' {
+                x = 0
+                y += line_height
+                continue
+            }
+
             glyph_rect := font_editor.glyphs[r].rect
             dest := sdl.Rect{ x, y, glyph_rect.w, glyph_rect.h }
 
@@ -105,12 +111,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             }
 
             sdl.RenderCopy(renderer, font_editor.texture, &glyph_rect, &dest)
-
             x += char_x_advance
-            if r == '\n' {
-                x = 0
-                y += line_height
-            }
 
             // col := x - p.viewport.x * char_width
             // row := y
@@ -149,6 +150,10 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     { // Start Modeline
         PADDING :: 10
         line_number := caret.coords.y + 1
+        buffer_status := get_buffer_status(buffer)
+        buffer_name_indices := [2]int{
+            len(buffer_status), len(buffer_status) + len(buffer.name),
+        }
 
         lml_fmt := fmt.tprintf(
             "{0} {1} ({2}, {3})",
@@ -189,11 +194,17 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             x := i32(left_start_column)
 
             for r, index in lml_fmt {
-                glyph_rect := font_ui.glyphs[r].rect
+                used_font := font_ui
+
+                if buffer_name_indices[0] <= index && buffer_name_indices[1] >= index {
+                    used_font = font_ui_bold
+                }
+
+                glyph_rect := used_font.glyphs[r].rect
                 dest := sdl.Rect{ x, row, glyph_rect.w, glyph_rect.h }
-                set_fg(font_ui.texture, focused ? modeline_on_fg : modeline_off_fg)
-                sdl.RenderCopy(renderer, font_ui.texture, &glyph_rect, &dest)
-                x += font_ui.x_advance
+                set_fg(used_font.texture, focused ? modeline_on_fg : modeline_off_fg)
+                sdl.RenderCopy(renderer, used_font.texture, &glyph_rect, &dest)
+                x += used_font.x_advance
             }
         }
 

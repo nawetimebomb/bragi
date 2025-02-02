@@ -6,6 +6,10 @@ import "core:strings"
 Command :: enum {
     modifier,
 
+    increase_font_size,
+    decrease_font_size,
+    reset_font_size,
+
     quit_mode,
 
     find_file,

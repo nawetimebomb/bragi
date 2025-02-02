@@ -20,6 +20,10 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     p.caret.last_keystroke = time.tick_now()
 
     #partial switch cmd {
+        case .increase_font_size:      increase_font_size()
+        case .decrease_font_size:      decrease_font_size()
+        case .reset_font_size:         reset_font_size()
+
         case .find_file:               editor_find_file(p)
         case .switch_buffer:           editor_switch_buffer(p)
         case .search_backward:         editor_search_backward(p)

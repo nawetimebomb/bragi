@@ -40,8 +40,10 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
         case .SPACE:            return "SPACE"
 
         case .COMMA:            return ","
+        case .EQUALS:           return "="
         case .GREATER:          return ">"
         case .LESS:             return "<"
+        case .MINUS:            return "-"
         case .PERIOD:           return "."
         case .SLASH:            return "/"
 
@@ -166,11 +168,18 @@ update_input :: proc() {
                         return
                     }
                     case .RESIZED: {
-                        if w.data1 <= MINIMUM_WINDOW_SIZE ||
-                            w.data2 <= MINIMUM_WINDOW_SIZE { return }
+                        new_window_size_is_invalid :=
+                            w.data1 <= MINIMUM_WINDOW_SIZE ||
+                            w.data2 <= MINIMUM_WINDOW_SIZE
 
-                        window_width = e.window.data1
-                        window_height = e.window.data2
+                        if new_window_size_is_invalid {
+                            sdl.SetWindowSize(
+                                window, MINIMUM_WINDOW_SIZE, MINIMUM_WINDOW_SIZE,
+                            )
+                        }
+
+                        sdl.GetWindowPosition(window, &window_x, &window_y)
+                        sdl.GetWindowSize(window, &window_width, &window_height)
                         resize_panes()
                         return
                     }

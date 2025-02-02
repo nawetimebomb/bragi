@@ -40,9 +40,6 @@ Bragi :: struct {
     settings:        Settings,
 }
 
-MINIMUM_WINDOW_SIZE      :: 800
-DEFAULT_BASE_WINDOW_SIZE :: 900
-
 FONT_EDITOR  :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI      :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI_BOLD :: #load("../res/FiraCode-SemiBold.ttf")
@@ -68,20 +65,28 @@ font_editor:  Font
 font_ui:      Font
 font_ui_bold: Font
 
+MINIMUM_FONT_SIZE        :: 8
+MAXIMUM_FONT_SIZE        :: 50
 DEFAULT_FONT_EDITOR_SIZE :: 15
-DEFAULT_FONT_UI_SIZE     :: 15
+DEFAULT_FONT_UI_SIZE     :: 20
 
 // font base size is the one configured by the user, the other ones are derived
 font_editor_size : i32 = DEFAULT_FONT_EDITOR_SIZE
 font_ui_size     : i32 = DEFAULT_FONT_UI_SIZE
 
+// font_editor related values
 char_width:     i32
 char_x_advance: i32
 line_height:    i32
 
-window_width: i32
-window_height: i32
-dpi_scale: f32
+MINIMUM_WINDOW_SIZE      :: 800
+DEFAULT_BASE_WINDOW_SIZE :: 900
+
+window_x:        i32
+window_y:        i32
+window_width:    i32
+window_height:   i32
+dpi_scale:       f32
 window_in_focus: bool
 
 bragi_allocator:  runtime.Allocator
@@ -154,6 +159,9 @@ initialize_context :: proc() {
         renderer, .RGBA8888, .TARGET,
         DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
     )
+
+    sdl.GetWindowPosition(window, &window_x, &window_y)
+    sdl.GetWindowSize(window, &window_width, &window_height)
 
     bragi_is_running = true
 }
@@ -233,8 +241,7 @@ main :: proc() {
     bragi_allocator = context.allocator
 
     window_in_focus = true
-    window_width = DEFAULT_BASE_WINDOW_SIZE
-    window_height = DEFAULT_BASE_WINDOW_SIZE
+    sdl.RaiseWindow(window)
 
 
     // TODO: this should happen after we initialize settings, because we want to
@@ -242,7 +249,7 @@ main :: proc() {
 
     initialize_context()
 
-    platform_init_fonts()
+    fonts_init()
 
     initialize_settings()
     initialize_editor()
@@ -302,7 +309,7 @@ main :: proc() {
         }
     }
 
-    platform_deinit_fonts()
+    fonts_deinit()
 
     destroy_editor()
     destroy_settings()

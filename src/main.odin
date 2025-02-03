@@ -12,6 +12,7 @@ import     "core:strings"
 import     "core:time"
 import     "core:unicode/utf8"
 import sdl "vendor:sdl2"
+import stt "vendor:stb/truetype"
 import ttf "vendor:sdl2/ttf"
 
 TITLE   :: "Bragi"
@@ -40,11 +41,28 @@ Bragi :: struct {
     settings:        Settings,
 }
 
+FONT_TEST    :: #load("../res/OpenSans-Regular.ttf")
 FONT_EDITOR  :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI      :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI_BOLD :: #load("../res/FiraCode-SemiBold.ttf")
 
 NUM_GLYPHS :: 128
+
+_Font :: struct {
+    ascent:       i32,
+    baseline:     i32,
+    chars:        [96]stt.packedchar,
+    descent:      i32,
+    em_width:     f32,
+    info:         stt.fontinfo,
+    line_gap:     i32,
+    line_height:  f32,
+    scale:        f32,
+    size:         f32,
+    texture:      ^sdl.Texture,
+    texture_size: i32,
+    xadvance:     i32,
+}
 
 Glyph :: struct {
     rect: sdl.Rect,
@@ -61,13 +79,17 @@ Font :: struct {
     x_advance:    i32,
 }
 
+_font_editor:  _Font
+_font_ui:      _Font
+_font_ui_bold: _Font
+
 font_editor:  Font
 font_ui:      Font
 font_ui_bold: Font
 
 MINIMUM_FONT_SIZE        :: 8
 MAXIMUM_FONT_SIZE        :: 50
-DEFAULT_FONT_EDITOR_SIZE :: 15
+DEFAULT_FONT_EDITOR_SIZE :: 20
 DEFAULT_FONT_UI_SIZE     :: 20
 
 // font base size is the one configured by the user, the other ones are derived

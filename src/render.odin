@@ -1,5 +1,6 @@
 package main
 
+import     "core:math"
 import     "core:fmt"
 import     "core:strings"
 import sdl "vendor:sdl2"
@@ -54,30 +55,32 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         sdl.RenderDrawLine(renderer, 0, 0, 0, window_height)
     }
 
-    { // Start Caret
-        dest_rect := sdl.Rect{
-            (i32(caret.coords.x) - viewport.x) * char_width,
-            (i32(caret.coords.y) - viewport.y) * line_height,
-            char_width, line_height,
-        }
+    // { // Start Caret
+    //     x := i32(caret.coords.x)
+    //     y := i32(caret.coords.y)
 
-        set_bg(cursor)
+    //     dest_rect := sdl.FRect{
+    //         f32(x - viewport.x) * _font_editor.em_width,
+    //         f32(y - viewport.y) * _font_editor.line_height,
+    //         _font_editor.em_width, _font_editor.line_height,
+    //     }
 
-        if focused && !bragi.ui_pane.enabled {
-            if !caret.blinking {
-                sdl.RenderFillRect(renderer, &dest_rect)
-            }
-        } else {
-            sdl.RenderDrawRect(renderer, &dest_rect)
-        }
-    } // End Caret
+    //     set_bg(cursor)
+
+    //     if focused && !bragi.ui_pane.enabled {
+    //         if !caret.blinking {
+    //             sdl.RenderFillRectF(renderer, &dest_rect)
+    //         }
+    //     } else {
+    //         sdl.RenderDrawRectF(renderer, &dest_rect)
+    //     }
+    // } // End Caret
 
     { // Start Buffer
         mm := buffer.major_mode
         lexer := languages.Lexer{}
         lexer_enabled := settings_is_lexer_enabled(mm)
         lex := settings_get_lexer_proc(mm)
-        x, y: i32
         screen_buffer := buffer.str
 
         if len(buffer.lines) > int(p.relative_size.y) {
@@ -89,61 +92,62 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             screen_buffer = buffer.str[top:bottom]
         }
 
+        // cursor_pos := caret_to_buffer_cursor(buffer, caret.coords)
+        x: f32
+        y := _font_editor.line_height
         for r, index in screen_buffer {
             if r == '\n' {
                 x = 0
-                y += line_height
+                y += _font_editor.line_height
                 continue
             }
 
-            glyph_rect := font_editor.glyphs[r].rect
-            dest := sdl.Rect{ x, y, glyph_rect.w, glyph_rect.h }
 
-            set_fg(font_editor.texture, default)
-
-            if focused && !bragi.ui_pane.enabled {
-                coords_x := x / char_width
-                coords_y := y / line_height
-
-                if is_caret_showing(&caret, coords_x, coords_y, viewport.y) {
-                    set_fg(font_editor.texture, background)
+            if r >= 32 && r < 128 {
+                char := _font_editor.chars[r - 32]
+                src := sdl.Rect{
+                    i32(char.x0), i32(char.y0), i32(char.x1 - char.x0), i32(char.y1 - char.y0),
                 }
+                dest := sdl.FRect{x + char.xoff, y + char.yoff, char.xoff2 - char.xoff, char.yoff2 - char.yoff, }
+
+                // SDL_Rect src_rect = {info->x0, info->y0, info->x1 - info->x0, info->y1 - info->y0};
+			    // SDL_Rect dst_rect = {x + info->xoff, y + info->yoff, info->x1 - info->x0, info->y1 - info->y0};
+                // 	SDL_FRect dst_rect = {x + info->xoff, y + info->yoff, info.xoff2 - info.xoff, info.yoff2 - info.yoff};
+
+                set_fg(_font_editor.texture, default)
+
+                sdl.RenderCopyF(renderer, _font_editor.texture, &src, &dest)
+                x += char.xadvance
             }
+        }
 
-            sdl.RenderCopy(renderer, font_editor.texture, &glyph_rect, &dest)
-            x += char_x_advance
+        caret_x: f32
+        pos := caret_to_buffer_cursor(buffer, caret.coords)
 
-            // col := x - p.viewport.x * char_width
-            // row := y
-            // c.rect.x = col
-            // c.rect.y = row
+        for r, index in buffer.str {
+            if r >= 32 && r < 128 {
+                char := _font_editor.chars[r - 32]
+                caret_x += char.xadvance
+                if pos == index { break }
+            }
+        }
 
-            // if lexer_enabled {
-            //     switch lexer.state {
-            //     case .Default:
-            //         set_fg(c.texture, default)
-            //     case .Builtin:
-            //         set_fg(c.texture, builtin)
-            //     case .Comment:
-            //         set_fg(c.texture, comment)
-            //     case .Constant:
-            //         set_fg(c.texture, constant)
-            //     case .Keyword:
-            //         set_fg(c.texture, keyword)
-            //     case .Highlight:
-            //         set_fg(c.texture, highlight)
-            //     case .String:
-            //         set_fg(c.texture, string)
-            //     }
-            // } else {
-            //     set_fg(c.texture, default)
-            // }
+        fmt.println(caret_x, _font_editor.em_width, math.floor(f32(caret.coords.x) * _font_editor.em_width))
 
-            // x += char_width
-            // if r == '\n' {
-            //     x = 0
-            //     y += line_height
-            // }
+        dest_rect := sdl.FRect{
+            caret_x,
+            f32(caret.coords.y - int(p.viewport.y)) * _font_editor.line_height,
+            _font_editor.em_width, _font_editor.line_height,
+        }
+
+        set_bg(cursor)
+
+        if focused && !bragi.ui_pane.enabled {
+            if !caret.blinking {
+                sdl.RenderFillRectF(renderer, &dest_rect)
+            }
+        } else {
+            sdl.RenderDrawRectF(renderer, &dest_rect)
         }
     } // End Buffer
 

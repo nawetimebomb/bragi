@@ -86,7 +86,6 @@ ui_pane_destroy :: proc() {
     clear_results()
     strings.builder_destroy(&p.query)
     delete(p.results)
-    delete(p.prompt_text)
 }
 
 ui_pane_begin :: proc() {
@@ -193,7 +192,6 @@ ui_pane_hide :: proc() {
     p.viewport = {}
 
     strings.builder_reset(&p.query)
-    delete(p.prompt_text)
     resize_panes()
 }
 

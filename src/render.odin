@@ -163,8 +163,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             caret.coords.x,
         )
         rml_fmt := fmt.tprintf(
-            "{0}",
-            settings_get_major_mode_name(buffer.major_mode),
+            "{0}", settings_get_major_mode_name(buffer.major_mode),
         )
         rml_fmt_size := i32(len(rml_fmt)) * font_ui.em_width
         row := p.real_size.y - font_ui.line_height

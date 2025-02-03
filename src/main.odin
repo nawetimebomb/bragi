@@ -75,29 +75,26 @@ font_editor_size : i32 = DEFAULT_FONT_EDITOR_SIZE
 font_ui_size     : i32 = DEFAULT_FONT_UI_SIZE
 
 // font_editor related values
-char_width:     i32
 char_x_advance: i32
+char_width:     i32
 line_height:    i32
 
 MINIMUM_WINDOW_SIZE      :: 800
 DEFAULT_BASE_WINDOW_SIZE :: 900
 
+dpi_scale:       f32
+renderer:        ^sdl.Renderer
+window:          ^sdl.Window
 window_x:        i32
 window_y:        i32
 window_width:    i32
 window_height:   i32
-dpi_scale:       f32
 window_in_focus: bool
 
-bragi_allocator:  runtime.Allocator
 bragi_is_running: bool
-
-delta_time: time.Duration
+frame_delta_time: time.Duration
 
 bragi: Bragi
-
-renderer: ^sdl.Renderer
-window:   ^sdl.Window
 
 destroy_context :: proc() {
     log.debug("Destroying context")
@@ -162,6 +159,8 @@ initialize_context :: proc() {
 
     sdl.GetWindowPosition(window, &window_x, &window_y)
     sdl.GetWindowSize(window, &window_width, &window_height)
+    sdl.RaiseWindow(window)
+    window_in_focus = true
 
     bragi_is_running = true
 }
@@ -238,17 +237,10 @@ main :: proc() {
         return err
     }
 
-    bragi_allocator = context.allocator
-
-    window_in_focus = true
-    sdl.RaiseWindow(window)
-
+    initialize_context()
 
     // TODO: this should happen after we initialize settings, because we want to
     // load the prefered user fonts
-
-    initialize_context()
-
     fonts_init()
 
     initialize_settings()
@@ -284,7 +276,7 @@ main :: proc() {
 
         free_all(context.temp_allocator)
 
-        delta_time = time.tick_lap_time(&previous_frame_time)
+        frame_delta_time = time.tick_lap_time(&previous_frame_time)
 
         if time.tick_diff(last_update_time, time.tick_now()) > TITLE_TIMEOUT {
             last_update_time = time.tick_now()
@@ -292,7 +284,7 @@ main :: proc() {
 
             window_title := fmt.ctprintf(
                 "Bragi v{0} | frametime: {1} | memory: {2}kb",
-                VERSION, delta_time,
+                VERSION, frame_delta_time,
                 tracking_allocator.current_memory_allocated / 1024,
             )
             sdl.SetWindowTitle(window, window_title)

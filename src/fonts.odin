@@ -118,15 +118,12 @@ fonts_deinit :: proc() {
     profiling_start("fonts.odin:fonts_deinit")
     log.debug("Deinitializing fonts...")
 
-    delete(font_editor.name)
     ttf.CloseFont(font_editor.face)
     sdl.DestroyTexture(font_editor.texture)
 
-    delete(font_ui.name)
     ttf.CloseFont(font_ui.face)
     sdl.DestroyTexture(font_ui.texture)
 
-    delete(font_ui_bold.name)
     ttf.CloseFont(font_ui_bold.face)
     sdl.DestroyTexture(font_ui_bold.texture)
 

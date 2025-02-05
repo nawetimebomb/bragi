@@ -11,8 +11,8 @@ import     "core:slice"
 import     "core:strings"
 import     "core:time"
 import     "core:unicode/utf8"
+import  ft "shared:freetype"
 import sdl "vendor:sdl2"
-import ttf "vendor:sdl2/ttf"
 
 TITLE   :: "Bragi"
 VERSION :: 0
@@ -47,37 +47,37 @@ FONT_UI_BOLD :: #load("../res/FiraCode-SemiBold.ttf")
 NUM_GLYPHS :: 128
 
 Glyph :: struct {
-    rect: sdl.Rect,
+    x, y: i32,
+    w, h: i32,
+    xoffset: i32,
+    yoffset: i32,
+    xadvance: i32,
 }
 
 Font :: struct {
-    em_width:     i32,
-    face:         ^ttf.Font,
-    glyphs:       [NUM_GLYPHS]Glyph,
-    line_height:  i32,
-    name:         string,
-    texture:      ^sdl.Texture,
-    texture_size: i32,
-    x_advance:    i32,
+    em_width: i32,
+    face: ft.Face,
+    glyphs: [NUM_GLYPHS]Glyph,
+    line_height: i32,
+    texture: ^sdl.Texture,
+    y_offset_for_centering: f32,
 }
 
 font_editor:  Font
 font_ui:      Font
 font_ui_bold: Font
 
-MINIMUM_FONT_SIZE        :: 8
-MAXIMUM_FONT_SIZE        :: 50
-DEFAULT_FONT_EDITOR_SIZE :: 15
+DEFAULT_FONT_EDITOR_SIZE :: 25
 DEFAULT_FONT_UI_SIZE     :: 20
 
 // font base size is the one configured by the user, the other ones are derived
-font_editor_size : i32 = DEFAULT_FONT_EDITOR_SIZE
-font_ui_size     : i32 = DEFAULT_FONT_UI_SIZE
+font_editor_size : u32 = DEFAULT_FONT_EDITOR_SIZE
+font_ui_size     : u32 = DEFAULT_FONT_UI_SIZE
 
 // font_editor related values
-char_x_advance: i32
-char_width:     i32
-line_height:    i32
+char_width:             i32
+line_height:            i32
+y_offset_for_centering: f32
 
 MINIMUM_WINDOW_SIZE      :: 800
 DEFAULT_BASE_WINDOW_SIZE :: 900
@@ -94,13 +94,15 @@ window_in_focus: bool
 bragi_is_running: bool
 frame_delta_time: time.Duration
 
+open_buffers: [dynamic]Buffer
+open_panes:   [dynamic]Pane
+
 bragi: Bragi
 
 destroy_context :: proc() {
     log.debug("Destroying context")
     sdl.DestroyRenderer(renderer)
     sdl.DestroyWindow(window)
-    ttf.Quit()
     sdl.Quit()
 }
 
@@ -140,7 +142,6 @@ initialize_context :: proc() {
     log.debug("Initializing context")
 
     assert(sdl.Init({.VIDEO}) == 0, sdl.GetErrorString())
-    assert(ttf.Init() == 0, sdl.GetErrorString())
 
     window = sdl.CreateWindow(TITLE, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
                               DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,

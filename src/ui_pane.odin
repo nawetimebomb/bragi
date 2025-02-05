@@ -332,7 +332,7 @@ filter_results :: proc() {
             }
         } else {
             append(&p.results, Result{
-                format  = "Enter a query to start searching...",
+                format  = strings.clone("Enter a query to start searching..."),
                 invalid = true,
             })
         }
@@ -518,7 +518,6 @@ clear_results :: proc() {
 
     for &item in p.results {
         delete(item.format)
-
         if p.action == .FILES {
             if !item.invalid {
                 v := item.value.(Result_File_Info)
@@ -534,34 +533,23 @@ clear_results :: proc() {
 ui_pane_set_column_sizes :: #force_inline proc(cl0, cl1, cl2, cl3: int) {
     p := &bragi.ui_pane
 
-    p.columns_len[0] = cl0 if cl0 > p.columns_len[0] else p.columns_len[0]
-    p.columns_len[1] = cl1 if cl1 > p.columns_len[1] else p.columns_len[1]
-    p.columns_len[2] = cl2 if cl2 > p.columns_len[2] else p.columns_len[2]
-    p.columns_len[3] = cl3 if cl3 > p.columns_len[3] else p.columns_len[3]
+    p.columns_len[0] = max(cl0, p.columns_len[0])
+    p.columns_len[1] = max(cl1, p.columns_len[1])
+    p.columns_len[2] = max(cl2, p.columns_len[2])
+    p.columns_len[3] = max(cl3, p.columns_len[3])
 }
 
 ui_pane_get_buffer_row_format :: #force_inline proc(b: ^Buffer) -> string {
-    fmt_string := strings.builder_make(context.temp_allocator)
     c0 := b.name
     c1 := b.status
     c2 := settings_get_major_mode_name(b.major_mode)
     c3 := b.filepath
 
-    strings.write_string(&fmt_string, c0)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c1)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c2)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c3)
-
     ui_pane_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
-
-    return strings.clone(strings.to_string(fmt_string))
+    return fmt.aprintf("{0}\n{1}\n{2}\n{3}", c0, c1, c2, c3)
 }
 
 ui_pane_get_file_row_format :: #force_inline proc(f: ^Result_File_Info) -> string {
-    fmt_string := strings.builder_make(context.temp_allocator)
     c0 := f.name
     c1 := ""
     c2 := ""
@@ -604,22 +592,12 @@ ui_pane_get_file_row_format :: #force_inline proc(f: ^Result_File_Info) -> strin
         }
     }
 
-    strings.write_string(&fmt_string, c0)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c1)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c2)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c3)
-
     ui_pane_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
-
-    return strings.clone(strings.to_string(fmt_string))
+    return fmt.aprintf("{0}\n{1}\n{2}\n{3}", c0, c1, c2, c3)
 }
 
 ui_pane_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) -> string {
     p := &bragi.ui_pane
-    fmt_string := strings.builder_make(context.temp_allocator)
     c0 := ""
     c1 := fmt.tprintf("{0}:{1}", pos.y + 1, pos.x)
     c2 := ""
@@ -640,17 +618,8 @@ ui_pane_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) 
         c2 = b.str[line_start:line_end]
     }
 
-    strings.write_string(&fmt_string, c0)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c1)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c2)
-    strings.write_byte(&fmt_string, '\n')
-    strings.write_string(&fmt_string, c3)
-
     ui_pane_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
-
-    return strings.clone(strings.to_string(fmt_string))
+    return fmt.aprintf("{0}\n{1}\n{2}\n{3}", c0, c1, c2, c3)
 }
 
 ui_pane_render :: proc() {
@@ -729,10 +698,15 @@ ui_pane_render :: proc() {
                     }
                 }
 
-                glyph_rect := used_font.glyphs[r].rect
-                dest := make_rect(x, row, glyph_rect.w, glyph_rect.h)
-                render_copy(used_font.texture, &glyph_rect, &dest)
-                x += used_font.x_advance
+                glyph := used_font.glyphs[r]
+                src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+                dest := make_rect(
+                    f32(x + glyph.xoffset),
+                    f32(row + glyph.yoffset) - used_font.y_offset_for_centering,
+                    f32(glyph.w), f32(glyph.h),
+                )
+                render_copy(used_font.texture, &src, &dest)
+                x += used_font.em_width
             }
         }
 
@@ -741,7 +715,6 @@ ui_pane_render :: proc() {
 
     { // Start Prompt
         font := &font_ui
-        font_bold := &font_ui_bold
         prompt_fmt := fmt.tprintf(
             "({0}/{1}) {2}: ", caret.coords.y + 1, len(p.results), p.prompt_text,
         )
@@ -771,10 +744,15 @@ ui_pane_render :: proc() {
                 set_fg(font.texture, colors[.default])
             }
 
-            glyph_rect := font.glyphs[r].rect
-            dest := make_rect(x, row, glyph_rect.w, glyph_rect.h)
-            render_copy(font.texture, &glyph_rect, &dest)
-            x += font.x_advance
+            glyph := font.glyphs[r]
+            src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+            dest := make_rect(
+                f32(x + glyph.xoffset),
+                f32(row + glyph.yoffset) - font.y_offset_for_centering,
+                f32(glyph.w), f32(glyph.h),
+            )
+            render_copy(font.texture, &src, &dest)
+            x += font.em_width
         }
     } // End Prompt
 }

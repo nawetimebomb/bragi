@@ -2,113 +2,27 @@ package main
 
 import     "core:fmt"
 import     "core:log"
+import     "core:math"
 import     "core:os"
 import     "core:unicode/utf8"
+import  ft "shared:freetype"
 import sdl "vendor:sdl2"
-import ttf "vendor:sdl2/ttf"
 
 @(private="file")
-map_glyphs_in_font :: proc(font: ^Font) {
-    FONT_TEXTURE_SIZE :: 512
-
-    base_surface := sdl.CreateRGBSurface(
-        0, FONT_TEXTURE_SIZE, FONT_TEXTURE_SIZE, 32, 0, 0, 0, 255,
-    )
-    rect := sdl.Rect{}
-
-    sdl.SetColorKey(base_surface, 1, sdl.MapRGBA(base_surface.format, 0, 0, 0, 0))
-
-    for r := ' '; r <= '~'; r += 1 {
-        str_from_rune := utf8.runes_to_string([]rune{r}, context.temp_allocator)
-        cstr := cstring(raw_data(str_from_rune))
-        text_surface := ttf.RenderGlyph32_Blended(font.face, r, { 255, 255, 255, 255 })
-        ttf.SizeUTF8(font.face, cstr, &rect.w, &rect.h)
-
-        if (rect.x + rect.w >= FONT_TEXTURE_SIZE) {
-            rect.x = 0
-            rect.y += rect.h + 1
-
-            if (rect.y + rect.h >= FONT_TEXTURE_SIZE) {
-                log.errorf("Out of glyph space in texture for font {0}", font.name)
-                os.exit(1)
-            }
-        }
-
-        sdl.BlitSurface(text_surface, nil, base_surface, &rect)
-
-        font.glyphs[r].rect = rect
-        rect.x += rect.w
-
-        sdl.FreeSurface(text_surface)
-    }
-
-    font.em_width     = rect.w
-    font.line_height  = ttf.FontHeight(font.face)
-    font.texture      = sdl.CreateTextureFromSurface(renderer, base_surface)
-    font.texture_size = FONT_TEXTURE_SIZE
-    ttf.GlyphMetrics32(font.face, 'M', nil, nil, nil, nil, &font.x_advance)
-
-    sdl.FreeSurface(base_surface)
-}
-
-increase_font_size :: proc() {
-    font_editor_size = clamp(font_editor_size + 8, MINIMUM_FONT_SIZE, MAXIMUM_FONT_SIZE)
-    ttf.SetFontSize(font_editor.face, font_editor_size)
-    map_glyphs_in_font(&font_editor)
-
-    char_width     = font_editor.em_width
-    char_x_advance = font_editor.x_advance
-    line_height    = font_editor.line_height
-}
-
-decrease_font_size :: proc() {
-    font_editor_size = clamp(font_editor_size - 8, MINIMUM_FONT_SIZE, MAXIMUM_FONT_SIZE)
-    ttf.SetFontSize(font_editor.face, font_editor_size)
-    map_glyphs_in_font(&font_editor)
-
-    char_width     = font_editor.em_width
-    char_x_advance = font_editor.x_advance
-    line_height    = font_editor.line_height
-}
-
-reset_font_size :: proc() {
-    // TODO: Should actually use the font size from the settings
-    font_editor_size = DEFAULT_FONT_EDITOR_SIZE
-    ttf.SetFontSize(font_editor.face, font_editor_size)
-    map_glyphs_in_font(&font_editor)
-
-    char_width     = font_editor.em_width
-    char_x_advance = font_editor.x_advance
-    line_height    = font_editor.line_height
-}
+library: ft.Library
 
 fonts_init :: proc() {
     profiling_start("fonts.odin:fonts_init")
     log.debug("Initializing fonts...")
-    // TODO: Support fonts from the user configuration
-    font_editor_data  := sdl.RWFromConstMem(raw_data(FONT_EDITOR), i32(len(FONT_EDITOR)))
-    font_ui_data      := sdl.RWFromConstMem(raw_data(FONT_UI), i32(len(FONT_UI)))
-    font_ui_bold_data := sdl.RWFromConstMem(raw_data(FONT_UI_BOLD), i32(len(FONT_UI)))
 
-    font_editor.face = ttf.OpenFontRW(font_editor_data, true, font_editor_size)
-    assert(font_editor.face != nil, sdl.GetErrorString())
-    font_editor.name = string(ttf.FontFaceFamilyName(font_editor.face))
-    map_glyphs_in_font(&font_editor)
+    ft.init_free_type(&library)
+    font_editor  = prepare_font(FONT_EDITOR,  font_editor_size)
+    font_ui      = prepare_font(FONT_UI,      font_ui_size)
+    font_ui_bold = prepare_font(FONT_UI_BOLD, font_ui_size)
 
-    font_ui.face = ttf.OpenFontRW(font_ui_data, true, font_ui_size)
-    assert(font_ui.face != nil, sdl.GetErrorString())
-    font_ui.name = string(ttf.FontFaceFamilyName(font_ui.face))
-    map_glyphs_in_font(&font_ui)
-
-    font_ui_bold.face = ttf.OpenFontRW(font_ui_bold_data, true, font_ui_size)
-    assert(font_ui_bold.face != nil, sdl.GetErrorString())
-    font_ui_bold.name = string(ttf.FontFaceFamilyName(font_ui_bold.face))
-    ttf.SetFontStyle(font_ui_bold.face, ttf.STYLE_BOLD)
-    map_glyphs_in_font(&font_ui_bold)
-
-    char_width     = font_editor.em_width
-    char_x_advance = font_editor.x_advance
-    line_height    = font_editor.line_height
+    char_width             = font_editor.em_width
+    line_height            = font_editor.line_height
+    y_offset_for_centering = font_editor.y_offset_for_centering
 
     log.debug("Fonts initialization complete")
     profiling_end()
@@ -118,15 +32,138 @@ fonts_deinit :: proc() {
     profiling_start("fonts.odin:fonts_deinit")
     log.debug("Deinitializing fonts...")
 
-    ttf.CloseFont(font_editor.face)
+    ft.done_face(font_editor.face)
     sdl.DestroyTexture(font_editor.texture)
-
-    ttf.CloseFont(font_ui.face)
+    ft.done_face(font_ui.face)
     sdl.DestroyTexture(font_ui.texture)
-
-    ttf.CloseFont(font_ui_bold.face)
+    ft.done_face(font_ui_bold.face)
     sdl.DestroyTexture(font_ui_bold.texture)
+    ft.done_free_type(library)
 
     log.debug("Font deinitialization complete")
     profiling_end()
+}
+
+@(private="file")
+generate_font_bitmap_texture :: proc(result: ^Font) {
+    // Clean-up previous texture
+    sdl.DestroyTexture(result.texture)
+
+    result.line_height = i32((result.face.size.metrics.ascender - result.face.size.metrics.descender) >> 6)
+    result.em_width = 0
+
+    // TODO: I'm trying to figure out the size of the texture to be created, but this is super slow and it's taken from the link below:
+    // https://gist.github.com/baines/b0f9e4be04ba4e6f56cab82eef5008ff#file-freetype-atlas-c-L28
+    // I need to find a better way to do this.
+    texture_dimensions := f32(1 + (result.face.size.metrics.height >> 6)) * math.ceil_f32(math.sqrt_f32(NUM_GLYPHS))
+    texture_size : i32 = 1
+    for f32(texture_size) < texture_dimensions { texture_size <<= 1 }
+
+    full_bitmap := make([]byte, texture_size * texture_size)
+    pos_x, pos_y: i32
+
+    for i: u32 = 0; i < NUM_GLYPHS; i += 1 {
+        ft.load_char(result.face, i, {.Render, .Force_Autohint})
+        char_bitmap := &result.face.glyph.bitmap
+
+        if pos_x + i32(char_bitmap.width) >= texture_size {
+            pos_x = 0
+            pos_y += i32(result.face.size.metrics.height >> 6) + 1
+        }
+
+        for row: i32 = 0; row < i32(char_bitmap.rows); row += 1 {
+            for col: i32 = 0; col < i32(char_bitmap.width); col += 1 {
+                x := pos_x + col
+                y := pos_y + row
+                full_bitmap[y * texture_size + x] =
+                    char_bitmap.buffer[row * char_bitmap.pitch + col]
+            }
+        }
+
+        result.glyphs[i].x = pos_x
+        result.glyphs[i].y = pos_y
+        result.glyphs[i].w = i32(char_bitmap.width)
+        result.glyphs[i].h = i32(char_bitmap.rows)
+        result.glyphs[i].xoffset = result.face.glyph.bitmap_left
+        result.glyphs[i].yoffset = result.line_height - result.face.glyph.bitmap_top
+        result.glyphs[i].xadvance = i32(result.face.glyph.advance.x >> 6)
+        result.em_width = max(result.em_width, result.glyphs[i].w)
+
+        pos_x += i32(char_bitmap.width) + 1
+    }
+
+    // centering
+    glyph_index := ft.get_char_index(result.face, 'm')
+    ft.load_glyph(result.face, glyph_index, {})
+    result.y_offset_for_centering = 0.5 * f32(result.face.glyph.metrics.hori_bearing_y >> 6) + 0.5
+
+
+    pixels := make([]u32, texture_size * texture_size)
+    format := sdl.AllocFormat(u32(sdl.PixelFormatEnum.RGBA32))
+    result.texture = sdl.CreateTexture(renderer, .RGBA32, .STATIC, texture_size, texture_size)
+
+    sdl.SetTextureBlendMode(result.texture, .BLEND)
+
+    for i := 0; i < int(texture_size * texture_size); i += 1 {
+        pixels[i] = sdl.MapRGBA(format, 255, 255, 255, full_bitmap[i])
+    }
+
+    sdl.UpdateTexture(result.texture, nil, raw_data(pixels), texture_size * size_of(u32))
+
+    delete(full_bitmap)
+    delete(pixels)
+}
+
+@(private="file")
+prepare_font :: proc(font_data: []byte, size: u32) -> Font {
+    result: Font
+
+    assert(ft.new_memory_face(library, raw_data(font_data), i32(len(font_data)), 0, &result.face) == .Ok, "Can't load font")
+    assert(ft.set_pixel_sizes(result.face, 0, size) == .Ok, "Can't set pixel size")
+    generate_font_bitmap_texture(&result)
+    return result
+}
+
+@(private="file")
+prepare_font_from_filename :: proc(font: Font, filename: string, size: u32) {
+    // TODO: Read entire file and call prepare_font
+}
+
+increase_font_size :: proc() {
+    MAX_FONT_SIZE :: 144
+
+    if font_editor_size < MAX_FONT_SIZE {
+        font_editor_size = auto_cast min(f32(font_editor_size) * 1.2, MAX_FONT_SIZE)
+        assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
+        generate_font_bitmap_texture(&font_editor)
+
+        char_width             = font_editor.em_width
+        line_height            = font_editor.line_height
+        y_offset_for_centering = font_editor.y_offset_for_centering
+    }
+}
+
+decrease_font_size :: proc() {
+    MIN_FONT_SIZE :: 8
+
+    if font_editor_size > MIN_FONT_SIZE {
+        font_editor_size = auto_cast max(f32(font_editor_size) * 0.8, MIN_FONT_SIZE)
+        assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
+        generate_font_bitmap_texture(&font_editor)
+
+        char_width             = font_editor.em_width
+        line_height            = font_editor.line_height
+        y_offset_for_centering = font_editor.y_offset_for_centering
+    }
+}
+
+reset_font_size :: proc() {
+    // TODO: Should actually use the font size from the settings
+    font_editor_size = DEFAULT_FONT_EDITOR_SIZE
+    assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
+    generate_font_bitmap_texture(&font_editor)
+
+    char_width             = font_editor.em_width
+    line_height            = font_editor.line_height
+    y_offset_for_centering = font_editor.y_offset_for_centering
 }

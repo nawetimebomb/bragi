@@ -77,7 +77,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         lexer := languages.Lexer{}
         lexer_enabled := settings_is_lexer_enabled(mm)
         lex := settings_get_lexer_proc(mm)
-        x, y: i32
+        sx, sy: i32
         screen_buffer := buffer.str
 
         if len(buffer.lines) > int(p.relative_size.y) {
@@ -91,59 +91,26 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         for r, index in screen_buffer {
             if r == '\n' {
-                x = 0
-                y += line_height
+                sx = 0
+                sy += line_height
                 continue
             }
 
-            glyph_rect := font_editor.glyphs[r].rect
-            dest := sdl.Rect{ x, y, glyph_rect.w, glyph_rect.h }
+            glyph := font_editor.glyphs[r]
 
-            set_fg(font_editor.texture, default)
-
-            if focused && !bragi.ui_pane.enabled {
-                coords_x := x / char_width
-                coords_y := y / line_height
-
-                if is_caret_showing(&caret, coords_x, coords_y, viewport.y) {
-                    set_fg(font_editor.texture, background)
+            if glyph.w > 0 && glyph.h > 0  {
+                src := sdl.Rect{ glyph.x, glyph.y, glyph.w, glyph.h }
+                dest := sdl.FRect{
+                    f32(sx + glyph.xoffset),
+                    f32(sy + glyph.yoffset) - y_offset_for_centering,
+                    f32(glyph.w), f32(glyph.h),
                 }
+
+                set_fg(font_editor.texture, default)
+                sdl.RenderCopyF(renderer, font_editor.texture, &src, &dest)
             }
 
-            sdl.RenderCopy(renderer, font_editor.texture, &glyph_rect, &dest)
-            x += char_x_advance
-
-            // col := x - p.viewport.x * char_width
-            // row := y
-            // c.rect.x = col
-            // c.rect.y = row
-
-            // if lexer_enabled {
-            //     switch lexer.state {
-            //     case .Default:
-            //         set_fg(c.texture, default)
-            //     case .Builtin:
-            //         set_fg(c.texture, builtin)
-            //     case .Comment:
-            //         set_fg(c.texture, comment)
-            //     case .Constant:
-            //         set_fg(c.texture, constant)
-            //     case .Keyword:
-            //         set_fg(c.texture, keyword)
-            //     case .Highlight:
-            //         set_fg(c.texture, highlight)
-            //     case .String:
-            //         set_fg(c.texture, string)
-            //     }
-            // } else {
-            //     set_fg(c.texture, default)
-            // }
-
-            // x += char_width
-            // if r == '\n' {
-            //     x = 0
-            //     y += line_height
-            // }
+            sx += font_editor.em_width
         }
     } // End Buffer
 
@@ -199,11 +166,16 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     used_font = font_ui_bold
                 }
 
-                glyph_rect := used_font.glyphs[r].rect
-                dest := sdl.Rect{ x, row, glyph_rect.w, glyph_rect.h }
+                glyph := used_font.glyphs[r]
+                src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+                dest := make_rect(
+                    f32(x + glyph.xoffset),
+                    f32(row + glyph.yoffset) - used_font.y_offset_for_centering,
+                    f32(glyph.w), f32(glyph.h),
+                )
                 set_fg(used_font.texture, focused ? modeline_on_fg : modeline_off_fg)
-                sdl.RenderCopy(renderer, used_font.texture, &glyph_rect, &dest)
-                x += used_font.x_advance
+                render_copy(used_font.texture, &src, &dest)
+                x += used_font.em_width
             }
         }
 
@@ -211,11 +183,16 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             x := i32(right_start_column)
 
             for r, index in rml_fmt {
-                glyph_rect := font_ui.glyphs[r].rect
-                dest := sdl.Rect{ x, row, glyph_rect.w, glyph_rect.h }
+                glyph := font_ui.glyphs[r]
+                src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+                dest := make_rect(
+                    f32(x + glyph.xoffset),
+                    f32(row + glyph.yoffset) - font_ui.y_offset_for_centering,
+                    f32(glyph.w), f32(glyph.h),
+                )
                 set_fg(font_ui.texture, focused ? modeline_on_fg : modeline_off_fg)
-                sdl.RenderCopy(renderer, font_ui.texture, &glyph_rect, &dest)
-                x += font_ui.x_advance
+                render_copy(font_ui.texture, &src, &dest)
+                x += font_ui.em_width
             }
         }
     } // End Modeline
@@ -226,8 +203,17 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     profiling_end()
 }
 
-make_rect :: #force_inline proc(x, y, w, h: i32) -> sdl.Rect {
+make_rect :: proc{
+    make_rect_f32,
+    make_rect_i32,
+}
+
+make_rect_i32 :: #force_inline proc(x, y, w, h: i32) -> sdl.Rect {
     return sdl.Rect{ x, y, w, h }
+}
+
+make_rect_f32 :: #force_inline proc(x, y, w, h: f32) -> sdl.FRect {
+    return sdl.FRect{ x, y, w, h }
 }
 
 render_fill_rect :: #force_inline proc(x, y, w, h: i32) {
@@ -235,6 +221,15 @@ render_fill_rect :: #force_inline proc(x, y, w, h: i32) {
     sdl.RenderFillRect(renderer, &rect)
 }
 
-render_copy :: #force_inline proc(texture: ^sdl.Texture, src, dest: ^sdl.Rect) {
+render_copy :: proc{
+    render_copy_frect,
+    render_copy_rect,
+}
+
+render_copy_frect :: #force_inline proc(texture: ^sdl.Texture, src: ^sdl.Rect, dest: ^sdl.FRect) {
+    sdl.RenderCopyF(renderer, texture, src, dest)
+}
+
+render_copy_rect :: #force_inline proc(texture: ^sdl.Texture, src, dest: ^sdl.Rect) {
     sdl.RenderCopy(renderer, texture, src, dest)
 }

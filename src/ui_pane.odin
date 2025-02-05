@@ -58,7 +58,6 @@ UI_Pane :: struct {
     query:           strings.Builder,
     columns_len:     [MAX_VIEW_COLUMNS]int,
     results:         [dynamic]Result,
-    prompt_text:     string,
     target:          ^Pane,
     real_size:       [2]i32,
     relative_size:   [2]i32,
@@ -165,7 +164,6 @@ ui_pane_show :: proc(target: ^Pane, action: UI_Pane_Action) {
     p.caret.coords = {}
     p.enabled = true
     p.target = target
-    p.prompt_text = get_prompt_text(target, action)
     p.prev_state = {
         buffer = target.buffer,
         caret_coords = target.caret.coords,
@@ -493,19 +491,21 @@ ui_self_insert :: proc(s: string) {
     filter_results()
 }
 
-get_prompt_text :: #force_inline proc(t: ^Pane, action: UI_Pane_Action) -> string {
+get_prompt_text :: #force_inline proc() -> string {
+    p := &bragi.ui_pane
+    t := p.target
     s := ""
 
-    switch action {
+    switch p.action {
     case .NONE:
     case .BUFFERS:
         s = "Switch to"
     case .FILES:
         s = "Find file"
     case .SEARCH_IN_BUFFER:
-        s = fmt.aprintf("Search forward in \"{0}\"", t.buffer.name)
+        s = fmt.tprintf("Search forward in \"{0}\"", t.buffer.name)
     case .SEARCH_REVERSE_IN_BUFFER:
-        s = fmt.aprintf("Search backward in \"{0}\"", t.buffer.name)
+        s = fmt.tprintf("Search backward in \"{0}\"", t.buffer.name)
     }
 
     return s
@@ -716,7 +716,7 @@ ui_pane_render :: proc() {
     { // Start Prompt
         font := &font_ui
         prompt_fmt := fmt.tprintf(
-            "({0}/{1}) {2}: ", caret.coords.y + 1, len(p.results), p.prompt_text,
+            "({0}/{1}) {2}: ", caret.coords.y + 1, len(p.results), get_prompt_text(),
         )
         prompt_str := fmt.tprintf("{0}{1}", prompt_fmt, strings.to_string(p.query))
         row := window_height - font.line_height

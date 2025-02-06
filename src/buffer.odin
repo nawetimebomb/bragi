@@ -14,6 +14,7 @@ import "core:unicode/utf8"
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
 Buffer_Cursor :: int
+Line :: distinct [2]int
 
 History_State :: struct {
     cursor:    Buffer_Cursor,
@@ -32,7 +33,7 @@ Buffer :: struct {
     was_dirty_last_frame: bool,
     gap_end:              Buffer_Cursor,
     gap_start:            Buffer_Cursor,
-    lines:                [dynamic]int,
+    lines:                [dynamic]Line,
 
     enable_history:       bool,
     redo:                 [dynamic]History_State,
@@ -65,7 +66,7 @@ buffer_init :: proc(
         dirty          = false,
         gap_start      = 0,
         gap_end        = bytes,
-        lines          = make([dynamic]int, 0, 32),
+        lines          = make([dynamic]Line, 0, 16),
 
         enable_history = true,
         redo           = make([dynamic]History_State, 0, 5, allocator),
@@ -92,7 +93,7 @@ create_buffer :: proc(
         enable_history = true,
         gap_start      = 0,
         gap_end        = bytes,
-        lines          = make([dynamic]int, 0, 32),
+        lines          = make([dynamic]Line, 0, 16),
         major_mode     = .Fundamental,
         name           = strings.clone(name),
         redo           = make([dynamic]History_State, 0, 5),
@@ -192,9 +193,9 @@ buffer_destroy :: proc(b: ^Buffer) {
 update_buffer_time :: proc(b: ^Buffer) {
     if b.enable_history {
         b.current_time = time.tick_now()
-	    if b.undo_timeout <= 0 {
-		    b.undo_timeout = UNDO_DEFAULT_TIMEOUT
-	    }
+        if b.undo_timeout <= 0 {
+            b.undo_timeout = UNDO_DEFAULT_TIMEOUT
+        }
     }
 }
 
@@ -202,37 +203,31 @@ recalculate_lines :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:recalculate_lines")
     buf := transmute([]u8)b.str
     clear(&b.lines)
-    append(&b.lines, 0)
+    append(&b.lines, Line{0, 0})
 
     for c, index in buf {
         if c == '\n' {
-            append(&b.lines, index + 1)
+            eocl := index
+            bonl := index + 1
+            last_line_index := len(b.lines) - 1
+            b.lines[last_line_index][1] = eocl
+            append(&b.lines, Line{bonl, bonl})
         }
     }
+
+    b.lines[len(b.lines) - 1][1] = len(buf)
     profiling_end()
 }
 
 is_between_line :: #force_inline proc(b: ^Buffer, line, pos: Buffer_Cursor) -> bool {
-    if line + 1 < len(b.lines) {
-        current_bol := get_line_start(b, line)
-        next_bol := get_line_start(b, line + 1)
-        return pos >= current_bol && pos < next_bol
-    }
-
-    return true
+    assert(line < len(b.lines))
+    start, end := get_line_boundaries(b, line)
+    return pos >= start && pos <= end
 }
 
-is_last_line :: #force_inline proc(buffer: ^Buffer, line: int) -> bool {
-    return line == len(buffer.lines) - 1
-}
-
-get_line_end :: #force_inline proc(b: ^Buffer, line: int) -> int {
-    if line + 1 < len(b.lines) {
-        offset := get_line_start(b, line + 1)
-        return offset - 1
-    }
-
-    return b.lines[line]
+is_last_line :: #force_inline proc(b: ^Buffer, line: int) -> bool {
+    assert(line < len(b.lines))
+    return line == len(b.lines) - 1
 }
 
 get_line_index :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> (line: int) {
@@ -246,20 +241,24 @@ get_line_index :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> (line: i
     return
 }
 
-get_line_length :: #force_inline proc(b: ^Buffer, line: int) -> (length: int) {
-    return get_line_end(b, line) - get_line_start(b, line)
+get_line_boundaries :: #force_inline proc(b: ^Buffer, line: int) -> (start, end: int) {
+    assert(line < len(b.lines))
+    boundaries := b.lines[line]
+    return boundaries[0], boundaries[1]
 }
 
-get_line_start :: #force_inline proc(b: ^Buffer, line: int) -> (offset: int) {
+get_line_length :: #force_inline proc(b: ^Buffer, line: int) -> (length: int) {
     assert(line < len(b.lines))
-    return b.lines[line]
+    start, end := get_line_boundaries(b, line)
+    return end - start
 }
 
 get_line_start_after_indent :: #force_inline proc(b: ^Buffer, line: int) -> (offset: int) {
     assert(line < len(b.lines))
-    offset = b.lines[line]
+    bol, eol := get_line_boundaries(b, line)
+    offset = bol
 
-    for offset < get_line_end(b, line) && is_whitespace(b.str[offset]) {
+    for offset < eol && is_whitespace(b.str[offset]) {
         offset +=1
     }
 

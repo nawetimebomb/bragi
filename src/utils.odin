@@ -53,47 +53,6 @@ add_pane :: proc(p: Pane) -> ^Pane {
     return &bragi.panes[len(bragi.panes) - 1]
 }
 
-canonicalize_coords :: proc(d: []u8, rel_x, rel_y: int) -> (point: int) {
-    x, y: int
-
-    for r, index in d {
-        if y == rel_y {
-            bol, eol := get_line_boundaries(d, index)
-            length := eol - bol
-            point = length > rel_x ? bol + rel_x : eol
-        }
-
-        x = r == '\n' ? 0 : x + 1
-        y = r == '\n' ? y + 1 : y
-    }
-
-    return
-}
-
-get_next_line_start_index :: proc(d: []u8, pos: int) -> (index: int) {
-    _, eol := get_line_boundaries(d, pos)
-    return eol + 1
-}
-
-get_previous_line_start_index :: proc(d: []u8, pos: int) -> (index: int) {
-    bol, _ := get_line_boundaries(d, pos)
-    index, _ = get_line_boundaries(d, bol - 1)
-    return
-}
-
-// Change this to use array of data
-get_line_boundaries :: proc(d: []u8, pos: int) -> (begin, end: int) {
-    begin = pos; end = pos
-
-    for {
-        bsearch := begin > 0 && d[begin - 1] != '\n'
-        esearch := end < len(d) - 1 && d[end] != '\n'
-        if bsearch { begin -= 1 }
-        if esearch { end += 1 }
-        if !bsearch && !esearch { return }
-    }
-}
-
 get_word_boundaries :: proc(s: string, pos: int) -> (begin, end: int) {
     begin = pos; end = pos
 
@@ -214,12 +173,14 @@ is_continuation_byte :: proc(b: byte) -> bool {
 
 buffer_cursor_to_caret :: proc(b: ^Buffer, pos: Buffer_Cursor) -> (result: Caret_Pos) {
     result.y = get_line_index(b, pos)
-    result.x = pos - get_line_start(b, result.y)
+    bol, _ := get_line_boundaries(b, result.y)
+    result.x = pos - bol
     return
 }
 
 caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
-    return b.lines[pos.y] + pos.x
+    bol, _ := get_line_boundaries(b, pos.y)
+    return bol + pos.x
 }
 
 get_parsed_length_to_kb :: proc(value_in_bytes: f64) -> string {

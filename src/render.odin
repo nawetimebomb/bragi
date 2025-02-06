@@ -84,8 +84,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             culling_start := max(p.viewport.y, 0)
             culling_end :=
                 min(int(p.viewport.y + p.relative_size.y + 3), len(buffer.lines) - 1)
-            top := buffer.lines[culling_start]
-            bottom := buffer.lines[culling_end]
+            top := buffer.lines[culling_start][0]
+            bottom := buffer.lines[culling_end][0]
             screen_buffer = buffer.str[top:bottom]
         }
 

@@ -274,10 +274,14 @@ newline :: proc(p: ^Pane) {
 }
 
 delete_to :: proc(p: ^Pane, t: Caret_Translation) {
+    translation := translate(p, t)
     end_pos := caret_to_buffer_cursor(p.buffer, translate(p, t))
     start_pos := caret_to_buffer_cursor(p.buffer, p.caret.coords)
-    remove(p.buffer, start_pos, end_pos - start_pos)
-    p.should_resync_caret = true
+    count := end_pos - start_pos
+    remove(p.buffer, start_pos, count)
+    if count < 0 {
+        p.caret.coords = translation
+    }
 }
 
 editor_move_to :: proc(p: ^Pane, t: Caret_Translation) {
@@ -286,55 +290,72 @@ editor_move_to :: proc(p: ^Pane, t: Caret_Translation) {
 
 translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Caret_Pos) {
     pos = p.caret.coords
-    buffer := p.buffer
-    str := buffer.str
-    lines_count := len(buffer.lines)
+    b := p.buffer
+    str := b.str
+    lines_count := len(b.lines)
 
     switch t {
     case .DOWN:
         pos.y += 1
     case .LEFT:
-        pos.x -= 1
+        if pos.x == 0 && pos.y == 0 {
+            return
+        } else {
+            pos.x -= 1
 
-        if pos.x < 0 && pos.y > 0 {
-            pos.y -= 1
-            pos.x = get_line_length(p.buffer, pos.y)
+            if pos.x < 0 && pos.y > 0 {
+                pos.y -= 1
+                pos.x = get_line_length(b, pos.y)
+            }
+
+            return
         }
     case .RIGHT:
-        pos.x += 1
+        if pos.x == get_line_length(b, pos.y) && is_last_line(b, pos.y) {
+            return
+        } else {
+            pos.x += 1
 
-        if pos.x > get_line_length(p.buffer, pos.y) && pos.y < lines_count - 1 {
-            pos.y += 1
-            pos.x = 0
+            if pos.x > get_line_length(b, pos.y) && pos.y < lines_count - 1 {
+                pos.y += 1
+                pos.x = 0
+            }
+
+            return
         }
     case .UP:
         pos.y -= 1
     case .BUFFER_START:
         pos = { 0, 0 }
+        return
     case .BUFFER_END:
         if lines_count == 1 {
-            pos = { len(buffer.str), 0 }
+            pos = { len(b.str), 0 }
         } else {
             pos = { 0, lines_count - 1 }
         }
+
+        return
     case .LINE_START:
-        bol := get_line_start(buffer, pos.y)
-        bol_indent := get_line_start_after_indent(buffer, pos.y)
+        bol, _ := get_line_boundaries(b, pos.y)
+        bol_indent := get_line_start_after_indent(b, pos.y)
         pos.x = pos.x == 0 ? bol_indent - bol : 0
+        return
     case .LINE_END:
-        pos.x = lines_count == 1 ? len(buffer.str) : get_line_length(buffer, pos.y)
+        pos.x = get_line_length(b, pos.y)
+        return
     case .WORD_START:
-        s := buffer.str
-        x := caret_to_buffer_cursor(buffer, pos)
+        s := b.str
+        x := caret_to_buffer_cursor(b, pos)
         for x > 0 && is_whitespace(s[x - 1]) { x -= 1 }
         for x > 0 && !is_whitespace(s[x - 1]) { x -= 1 }
-        pos = buffer_cursor_to_caret(buffer, x)
+        pos = buffer_cursor_to_caret(b, x)
     case .WORD_END:
-        s := buffer.str
-        x := caret_to_buffer_cursor(buffer, pos)
+        s := b.str
+        x := caret_to_buffer_cursor(b, pos)
         for x < len(s) && is_whitespace(s[x])  { x += 1 }
         for x < len(s) && !is_whitespace(s[x]) { x += 1}
-        pos = buffer_cursor_to_caret(buffer, x)
+        pos = buffer_cursor_to_caret(b, x)
     }
 
     return correct_out_of_bounds_caret(p, pos)
@@ -346,10 +367,8 @@ correct_out_of_bounds_caret :: proc(p: ^Pane, prev_pos: Caret_Pos) -> (pos: Care
     pos = prev_pos
 
     pos.y = clamp(pos.y, 0, lines_count - 1)
-    pos.x = clamp(
-        pos.x, 0,
-        lines_count == 1 ? len(p.buffer.str) : get_line_length(b, pos.y),
-    )
+    _, eol := get_line_boundaries(b, pos.y)
+    pos.x = clamp(pos.x, 0, eol)
 
     return pos
 }

@@ -87,7 +87,7 @@ ui_pane_destroy :: proc() {
     delete(p.results)
 }
 
-ui_pane_begin :: proc() {
+ui_pane_update_draw :: proc() {
     p := &bragi.ui_pane
     caret := &p.caret
 
@@ -133,14 +133,12 @@ ui_pane_begin :: proc() {
             p.target.caret.coords = item.value.(Result_Caret_Pos)
         }
     }
+
+    ui_pane_draw()
 }
 
 ui_pane_end :: proc() {
-    p := &bragi.ui_pane
 
-    if !p.enabled { return }
-
-    ui_pane_render()
 }
 
 rollback_to_prev_value :: proc() {
@@ -622,7 +620,7 @@ ui_pane_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) 
     return fmt.aprintf("{0}\n{1}\n{2}\n{3}", c0, c1, c2, c3)
 }
 
-ui_pane_render :: proc() {
+ui_pane_draw :: proc() {
     p := &bragi.ui_pane
 
     caret := p.caret

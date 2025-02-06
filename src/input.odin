@@ -144,7 +144,7 @@ handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
     return exists
 }
 
-update_input :: proc() {
+process_inputs :: proc() {
     e: sdl.Event
     p := &bragi.panes[bragi.focused_index]
     input_handled := false

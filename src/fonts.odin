@@ -87,16 +87,20 @@ generate_font_bitmap_texture :: proc(result: ^Font) {
         result.glyphs[i].xoffset = result.face.glyph.bitmap_left
         result.glyphs[i].yoffset = result.line_height - result.face.glyph.bitmap_top
         result.glyphs[i].xadvance = i32(result.face.glyph.advance.x >> 6)
-        result.em_width = max(result.em_width, result.glyphs[i].w)
 
         pos_x += i32(char_bitmap.width) + 1
     }
 
-    // centering
+    // Using the 'm' glyph for centering
     glyph_index := ft.get_char_index(result.face, 'm')
     ft.load_glyph(result.face, glyph_index, {})
-    result.y_offset_for_centering = 0.5 * f32(result.face.glyph.metrics.hori_bearing_y >> 6) + 0.5
+    result.y_offset_for_centering =
+        0.5 * f32(result.face.glyph.metrics.hori_bearing_y >> 6) + 0.5
 
+    // Using the 'M' glyph for em_width
+    glyph_index = ft.get_char_index(result.face, 'M')
+    ft.load_glyph(result.face, glyph_index, {})
+    result.em_width = i32(result.face.glyph.bitmap.width)
 
     pixels := make([]u32, texture_size * texture_size)
     format := sdl.AllocFormat(u32(sdl.PixelFormatEnum.RGBA32))

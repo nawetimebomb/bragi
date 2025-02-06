@@ -212,7 +212,6 @@ mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     pos.x = int(x / char_width + p.viewport.x)
     pos.y = int(y / line_height + p.viewport.y)
 
-    p.caret.coords = correct_out_of_bounds_caret(p, pos)
     editor_set_buffer_cursor(p)
 }
 
@@ -262,113 +261,35 @@ yank :: proc(p: ^Pane, callback: Paste_Proc) {
 }
 
 editor_self_insert :: proc(p: ^Pane, s: string) {
-    cursor := caret_to_buffer_cursor(p.buffer, p.caret.coords)
-    p.caret.coords.x += insert(p.buffer, cursor, s)
+    cursor, _ := get_last_cursor(p)
+    buffer_pos := caret_to_buffer_cursor(p.buffer, cursor)
+    cursor.x += insert(p.buffer, buffer_pos, s)
+    update_cursor(p, cursor, cursor)
 }
 
 newline :: proc(p: ^Pane) {
-    cursor := caret_to_buffer_cursor(p.buffer, p.caret.coords)
-    insert(p.buffer, cursor, byte('\n'))
-    p.caret.coords.x = 0
-    p.caret.coords.y += 1
+    cursor, _ := get_last_cursor(p)
+    buffer_pos := caret_to_buffer_cursor(p.buffer, cursor)
+    insert(p.buffer, buffer_pos, byte('\n'))
+    cursor = { 0, cursor.y + 1 }
+    update_cursor(p, cursor, cursor)
 }
 
 delete_to :: proc(p: ^Pane, t: Caret_Translation) {
-    translation := translate(p, t)
-    end_pos := caret_to_buffer_cursor(p.buffer, translate(p, t))
-    start_pos := caret_to_buffer_cursor(p.buffer, p.caret.coords)
+    cursor_at_start, _ := get_last_cursor(p)
+    cursor_after_deletion := translate_cursor(p, t)
+    end_pos := caret_to_buffer_cursor(p.buffer, cursor_after_deletion)
+    start_pos := caret_to_buffer_cursor(p.buffer, cursor_at_start)
     count := end_pos - start_pos
+
     remove(p.buffer, start_pos, count)
+
     if count < 0 {
-        p.caret.coords = translation
+        update_cursor(p, cursor_after_deletion, cursor_after_deletion)
     }
 }
 
 editor_move_to :: proc(p: ^Pane, t: Caret_Translation) {
-    p.caret.coords = translate(p, t)
-}
-
-translate :: proc(p: ^Pane, t: Caret_Translation) -> (pos: Caret_Pos) {
-    pos = p.caret.coords
-    b := p.buffer
-    str := b.str
-    lines_count := len(b.lines)
-
-    switch t {
-    case .DOWN:
-        pos.y += 1
-    case .LEFT:
-        if pos.x == 0 && pos.y == 0 {
-            return
-        } else {
-            pos.x -= 1
-
-            if pos.x < 0 && pos.y > 0 {
-                pos.y -= 1
-                pos.x = get_line_length(b, pos.y)
-            }
-
-            return
-        }
-    case .RIGHT:
-        if pos.x == get_line_length(b, pos.y) && is_last_line(b, pos.y) {
-            return
-        } else {
-            pos.x += 1
-
-            if pos.x > get_line_length(b, pos.y) && pos.y < lines_count - 1 {
-                pos.y += 1
-                pos.x = 0
-            }
-
-            return
-        }
-    case .UP:
-        pos.y -= 1
-    case .BUFFER_START:
-        pos = { 0, 0 }
-        return
-    case .BUFFER_END:
-        if lines_count == 1 {
-            pos = { len(b.str), 0 }
-        } else {
-            pos = { 0, lines_count - 1 }
-        }
-
-        return
-    case .LINE_START:
-        bol, _ := get_line_boundaries(b, pos.y)
-        bol_indent := get_line_start_after_indent(b, pos.y)
-        pos.x = pos.x == 0 ? bol_indent - bol : 0
-        return
-    case .LINE_END:
-        pos.x = get_line_length(b, pos.y)
-        return
-    case .WORD_START:
-        s := b.str
-        x := caret_to_buffer_cursor(b, pos)
-        for x > 0 && is_whitespace(s[x - 1]) { x -= 1 }
-        for x > 0 && !is_whitespace(s[x - 1]) { x -= 1 }
-        pos = buffer_cursor_to_caret(b, x)
-    case .WORD_END:
-        s := b.str
-        x := caret_to_buffer_cursor(b, pos)
-        for x < len(s) && is_whitespace(s[x])  { x += 1 }
-        for x < len(s) && !is_whitespace(s[x]) { x += 1}
-        pos = buffer_cursor_to_caret(b, x)
-    }
-
-    return correct_out_of_bounds_caret(p, pos)
-}
-
-correct_out_of_bounds_caret :: proc(p: ^Pane, prev_pos: Caret_Pos) -> (pos: Caret_Pos) {
-    b := p.buffer
-    lines_count := len(b.lines)
-    pos = prev_pos
-
-    pos.y = clamp(pos.y, 0, lines_count - 1)
-    _, eol := get_line_boundaries(b, pos.y)
-    pos.x = clamp(pos.x, 0, eol)
-
-    return pos
+    new_pos := translate_cursor(p, t)
+    update_cursor(p, new_pos, new_pos)
 }

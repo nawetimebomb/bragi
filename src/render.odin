@@ -54,24 +54,6 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         sdl.RenderDrawLine(renderer, 0, 0, 0, window_height)
     }
 
-    { // Start Caret
-        dest_rect := sdl.Rect{
-            (i32(caret.coords.x) - viewport.x) * char_width,
-            (i32(caret.coords.y) - viewport.y) * line_height,
-            char_width, line_height,
-        }
-
-        set_bg(cursor)
-
-        if focused && !bragi.ui_pane.enabled {
-            if !caret.blinking {
-                sdl.RenderFillRect(renderer, &dest_rect)
-            }
-        } else {
-            sdl.RenderDrawRect(renderer, &dest_rect)
-        }
-    } // End Caret
-
     { // Start Buffer
         mm := buffer.major_mode
         lexer := languages.Lexer{}
@@ -98,7 +80,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
             glyph := font_editor.glyphs[r]
 
-            if glyph.w > 0 && glyph.h > 0  {
+            if r >= 32 && r < 128 {
                 src := sdl.Rect{ glyph.x, glyph.y, glyph.w, glyph.h }
                 dest := sdl.FRect{
                     f32(sx + glyph.xoffset),
@@ -110,9 +92,56 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                 sdl.RenderCopyF(renderer, font_editor.texture, &src, &dest)
             }
 
-            sx += font_editor.em_width
+            sx += glyph.xadvance
         }
     } // End Buffer
+
+    { // Start Cursor
+        set_bg(cursor)
+        pos, _ := get_last_cursor(p)
+        x: f32
+        y := f32(i32(pos.y) - viewport.y) * f32(line_height)
+        start, end := get_line_boundaries(buffer, pos.y)
+        rune_behind_cursor: rune
+
+        for r, index in buffer.str[start:end] {
+            if pos.x == index {
+                rune_behind_cursor = r
+                break
+            }
+
+            glyph := font_editor.glyphs[r]
+            x += f32(glyph.xadvance)
+        }
+
+        dest := make_rect(x, y, f32(char_width), f32(line_height))
+
+        set_bg(cursor)
+
+        if focused && !bragi.ui_pane.enabled {
+            if !caret.blinking {
+                sdl.RenderFillRectF(renderer, &dest)
+
+                rune_behind_cursor = ' '
+
+                // draw the glyph behind the cursor
+                if rune_behind_cursor >= 32 && rune_behind_cursor < 128 {
+                    glyph := font_editor.glyphs[rune_behind_cursor]
+                    glyph_src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+                    glyph_dest := make_rect(
+                        x + f32(glyph.xoffset),
+                        y + f32(glyph.yoffset) - y_offset_for_centering,
+                        f32(glyph.w), f32(glyph.h),
+                    )
+
+                    set_fg(font_editor.texture, background)
+                    render_copy(font_editor.texture, &glyph_src, &glyph_dest)
+                }
+            }
+        } else {
+            sdl.RenderDrawRectF(renderer, &dest)
+        }
+    } // End Cursor
 
     { // Start Modeline
         PADDING :: 10

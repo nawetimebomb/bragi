@@ -30,7 +30,6 @@ Buffer :: struct {
     data:                 []byte,
     str:                  string,
     dirty:                bool,
-    was_dirty_last_frame: bool,
     gap_end:              Buffer_Cursor,
     gap_start:            Buffer_Cursor,
     lines:                [dynamic]Line,
@@ -133,11 +132,8 @@ create_buffer_from_file :: proc(
     insert(result, 0, data)
     result.modified = false
     result.cursor = 0
+    result.dirty = true
 
-    // TODO: Because in debug I'm opening a file when running Bragi, I need
-    // this to be temporarily false
-    result.dirty = false
-    result.was_dirty_last_frame = true
 
     return result
 }
@@ -157,24 +153,14 @@ get_or_create_buffer :: proc(
     return create_buffer(name, bytes, undo_timeout, allocator)
 }
 
-buffer_begin :: proc(b: ^Buffer) {
-    assert(b.dirty == false)
-
+buffer_update :: proc(b: ^Buffer) {
     update_buffer_time(b)
-
-    if b.was_dirty_last_frame {
-        b.was_dirty_last_frame = false
-        refresh_string_buffer(b)
-        recalculate_lines(b)
-    }
-}
-
-buffer_end :: proc(b: ^Buffer) {
-    b.status = get_buffer_status(b)
 
     if b.dirty {
         b.dirty = false
-        b.was_dirty_last_frame = true
+        b.status = get_buffer_status(b)
+        refresh_string_buffer(b)
+        recalculate_lines(b)
     }
 }
 

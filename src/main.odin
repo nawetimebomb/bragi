@@ -257,21 +257,15 @@ main :: proc() {
         set_bg(bragi.settings.colorscheme_table[.background])
         sdl.RenderClear(renderer)
 
-        ui_pane_begin()
-
-        for &p in bragi.panes {
-            pane_begin(&p)
-        }
-
-        update_input()
+        process_inputs()
+        ui_pane_update_draw()
 
         for &p, index in bragi.panes {
             focused := bragi.focused_index == index
+            pane_begin(&p)
             render_pane(&p, index, focused)
             pane_end(&p, index)
         }
-
-        ui_pane_end()
 
         sdl.RenderPresent(renderer)
 

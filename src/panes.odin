@@ -162,8 +162,8 @@ resize_panes :: proc() {
     size_y := window_height
     size_x := window_width / i32(len(open_panes))
 
-    if minibuffer.enabled {
-        size_y = window_height - minibuffer.real_size.y
+    if widget_pane.enabled {
+        size_y = window_height - widget_pane.real_size.y
     }
 
     for &p in open_panes {

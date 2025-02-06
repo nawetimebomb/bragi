@@ -96,8 +96,7 @@ frame_delta_time: time.Duration
 open_buffers: [dynamic]Buffer
 open_panes:   [dynamic]Pane
 current_pane: ^Pane
-
-minibuffer: UI_Pane
+widget_pane: Widget
 
 bragi: Bragi
 
@@ -115,7 +114,7 @@ destroy_editor :: proc() {
         // TODO: Save desktop configuration
     }
 
-    ui_pane_destroy()
+    widgets_destroy()
 
     for &p in open_panes {
         pane_destroy(&p)
@@ -174,7 +173,7 @@ initialize_editor :: proc() {
     bragi.buffers = make([dynamic]Buffer, 0, 10)
     open_panes    = make([dynamic]Pane, 0, 2)
 
-    ui_pane_init()
+    widgets_init()
 
     p := add(pane_init())
     p.buffer = add(buffer_init("*notes*", 0))
@@ -261,7 +260,7 @@ main :: proc() {
         sdl.RenderClear(renderer)
 
         process_inputs()
-        ui_pane_update_draw()
+        widgets_update_draw()
 
         for &p, index in open_panes {
             focused := p.id == current_pane.id

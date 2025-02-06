@@ -118,7 +118,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         set_bg(cursor)
 
-        if focused && !minibuffer.enabled {
+        if focused && !widget_pane.enabled {
             if !caret.blinking {
                 sdl.RenderFillRectF(renderer, &dest)
 

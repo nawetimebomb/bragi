@@ -139,19 +139,19 @@ editor_other_pane :: proc(p: ^Pane) {
 }
 
 editor_find_file :: proc(target: ^Pane) {
-    ui_pane_show(target, .FILES)
+    widgets_show(target, .FILES)
 }
 
 editor_switch_buffer :: proc(target: ^Pane) {
-    ui_pane_show(target, .BUFFERS)
+    widgets_show(target, .BUFFERS)
 }
 
 editor_search_backward :: proc(target: ^Pane) {
-    ui_pane_show(target, .SEARCH_REVERSE_IN_BUFFER)
+    widgets_show(target, .SEARCH_REVERSE_IN_BUFFER)
 }
 
 editor_search_forward :: proc(target: ^Pane) {
-    ui_pane_show(target, .SEARCH_IN_BUFFER)
+    widgets_show(target, .SEARCH_IN_BUFFER)
 }
 
 editor_set_buffer_cursor :: proc(p: ^Pane) {

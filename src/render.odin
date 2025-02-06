@@ -118,7 +118,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         set_bg(cursor)
 
-        if focused && !bragi.ui_pane.enabled {
+        if focused && !minibuffer.enabled {
             if !caret.blinking {
                 sdl.RenderFillRectF(renderer, &dest)
 

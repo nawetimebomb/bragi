@@ -98,12 +98,12 @@ editor_open_file :: proc(p: ^Pane, filepath: string) {
 }
 
 editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
-    if len(bragi.panes) > 1 {
+    if len(open_panes) > 1 {
         if w == .CURRENT {
             p.mark_for_deletion = true
         } else {
-            for &p1, index in bragi.panes {
-                if bragi.focused_index != index {
+            for &p1, index in open_panes {
+                if current_pane != &p1 {
                     p1.mark_for_deletion = true
                 }
             }
@@ -118,16 +118,24 @@ editor_new_pane :: proc(p: ^Pane) {
     new_pane.caret = p.caret
     result := add(new_pane)
 
-    bragi.focused_index = len(bragi.panes) - 1
+    current_pane = &open_panes[len(open_panes) - 1]
     resize_panes()
 }
 
 editor_other_pane :: proc(p: ^Pane) {
-    bragi.focused_index += 1
+    focus_index := find_index_for_pane(p)
 
-    if bragi.focused_index >= len(bragi.panes) {
-        bragi.focused_index = 0
+    if focus_index == -1 {
+        log.errorf("Couldn't find the focused pane")
     }
+
+    focus_index += 1
+
+    if focus_index >= len(open_panes) {
+        focus_index = 0
+    }
+
+    current_pane = &open_panes[focus_index]
 }
 
 editor_find_file :: proc(target: ^Pane) {
@@ -195,7 +203,7 @@ editor_switch_to_pane_on_click :: proc(x, y: i32) {
         return
     }
 
-    bragi.focused_index = index
+    current_pane = &open_panes[index]
     found.caret.last_keystroke = time.tick_now()
     rel_x, rel_y := get_relative_coords_from_pane(found, x, y)
     mouse_set_point(found, rel_x, rel_y)

@@ -1,6 +1,8 @@
 package main
 
 import     "base:runtime"
+import     "core:crypto"
+import     "core:encoding/uuid"
 import     "core:fmt"
 import     "core:log"
 import     "core:math"
@@ -31,9 +33,6 @@ Program_Context :: struct {
 
 Bragi :: struct {
     buffers:         [dynamic]Buffer,
-    panes:           [dynamic]Pane,
-    ui_pane:         UI_Pane,
-    focused_index:   int,
 
     ctx:             Program_Context,
     keybinds:        Keybinds,
@@ -96,6 +95,9 @@ frame_delta_time: time.Duration
 
 open_buffers: [dynamic]Buffer
 open_panes:   [dynamic]Pane
+current_pane: ^Pane
+
+minibuffer: UI_Pane
 
 bragi: Bragi
 
@@ -115,14 +117,14 @@ destroy_editor :: proc() {
 
     ui_pane_destroy()
 
-    for &p in bragi.panes {
+    for &p in open_panes {
         pane_destroy(&p)
     }
     for &b in bragi.buffers {
         buffer_destroy(&b)
     }
     delete(bragi.buffers)
-    delete(bragi.panes)
+    delete(open_panes)
     delete(bragi.keybinds.modifiers)
 }
 
@@ -170,13 +172,13 @@ initialize_editor :: proc() {
     log.debug("Initializing editor")
 
     bragi.buffers = make([dynamic]Buffer, 0, 10)
-    bragi.panes   = make([dynamic]Pane, 0, 2)
+    open_panes    = make([dynamic]Pane, 0, 2)
 
     ui_pane_init()
 
     p := add(pane_init())
     p.buffer = add(buffer_init("*notes*", 0))
-    bragi.focused_index = 0
+    current_pane = p
 }
 
 initialize_settings :: proc() {
@@ -220,6 +222,7 @@ destroy_profiling :: proc() {
 
 main :: proc() {
     context.logger = log.create_console_logger()
+	context.random_generator = crypto.random_generator()
 
     default_allocator := context.allocator
     tracking_allocator: mem.Tracking_Allocator
@@ -260,11 +263,11 @@ main :: proc() {
         process_inputs()
         ui_pane_update_draw()
 
-        for &p, index in bragi.panes {
-            focused := bragi.focused_index == index
+        for &p, index in open_panes {
+            focused := p.id == current_pane.id
             pane_begin(&p)
             render_pane(&p, index, focused)
-            pane_end(&p, index)
+            pane_end(&p)
         }
 
         sdl.RenderPresent(renderer)

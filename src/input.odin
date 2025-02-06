@@ -146,7 +146,6 @@ handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
 
 process_inputs :: proc() {
     e: sdl.Event
-    p := &bragi.panes[bragi.focused_index]
     input_handled := false
 
     for sdl.PollEvent(&e) {
@@ -188,7 +187,7 @@ process_inputs :: proc() {
             case .DROPFILE: {
                 sdl.RaiseWindow(window)
                 filepath := string(e.drop.file)
-                editor_open_file(p, filepath)
+                editor_open_file(current_pane, filepath)
                 delete(e.drop.file)
                 return
             }
@@ -200,9 +199,9 @@ process_inputs :: proc() {
                     case 1:
                         editor_switch_to_pane_on_click(mouse.x, mouse.y)
                     case 2:
-                        mouse_drag_word(p, mouse.x, mouse.y)
+                        mouse_drag_word(current_pane, mouse.x, mouse.y)
                     case 3:
-                        mouse_drag_line(p, mouse.x, mouse.y)
+                        mouse_drag_line(current_pane, mouse.x, mouse.y)
                     }
                 }
 
@@ -210,17 +209,18 @@ process_inputs :: proc() {
             }
             case .MOUSEWHEEL: {
                 wheel := e.wheel
-                scroll(p, wheel.y * -1 * 5)
+                // TODO: Figure out which pane is being scrolled
+                scroll(current_pane, wheel.y * -1 * 5)
                 return
             }
             case .KEYDOWN: {
-                input_handled = handle_keydown(p, e.key.keysym)
+                input_handled = handle_keydown(current_pane, e.key.keysym)
             }
             case .TEXTINPUT: {
                 if !input_handled {
                     input_char := cstring(raw_data(e.text.text[:]))
                     str := string(input_char)
-                    do_command(.self_insert, p, str)
+                    do_command(.self_insert, current_pane, str)
                 }
                 return
             }

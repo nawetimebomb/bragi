@@ -1,12 +1,12 @@
 package main
 
+import     "core:encoding/uuid"
 import     "core:fmt"
 import     "core:log"
 import     "core:strings"
 import     "core:time"
 import sdl "vendor:sdl2"
 
-// @Description
 // Panes follow the concept of "windows" in Emacs. The editor window can separate in
 // different panes, and each pane can have its own functionality, or serve as a helper
 // for the user to be able to work easily.
@@ -36,6 +36,8 @@ Cursor :: struct {
 Pane :: struct {
     cursors: [dynamic]Cursor,
 
+    id: uuid.Identifier,
+
     caret: Caret,
 
     // The pane contents, buffer and its cursor goes here. Cursor lives in the pane so,
@@ -61,6 +63,7 @@ Pane :: struct {
 
 pane_create :: proc(b: ^Buffer = nil, c: Cursor = {}) -> Pane {
     result: Pane
+    result.id = uuid.generate_v7()
     result.cursors = make([dynamic]Cursor, 0, 1)
     result.buffer = b
     // NOTE: Panes can have many cursors on the screen, but only one is
@@ -118,11 +121,34 @@ pane_begin :: proc(p: ^Pane) {
     }
 }
 
-pane_end :: proc(p: ^Pane, index: int) {
+find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
+    result = -1
+
+    for &p, index in open_panes {
+        if test.id == p.id {
+            result = index
+            return
+        }
+    }
+
+    return
+}
+
+pane_end :: proc(p: ^Pane) {
     if p.mark_for_deletion {
+        index_for_this_pane := find_index_for_pane(p)
+
+        if index_for_this_pane == -1 {
+            log.errorf("Failed to find the pane: {0}", p)
+            return
+        }
+
+        if current_pane.id == p.id {
+            editor_other_pane(p)
+        }
+
         pane_destroy(p)
-        ordered_remove(&bragi.panes, index)
-        bragi.focused_index = clamp(bragi.focused_index, 0, len(bragi.panes) - 1)
+        ordered_remove(&open_panes, index_for_this_pane)
         resize_panes()
     }
 }
@@ -134,14 +160,14 @@ pane_destroy :: proc(p: ^Pane) {
 
 resize_panes :: proc() {
     size_y := window_height
-    size_x := window_width / i32(len(bragi.panes))
+    size_x := window_width / i32(len(open_panes))
 
-    if bragi.ui_pane.enabled {
-        size_y = window_height - bragi.ui_pane.real_size.y
+    if minibuffer.enabled {
+        size_y = window_height - minibuffer.real_size.y
     }
 
-    for &p in bragi.panes {
-        p.real_size.x = window_width / i32(len(bragi.panes))
+    for &p in open_panes {
+        p.real_size.x = window_width / i32(len(open_panes))
         p.real_size.y = size_y
     }
 
@@ -178,7 +204,7 @@ should_caret_blink :: #force_inline proc(c: ^Caret) -> bool {
 }
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
-    for &p, index in bragi.panes {
+    for &p, index in open_panes {
         origin := [2]i32{ p.real_size.x * i32(index), 0 }
         size := [2]i32{ origin.x + p.real_size.x, p.real_size.y }
 

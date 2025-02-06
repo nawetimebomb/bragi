@@ -43,14 +43,14 @@ add_buffer :: proc(b: Buffer) -> ^Buffer {
 }
 
 add_pane :: proc(p: Pane) -> ^Pane {
-    _, err := append(&bragi.panes, p)
+    _, err := append(&open_panes, p)
 
     if err != .None {
         log.error("Cannot append new pane.")
         return nil
     }
 
-    return &bragi.panes[len(bragi.panes) - 1]
+    return &open_panes[len(open_panes) - 1]
 }
 
 get_word_boundaries :: proc(s: string, pos: int) -> (begin, end: int) {

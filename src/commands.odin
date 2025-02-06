@@ -69,18 +69,16 @@ Command :: enum {
 }
 
 do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    bp_enabled := bragi.ui_pane.enabled
-
     switch {
     case cmd == .modifier:
         command_add_modifier(data.(string))
     case cmd == .quit_mode:
         command_reset_modes(p)
-    case !bp_enabled && cmd == .ui_select:
+    case !minibuffer.enabled && cmd == .ui_select:
         // TODO: I don't like that I have to do this... but this is how inputs are
         // being handled at the moment
         newline(p)
-    case bp_enabled:
+    case minibuffer.enabled:
         ui_do_command(cmd, p, data)
     case :
         editor_do_command(cmd, p, data)

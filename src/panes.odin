@@ -35,10 +35,14 @@ Cursor :: struct {
 
 Pane :: struct {
     cursors: [dynamic]Cursor,
+    cursor_max_offset: int,
+    cursor_blinking: bool,
+    cursor_blinking_count: int,
+    cursor_last_update: time.Tick,
+
+    last_keystroke: time.Tick,
 
     id: uuid.Identifier,
-
-    caret: Caret,
 
     // The pane contents, buffer and its cursor goes here. Cursor lives in the pane so,
     // users can navigate and edit the same buffer in two different panes.
@@ -48,7 +52,7 @@ Pane :: struct {
     mark_for_deletion: bool,
 
     // If the pane should align the caret to the buffer cursor
-    should_resync_caret: bool,
+    should_resync_cursor: bool,
 
     texture: sdl.Texture,
     // Values that define the UI.
@@ -61,26 +65,25 @@ Pane :: struct {
     viewport:       [2]i32,
 }
 
-pane_create :: proc(b: ^Buffer = nil, c: Cursor = {}) -> Pane {
+pane_create :: proc(b: ^Buffer = nil, c: [2]int = {}) -> Pane {
     result: Pane
     result.id = uuid.generate_v7()
     result.cursors = make([dynamic]Cursor, 0, 1)
     result.buffer = b
+    result.real_size = { window_width, window_height }
     // NOTE: Panes can have many cursors on the screen, but only one is
     // inherited when the user creates a new pane.
-    append(&result.cursors, c)
+    append(&result.cursors, Cursor{ c, c })
     return result
 }
 
 pane_init :: proc() -> Pane {
     p := pane_create()
-    p.real_size = { window_width, window_height }
     return p
 }
 
 pane_begin :: proc(p: ^Pane) {
     buffer := p.buffer
-    caret := &p.caret
     viewport := &p.viewport
 
     p.relative_size.x = (p.real_size.x / char_width) - 2
@@ -88,36 +91,38 @@ pane_begin :: proc(p: ^Pane) {
 
     if buffer  != nil { buffer_update(buffer) }
 
-    if p.should_resync_caret {
-        p.should_resync_caret = false
+    if p.should_resync_cursor {
+        p.should_resync_cursor = false
         sync_caret_coords(p)
     }
 
-    if should_caret_reset_blink_timers(caret) {
-        caret.blinking = false
-        caret.blinking_count = 0
-        caret.last_update = time.tick_now()
+    if should_cursor_reset_blink_timers(p) {
+        p.cursor_blinking = false
+        p.cursor_blinking_count = 0
+        p.cursor_last_update = time.tick_now()
     }
 
-    if should_caret_blink(caret) {
-        caret.blinking = !caret.blinking
-        caret.blinking_count += 1
-        caret.last_update = time.tick_now()
+    if should_cursor_blink(p) {
+        p.cursor_blinking = !p.cursor_blinking
+        p.cursor_blinking_count += 1
+        p.cursor_last_update = time.tick_now()
     }
 
-    caret_x := i32(caret.coords.x)
-    caret_y := i32(caret.coords.y)
+    cursor_head, _ := get_last_cursor(p)
+    cursor_x := i32(cursor_head.x)
+    cursor_y := i32(cursor_head.y)
 
-    if caret_x > viewport.x + p.relative_size.x {
-        viewport.x = caret_x - p.relative_size.x
-    } else if caret_x < viewport.x {
-        viewport.x = caret_x
+
+    if cursor_x > viewport.x + p.relative_size.x {
+        viewport.x = cursor_x - p.relative_size.x
+    } else if cursor_x < viewport.x {
+        viewport.x = cursor_x
     }
 
-    if caret_y > viewport.y + p.relative_size.y {
-        viewport.y = caret_y - p.relative_size.y
-    } else if caret_y < viewport.y {
-        viewport.y = caret_y
+    if cursor_y > viewport.y + p.relative_size.y {
+        viewport.y = cursor_y - p.relative_size.y
+    } else if cursor_y < viewport.y {
+        viewport.y = cursor_y
     }
 }
 
@@ -179,7 +184,8 @@ resize_panes :: proc() {
 }
 
 sync_caret_coords :: proc(p: ^Pane) {
-    p.caret.coords = buffer_cursor_to_caret(p.buffer, p.buffer.cursor)
+    new_pos := buffer_cursor_to_caret(p.buffer, p.buffer.cursor)
+    update_cursor(p, new_pos, new_pos)
 }
 
 reset_viewport :: proc(p: ^Pane) {
@@ -190,17 +196,17 @@ reset_viewport :: proc(p: ^Pane) {
     }
 }
 
-should_caret_reset_blink_timers :: #force_inline proc(c: ^Caret) -> bool {
+should_cursor_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {
     CARET_RESET_TIMEOUT :: 50 * time.Millisecond
-    time_diff := time.tick_diff(c.last_keystroke, time.tick_now())
+    time_diff := time.tick_diff(p.last_keystroke, time.tick_now())
     return time_diff < CARET_RESET_TIMEOUT
 }
 
-should_caret_blink :: #force_inline proc(c: ^Caret) -> bool {
+should_cursor_blink :: #force_inline proc(p: ^Pane) -> bool {
     CARET_BLINK_COUNT   :: 20
     CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
-    time_diff := time.tick_diff(c.last_update, time.tick_now())
-    return c.blinking_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
+    time_diff := time.tick_diff(p.cursor_last_update, time.tick_now())
+    return p.cursor_blinking_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
 }
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
@@ -217,7 +223,16 @@ find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
     return nil, 0
 }
 
+create_basic_cursor :: #force_inline proc(p: ^Pane) {
+    append(&p.cursors, Cursor{})
+}
+
 get_last_cursor :: #force_inline proc(p: ^Pane) -> (head, tail: [2]int) {
+    // If there are no cursors alive, create one
+    if len(p.cursors) == 0 {
+        create_basic_cursor(p)
+    }
+    assert(len(p.cursors) > 0)
     cursor := p.cursors[len(p.cursors) - 1]
     return cursor.head, cursor.tail
 }

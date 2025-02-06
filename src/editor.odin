@@ -17,7 +17,7 @@ Caret_Translation :: enum {
 }
 
 editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    p.caret.last_keystroke = time.tick_now()
+    p.last_keystroke = time.tick_now()
 
     #partial switch cmd {
         case .increase_font_size:      increase_font_size()
@@ -93,7 +93,7 @@ editor_open_file :: proc(p: ^Pane, filepath: string) {
 
     if !buffer_found {
         p.buffer = create_buffer_from_file(filepath)
-        p.caret.coords = {}
+        clear(&p.cursors)
     }
 }
 
@@ -112,13 +112,9 @@ editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
 }
 
 editor_new_pane :: proc(p: ^Pane) {
-    new_pane := pane_init()
-
-    new_pane.buffer = p.buffer
-    new_pane.caret = p.caret
-    result := add(new_pane)
-
-    current_pane = &open_panes[len(open_panes) - 1]
+    cursor_pos, _ := get_last_cursor(p)
+    new_pane := pane_create(p.buffer, cursor_pos)
+    current_pane = add(new_pane)
     resize_panes()
 }
 
@@ -155,7 +151,8 @@ editor_search_forward :: proc(target: ^Pane) {
 }
 
 editor_set_buffer_cursor :: proc(p: ^Pane) {
-    p.buffer.cursor = caret_to_buffer_cursor(p.buffer, p.caret.coords)
+    pane_cursor, _ := get_last_cursor(p)
+    p.buffer.cursor = caret_to_buffer_cursor(p.buffer, pane_cursor)
 }
 
 toggle_mark_on :: proc(p: ^Pane) {
@@ -204,7 +201,7 @@ editor_switch_to_pane_on_click :: proc(x, y: i32) {
     }
 
     current_pane = &open_panes[index]
-    found.caret.last_keystroke = time.tick_now()
+    found.last_keystroke = time.tick_now()
     rel_x, rel_y := get_relative_coords_from_pane(found, x, y)
     mouse_set_point(found, rel_x, rel_y)
 }
@@ -238,12 +235,15 @@ scroll :: proc(p: ^Pane, offset: i32) {
         p.viewport.y = clamp(p.viewport.y + offset, 0, lines_count - 10)
         view_y := int(p.viewport.y)
         rel_y := int(p.relative_size.y)
+        cursor_pos, _ := get_last_cursor(p)
 
-        if p.caret.coords.y < view_y {
-            p.caret.coords.y = view_y
-        } else if p.caret.coords.y > view_y + rel_y {
-            p.caret.coords.y = view_y + rel_y
+        if cursor_pos.y < view_y {
+            cursor_pos.y = view_y
+        } else if cursor_pos.y > view_y + rel_y {
+            cursor_pos.y = view_y + rel_y
         }
+
+        update_cursor(p, cursor_pos, cursor_pos)
     }
 }
 
@@ -260,12 +260,12 @@ editor_undo_redo :: proc(p: ^Pane, a: enum { REDO, UNDO }) {
         success = undo_redo(p.buffer, &p.buffer.undo, &p.buffer.redo)
     }
 
-    p.should_resync_caret = success
+    p.should_resync_cursor = success
 }
 
 yank :: proc(p: ^Pane, callback: Paste_Proc) {
     editor_self_insert(p, callback())
-    p.should_resync_caret = true
+    p.should_resync_cursor = true
 }
 
 editor_self_insert :: proc(p: ^Pane, s: string) {

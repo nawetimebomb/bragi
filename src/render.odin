@@ -5,9 +5,9 @@ import     "core:strings"
 import sdl "vendor:sdl2"
 import     "languages"
 
-is_caret_showing :: #force_inline proc(c: ^Caret, x, y, offset: i32) -> bool {
-    return !c.blinking && i32(c.coords.x) == x && i32(c.coords.y) - offset == y
-}
+// is_cursor_showing :: #force_inline proc(p: ^Pane, x, y, offset: i32) -> bool {
+//     return !p.cursor_blinking && i32(p.coords.x) == x && i32(c.coords.y) - offset == y
+// }
 
 set_bg :: #force_inline proc(c: Color) {
     if c.a != 0 {
@@ -26,7 +26,6 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     colors := &bragi.settings.colorscheme_table
     pane_dest := sdl.Rect{ p.real_size.x * i32(index), 0, p.real_size.x, p.real_size.y }
     viewport := p.viewport
-    caret := p.caret
     buffer := p.buffer
 
     background      := colors[.background]
@@ -119,10 +118,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         set_bg(cursor)
 
         if focused && !widget_pane.enabled {
-            if !caret.blinking {
+            if !p.cursor_blinking {
                 sdl.RenderFillRectF(renderer, &dest)
-
-                rune_behind_cursor = ' '
 
                 // draw the glyph behind the cursor
                 if rune_behind_cursor >= 32 && rune_behind_cursor < 128 {
@@ -145,7 +142,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
     { // Start Modeline
         PADDING :: 10
-        line_number := caret.coords.y + 1
+        cursor_head, _ := get_last_cursor(p)
+        line_number := cursor_head.y + 1
         buffer_status := get_buffer_status(buffer)
         buffer_name_indices := [2]int{
             len(buffer_status), len(buffer_status) + len(buffer.name),
@@ -156,7 +154,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             get_buffer_status(buffer),
             buffer.name,
             line_number,
-            caret.coords.x,
+            cursor_head.x,
         )
         rml_fmt := fmt.tprintf(
             "{0}", settings_get_major_mode_name(buffer.major_mode),

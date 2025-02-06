@@ -23,10 +23,10 @@ Widget_Action :: enum {
 
 Pane_State :: struct {
     buffer: ^Buffer,
-    caret_coords: Caret_Pos,
+    cursor_pos: [2]int,
 }
 
-Result_Caret_Pos :: Caret_Pos
+Result_Cursor_Pos :: [2]int
 Result_Buffer_Pointer :: ^Buffer
 
 Result_File_Info :: struct {
@@ -39,13 +39,13 @@ Result_File_Info :: struct {
 
 Result_Value :: union {
     Result_Buffer_Pointer,
-    Result_Caret_Pos,
+    Result_Cursor_Pos,
     Result_File_Info,
 }
 
 Result :: struct {
     format:    string,
-    highlight: Caret_Pos,
+    highlight: [2]int,
     invalid:   bool,
     value:     Result_Value,
 }
@@ -89,17 +89,17 @@ widgets_update_draw :: proc() {
 
     if !widget_pane.enabled { return }
 
-    if should_caret_reset_blink_timers(caret) {
-        caret.blinking = false
-        caret.blinking_count = 0
-        caret.last_update = time.tick_now()
-    }
+    // if should_caret_reset_blink_timers(caret) {
+    //     caret.blinking = false
+    //     caret.blinking_count = 0
+    //     caret.last_update = time.tick_now()
+    // }
 
-    if should_caret_blink(caret) {
-        caret.blinking = !caret.blinking
-        caret.blinking_count += 1
-        caret.last_update = time.tick_now()
-    }
+    // if should_caret_blink(caret) {
+    //     caret.blinking = !caret.blinking
+    //     caret.blinking_count += 1
+    //     caret.last_update = time.tick_now()
+    // }
 
     caret_y := i32(widget_pane.caret.coords.y)
 
@@ -126,7 +126,9 @@ widgets_update_draw :: proc() {
         item := widget_pane.results[widget_pane.caret.coords.y]
 
         if !item.invalid {
-            widget_pane.target.caret.coords = item.value.(Result_Caret_Pos)
+            cursor_pos := item.value.(Result_Cursor_Pos)
+            clear(&widget_pane.target.cursors)
+            append(&widget_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
         }
     }
 
@@ -140,12 +142,15 @@ rollback_to_prev_value :: proc() {
         widget_pane.target.buffer = widget_pane.prev_state.buffer
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        widget_pane.target.caret.coords = widget_pane.prev_state.caret_coords
+        cursor_pos := widget_pane.prev_state.cursor_pos
+        clear(&widget_pane.target.cursors)
+        append(&widget_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
     }
 }
 
 widgets_show :: proc(target: ^Pane, action: Widget_Action) {
     editor_set_buffer_cursor(target)
+    cursor_pos, _ := get_last_cursor(target)
 
     widget_pane.action = action
     widget_pane.caret.coords = {}
@@ -153,7 +158,7 @@ widgets_show :: proc(target: ^Pane, action: Widget_Action) {
     widget_pane.target = target
     widget_pane.prev_state = {
         buffer = target.buffer,
-        caret_coords = target.caret.coords,
+        cursor_pos = cursor_pos,
     }
 
     filter_results()
@@ -452,7 +457,9 @@ ui_select :: proc() {
         item := widget_pane.results[widget_pane.caret.coords.y]
 
         if item.invalid {
-            widget_pane.target.caret.coords = widget_pane.prev_state.caret_coords
+            cursor_pos := widget_pane.prev_state.cursor_pos
+            clear(&widget_pane.target.cursors)
+            append(&widget_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
         }
     }
 
@@ -708,8 +715,9 @@ widgets_draw :: proc() {
         for r, index in prompt_str {
             if index < len(prompt_fmt) {
                 set_fg(font.texture, colors[.highlight])
-            } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0, 0) {
-                set_fg(font.texture, colors[.background])
+                // TODO: Is cursor showing?
+            // } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0, 0) {
+            //     set_fg(font.texture, colors[.background])
             } else {
                 set_fg(font.texture, colors[.default])
             }

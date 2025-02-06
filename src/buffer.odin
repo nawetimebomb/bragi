@@ -85,7 +85,7 @@ create_buffer :: proc(
     undo_timeout := UNDO_DEFAULT_TIMEOUT,
     allocator := context.allocator,
 ) -> ^Buffer {
-    append(&bragi.buffers, Buffer{
+    append(&open_buffers, Buffer{
         allocator      = allocator,
         data           = make([]byte, bytes, allocator),
         dirty          = false,
@@ -100,7 +100,7 @@ create_buffer :: proc(
         undo_timeout   = undo_timeout,
     })
 
-    result := &bragi.buffers[len(bragi.buffers) - 1]
+    result := &open_buffers[len(open_buffers) - 1]
 
     result.undo.allocator = allocator
     result.redo.allocator = allocator
@@ -144,7 +144,7 @@ get_or_create_buffer :: proc(
     undo_timeout := UNDO_DEFAULT_TIMEOUT,
     allocator := context.allocator,
 ) -> ^Buffer {
-    for &b in bragi.buffers {
+    for &b in open_buffers {
         if b.name == name {
             return &b
         }

@@ -82,7 +82,7 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
 editor_open_file :: proc(p: ^Pane, filepath: string) {
     buffer_found := false
 
-    for &b in bragi.buffers {
+    for &b in open_buffers {
         if b.filepath == filepath {
             p.buffer = &b
             buffer_found = true
@@ -168,18 +168,18 @@ mark_buffer :: proc(pane: ^Pane) {
 }
 
 kill_current_buffer :: proc(p: ^Pane) {
-    for &b, index in bragi.buffers {
+    for &b, index in open_buffers {
         if &b == p.buffer {
             buffer_destroy(&b)
-            ordered_remove(&bragi.buffers, index)
+            ordered_remove(&open_buffers, index)
         }
     }
 
-    if len(bragi.buffers) == 0 {
+    if len(open_buffers) == 0 {
         get_or_create_buffer("*notes*", 0)
     }
 
-    p.buffer = &bragi.buffers[len(bragi.buffers) - 1]
+    p.buffer = &open_buffers[len(open_buffers) - 1]
     sync_caret_coords(p)
     reset_viewport(p)
 }

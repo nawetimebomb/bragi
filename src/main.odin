@@ -32,8 +32,6 @@ Program_Context :: struct {
 }
 
 Bragi :: struct {
-    buffers:         [dynamic]Buffer,
-
     ctx:             Program_Context,
     keybinds:        Keybinds,
     settings:        Settings,
@@ -116,13 +114,9 @@ destroy_editor :: proc() {
 
     widgets_destroy()
 
-    for &p in open_panes {
-        pane_destroy(&p)
-    }
-    for &b in bragi.buffers {
-        buffer_destroy(&b)
-    }
-    delete(bragi.buffers)
+    for &b in open_buffers { buffer_destroy(&b) }
+    for &p in open_panes { pane_destroy(&p) }
+    delete(open_buffers)
     delete(open_panes)
     delete(bragi.keybinds.modifiers)
 }
@@ -170,8 +164,8 @@ initialize_context :: proc() {
 initialize_editor :: proc() {
     log.debug("Initializing editor")
 
-    bragi.buffers = make([dynamic]Buffer, 0, 10)
-    open_panes    = make([dynamic]Pane, 0, 2)
+    open_buffers = make([dynamic]Buffer, 0, 10)
+    open_panes   = make([dynamic]Pane, 0, 2)
 
     widgets_init()
 

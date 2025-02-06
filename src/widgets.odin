@@ -193,7 +193,7 @@ filter_results :: proc() {
     switch widget_pane.action {
     case .NONE:
     case .BUFFERS:
-        for &b in bragi.buffers {
+        for &b in open_buffers {
             buf_name := b.name
 
             if !case_sensitive {

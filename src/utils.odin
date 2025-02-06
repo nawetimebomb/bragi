@@ -32,14 +32,14 @@ add :: proc{
 }
 
 add_buffer :: proc(b: Buffer) -> ^Buffer {
-    _, err := append(&bragi.buffers, b)
+    _, err := append(&open_buffers, b)
 
     if err != .None {
         log.errorf("Cannot append buffer {0}.", b.name)
         return nil
     }
 
-    return &bragi.buffers[len(bragi.buffers) - 1]
+    return &open_buffers[len(open_buffers) - 1]
 }
 
 add_pane :: proc(p: Pane) -> ^Pane {

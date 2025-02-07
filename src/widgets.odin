@@ -674,7 +674,7 @@ widgets_draw :: proc() {
             }
 
             if caret.coords.y - int(viewport.y) == line_index {
-                set_bg(colors[.region])
+                set_bg(colors[.highlight_line])
                 render_fill_rect(0, row, widgets_pane.rect.w, font.line_height)
             }
 
@@ -710,46 +710,50 @@ widgets_draw :: proc() {
     } // End Results
 
     { // Start Prompt
-        font := &font_ui
+        current_font := font_ui
         prompt_fmt := fmt.tprintf(
             "({0}/{1}) {2}: ", caret.coords.y + 1, len(widgets_pane.results), get_prompt_text(),
         )
         prompt_str := fmt.tprintf("{0}{1}", prompt_fmt, strings.to_string(widgets_pane.query))
-        row := widgets_pane.rect.h - font.line_height
+        row := widgets_pane.rect.h - current_font.line_height
         x: i32
 
         set_bg(colors[.background])
         render_fill_rect(
-            0, widgets_pane.rect.h - font.line_height, widgets_pane.rect.w, font.line_height,
+            0, widgets_pane.rect.h - current_font.line_height,
+            widgets_pane.rect.w, current_font.line_height,
         )
 
         if !caret.blinking {
             set_bg(colors[.cursor])
             render_fill_rect(
-                i32(caret.coords.x + len(prompt_fmt)) * font.em_width, row,
-                font.em_width, font.line_height,
+                i32(caret.coords.x + len(prompt_fmt)) * current_font.em_width, row,
+                current_font.em_width, current_font.line_height,
             )
         }
 
         for r, index in prompt_str {
+            current_font = font_ui
+
             if index < len(prompt_fmt) {
-                set_fg(font.texture, colors[.highlight])
+                current_font = font_ui_bold
+                set_fg(current_font.texture, colors[.highlight])
                 // TODO: Is cursor showing?
             // } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0, 0) {
-            //     set_fg(font.texture, colors[.background])
+            //     set_fg(current_font.texture, colors[.background])
             } else {
-                set_fg(font.texture, colors[.default])
+                set_fg(current_font.texture, colors[.default])
             }
 
-            glyph := font.glyphs[r]
+            glyph := current_font.glyphs[r]
             src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
             dest := make_rect(
                 f32(x + glyph.xoffset),
-                f32(row + glyph.yoffset) - font.y_offset_for_centering,
+                f32(row + glyph.yoffset) - current_font.y_offset_for_centering,
                 f32(glyph.w), f32(glyph.h),
             )
-            render_copy(font.texture, &src, &dest)
-            x += font.em_width
+            render_copy(current_font.texture, &src, &dest)
+            x += glyph.xadvance
         }
     } // End Prompt
 

@@ -206,7 +206,12 @@ should_cursor_blink :: #force_inline proc(p: ^Pane) -> bool {
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
     for &p, index in open_panes {
-        if p.rect.x <= x && p.rect.w > x && p.rect.y <= y && p.rect.h > y {
+        left   := p.rect.x
+        right  := p.rect.x + p.rect.w
+        top    := p.rect.y
+        bottom := p.rect.y + p.rect.h
+
+        if x >= left && x < right && y >= top && y < bottom {
             return &p, index
         }
     }

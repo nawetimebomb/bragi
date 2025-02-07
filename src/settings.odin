@@ -53,6 +53,7 @@ Face :: enum {
     constant,
     default,
     highlight,
+    highlight_line,
     keyword,
     region,
     string,
@@ -61,6 +62,9 @@ Face :: enum {
     modeline_off_fg,
     modeline_on_bg,
     modeline_on_fg,
+    modeline_shadow,
+
+    ui_border,
 }
 
 Settings :: struct {

@@ -45,7 +45,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     sdl.RenderClear(renderer)
 
     if index > 0 {
-        set_bg(comment)
+        set_bg(colors[.ui_border])
         sdl.RenderDrawLine(renderer, 0, 0, 0, window_height)
     }
 
@@ -137,7 +137,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     } // End Cursor
 
     { // Start Modeline
-        PADDING :: 10
+        HORIZONTAL_PADDING :: 10
+        VERTICAL_PADDING   :: 3
         cursor_head, _ := get_last_cursor(p)
         line_number := cursor_head.y + 1
         buffer_status := get_buffer_status(buffer)
@@ -156,28 +157,34 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             "{0}", settings_get_major_mode_name(buffer.major_mode),
         )
         rml_fmt_size := i32(len(rml_fmt)) * font_ui.em_width
-        row := p.rect.h - font_ui.line_height
-        dest_rect := sdl.Rect{
-            0, row, p.rect.w, font_ui.line_height,
-        }
+        row := p.rect.h - font_ui.line_height - VERTICAL_PADDING
+        background_y := row - VERTICAL_PADDING
+        borderline_y := background_y - 1
+        background_h := font_ui.line_height + VERTICAL_PADDING * 2
 
-        left_start_column  :: PADDING
-        right_start_column := p.rect.w - PADDING - rml_fmt_size
+        left_start_column  :: HORIZONTAL_PADDING
+        right_start_column := p.rect.w - HORIZONTAL_PADDING - rml_fmt_size
 
-        if focused {
-            set_bg(modeline_on_bg)
-        } else {
-            set_bg(modeline_off_bg)
-        }
+        set_bg(colors[.ui_border])
+        sdl.RenderDrawLine(renderer, 0, borderline_y, p.rect.w, borderline_y)
 
-        sdl.RenderFillRect(renderer, &dest_rect)
+        // TODO: This is adding a shadow to limit the modeline, it looks great, but I
+        // rather create a texture with this and use it instead of doing it manually.
+        // sdl.SetRenderDrawBlendMode(renderer, .BLEND)
+        // for i : i32 = 0; i < 5; i += 1 {
+        //     shadow := colors[.modeline_shadow]
+        //     sdl.SetRenderDrawColor(renderer, shadow.r, shadow.g, shadow.b, shadow.a - 51 * u8(i))
+        //     sdl.RenderDrawLine(
+        //         renderer,
+        //         0, background_y - i,
+        //         p.rect.w, background_y - i,
+        //     )
+        // }
+        // sdl.SetRenderDrawBlendMode(renderer, .NONE)
 
-        set_bg(modeline_off_bg)
-        sdl.RenderDrawLine(
-            renderer,
-            0, window_height - font_ui.line_height - 1,
-            window_width, window_height - font_ui.line_height - 1,
-        )
+        background_rect := make_rect(0, background_y, p.rect.w, background_h)
+        set_bg(focused ? modeline_on_bg : modeline_off_bg)
+        sdl.RenderFillRect(renderer, &background_rect)
 
         { // Left side
             x := i32(left_start_column)
@@ -198,7 +205,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                 )
                 set_fg(used_font.texture, focused ? modeline_on_fg : modeline_off_fg)
                 render_copy(used_font.texture, &src, &dest)
-                x += used_font.em_width
+                x += glyph.xadvance
             }
         }
 

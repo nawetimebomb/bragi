@@ -113,7 +113,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
         set_bg(cursor)
 
-        if focused && !widget_pane.enabled {
+        if focused && !widgets_pane.enabled {
             if !p.cursor_blinking {
                 sdl.RenderFillRectF(renderer, &dest)
 

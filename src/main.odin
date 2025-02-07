@@ -93,7 +93,7 @@ frame_delta_time: time.Duration
 open_buffers: [dynamic]Buffer
 open_panes:   [dynamic]Pane
 current_pane: ^Pane
-widget_pane: Widget
+widgets_pane: Widget
 
 bragi: Bragi
 

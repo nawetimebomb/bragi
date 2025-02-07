@@ -74,11 +74,11 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         command_add_modifier(data.(string))
     case cmd == .quit_mode:
         command_reset_modes(p)
-    case !widget_pane.enabled && cmd == .ui_select:
+    case !widgets_pane.enabled && cmd == .ui_select:
         // TODO: I don't like that I have to do this... but this is how inputs are
         // being handled at the moment
         newline(p)
-    case widget_pane.enabled:
+    case widgets_pane.enabled:
         ui_do_command(cmd, p, data)
     case :
         editor_do_command(cmd, p, data)

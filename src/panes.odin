@@ -169,8 +169,8 @@ resize_panes :: proc() {
         h := window_height
         x := w * i32(index)
 
-        if widget_pane.enabled {
-            h = window_height - widget_pane.real_size.y
+        if widgets_pane.enabled {
+            h = window_height - widgets_pane.rect.h
         }
 
         p.rect = make_rect(x, 0, w, h)

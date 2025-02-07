@@ -1,17 +1,18 @@
 package main
 
-import "core:fmt"
-import "core:log"
-import "core:os"
-import "core:reflect"
-import "core:slice"
-import "core:strings"
-import "core:time"
+import     "core:fmt"
+import     "core:log"
+import     "core:os"
+import     "core:reflect"
+import     "core:slice"
+import     "core:strings"
+import     "core:time"
+import sdl "vendor:sdl2"
 
 MAX_VIEW_COLUMNS :: 4
 VIEWPORT_MAX_ITEMS :: 8
 
-WIDGET_PANE_LARGE_SIZE :: 10
+WIDGETS_PANE_LARGE_SIZE :: 10
 
 Widget_Action :: enum {
     NONE,
@@ -51,43 +52,40 @@ Result :: struct {
 }
 
 Widget :: struct {
-    action:          Widget_Action,
-    caret:           Caret,
-    enabled:         bool,
-    did_select:      bool,
-    prev_state:      Pane_State,
-    query:           strings.Builder,
-    columns_len:     [MAX_VIEW_COLUMNS]int,
-    results:         [dynamic]Result,
-    target:          ^Pane,
-    real_size:       [2]i32,
-    relative_size:   [2]i32,
-    viewport:        [2]i32,
+    action:        Widget_Action,
+    caret:         Caret,
+    enabled:       bool,
+    did_select:    bool,
+    prev_state:    Pane_State,
+    query:         strings.Builder,
+    columns_len:   [MAX_VIEW_COLUMNS]int,
+    results:       [dynamic]Result,
+    target:        ^Pane,
+    texture:       ^sdl.Texture,
+    rect:          sdl.Rect,
+    relative_size: [2]i32,
+    viewport:      [2]i32,
 }
 
 widgets_init :: proc() {
-    widget_pane.real_size = {
-        window_width,
-        WIDGET_PANE_LARGE_SIZE * line_height,
-    }
-    widget_pane.relative_size = {
+    widgets_pane.relative_size = {
         window_width / char_width,
-        WIDGET_PANE_LARGE_SIZE,
+        WIDGETS_PANE_LARGE_SIZE,
     }
-    widget_pane.query = strings.builder_make()
-    widget_pane.results = make([dynamic]Result, 0)
+    widgets_pane.query = strings.builder_make()
+    widgets_pane.results = make([dynamic]Result, 0)
 }
 
 widgets_destroy :: proc() {
     clear_results()
-    strings.builder_destroy(&widget_pane.query)
-    delete(widget_pane.results)
+    strings.builder_destroy(&widgets_pane.query)
+    delete(widgets_pane.results)
 }
 
 widgets_update_draw :: proc() {
-    caret := &widget_pane.caret
+    caret := &widgets_pane.caret
 
-    if !widget_pane.enabled { return }
+    if !widgets_pane.enabled { return }
 
     // if should_caret_reset_blink_timers(caret) {
     //     caret.blinking = false
@@ -101,34 +99,34 @@ widgets_update_draw :: proc() {
     //     caret.last_update = time.tick_now()
     // }
 
-    caret_y := i32(widget_pane.caret.coords.y)
+    caret_y := i32(widgets_pane.caret.coords.y)
 
-    if caret_y > widget_pane.viewport.y + VIEWPORT_MAX_ITEMS {
-        widget_pane.viewport.y = caret_y - VIEWPORT_MAX_ITEMS
-    } else if caret_y < widget_pane.viewport.y {
-        widget_pane.viewport.y = caret_y
+    if caret_y > widgets_pane.viewport.y + VIEWPORT_MAX_ITEMS {
+        widgets_pane.viewport.y = caret_y - VIEWPORT_MAX_ITEMS
+    } else if caret_y < widgets_pane.viewport.y {
+        widgets_pane.viewport.y = caret_y
     }
 
-    widget_pane.viewport.y = max(0, widget_pane.viewport.y)
+    widgets_pane.viewport.y = max(0, widgets_pane.viewport.y)
 
-    switch widget_pane.action {
+    switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
-        item := widget_pane.results[widget_pane.caret.coords.y]
+        item := widgets_pane.results[widgets_pane.caret.coords.y]
 
         if !item.invalid {
-            widget_pane.target.buffer = item.value.(Result_Buffer_Pointer)
+            widgets_pane.target.buffer = item.value.(Result_Buffer_Pointer)
         }
 
-        sync_caret_coords(widget_pane.target)
+        sync_caret_coords(widgets_pane.target)
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        item := widget_pane.results[widget_pane.caret.coords.y]
+        item := widgets_pane.results[widgets_pane.caret.coords.y]
 
         if !item.invalid {
             cursor_pos := item.value.(Result_Cursor_Pos)
-            clear(&widget_pane.target.cursors)
-            append(&widget_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+            clear(&widgets_pane.target.cursors)
+            append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
         }
     }
 
@@ -136,15 +134,37 @@ widgets_update_draw :: proc() {
 }
 
 rollback_to_prev_value :: proc() {
-    switch widget_pane.action {
+    switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
-        widget_pane.target.buffer = widget_pane.prev_state.buffer
+        widgets_pane.target.buffer = widgets_pane.prev_state.buffer
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        cursor_pos := widget_pane.prev_state.cursor_pos
-        clear(&widget_pane.target.cursors)
-        append(&widget_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+        cursor_pos := widgets_pane.prev_state.cursor_pos
+        clear(&widgets_pane.target.cursors)
+        append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+    }
+}
+
+maybe_create_new_texture_for_widgets :: proc() {
+    last_rect := widgets_pane.rect
+    new_rect := sdl.Rect{}
+    local_line_height := font_ui.line_height
+
+    switch widgets_pane.action {
+    case .NONE:
+    case .BUFFERS, .FILES, .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+        new_rect.x = 0
+        new_rect.y = window_height - WIDGETS_PANE_LARGE_SIZE * local_line_height
+        new_rect.w = window_width
+        new_rect.h = WIDGETS_PANE_LARGE_SIZE * local_line_height
+    }
+
+    if last_rect != new_rect {
+        sdl.DestroyTexture(widgets_pane.texture)
+        widgets_pane.rect = new_rect
+        widgets_pane.texture =
+            sdl.CreateTexture(renderer, .RGBA32, .TARGET, new_rect.w, new_rect.h)
     }
 }
 
@@ -152,15 +172,16 @@ widgets_show :: proc(target: ^Pane, action: Widget_Action) {
     editor_set_buffer_cursor(target)
     cursor_pos, _ := get_last_cursor(target)
 
-    widget_pane.action = action
-    widget_pane.caret.coords = {}
-    widget_pane.enabled = true
-    widget_pane.target = target
-    widget_pane.prev_state = {
+    widgets_pane.action = action
+    widgets_pane.caret.coords = {}
+    widgets_pane.enabled = true
+    widgets_pane.target = target
+    widgets_pane.prev_state = {
         buffer = target.buffer,
         cursor_pos = cursor_pos,
     }
 
+    maybe_create_new_texture_for_widgets()
     filter_results()
     resize_panes()
 }
@@ -168,29 +189,29 @@ widgets_show :: proc(target: ^Pane, action: Widget_Action) {
 widgets_hide :: proc() {
     clear_results()
 
-    if !widget_pane.did_select {
+    if !widgets_pane.did_select {
         rollback_to_prev_value()
     }
 
-    widget_pane.enabled = false
-    widget_pane.action = .NONE
-    widget_pane.caret.coords = {}
-    widget_pane.did_select = false
-    widget_pane.prev_state = {}
-    widget_pane.target = nil
-    widget_pane.viewport = {}
+    widgets_pane.enabled = false
+    widgets_pane.action = .NONE
+    widgets_pane.caret.coords = {}
+    widgets_pane.did_select = false
+    widgets_pane.prev_state = {}
+    widgets_pane.target = nil
+    widgets_pane.viewport = {}
 
-    strings.builder_reset(&widget_pane.query)
+    strings.builder_reset(&widgets_pane.query)
     resize_panes()
 }
 
 filter_results :: proc() {
-    query := strings.to_string(widget_pane.query)
+    query := strings.to_string(widgets_pane.query)
     query_has_value := len(query) > 0
     case_sensitive := strings.contains_any(query, UPPERCASE_CHARS)
     clear_results()
 
-    switch widget_pane.action {
+    switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
         for &b in open_buffers {
@@ -208,7 +229,7 @@ filter_results :: proc() {
             start := strings.index(buf_name, query)
             end := start + len(query)
 
-            append(&widget_pane.results, Result{
+            append(&widgets_pane.results, Result{
                 format    = widgets_get_buffer_row_format(&b),
                 highlight = { start, end },
                 value     = &b,
@@ -216,7 +237,7 @@ filter_results :: proc() {
         }
 
         if query_has_value {
-            append(&widget_pane.results, Result{
+            append(&widgets_pane.results, Result{
                 format  = fmt.aprintf("Create a buffer with name \"{0}\"", query),
                 invalid = true,
             })
@@ -224,15 +245,15 @@ filter_results :: proc() {
     case .FILES:
         if !query_has_value {
             // TODO: get directory from buffer filepath if exists
-            if len(widget_pane.target.buffer.filepath) > 0 {
-                dir, _ := get_dir_and_filename_from_fullpath(widget_pane.target.buffer.filepath)
-                strings.write_string(&widget_pane.query, dir)
+            if len(widgets_pane.target.buffer.filepath) > 0 {
+                dir, _ := get_dir_and_filename_from_fullpath(widgets_pane.target.buffer.filepath)
+                strings.write_string(&widgets_pane.query, dir)
             } else {
-                strings.write_string(&widget_pane.query, get_base_os_dir())
+                strings.write_string(&widgets_pane.query, get_base_os_dir())
             }
 
-            query = strings.to_string(widget_pane.query)
-            widget_pane.caret.coords.x = len(query)
+            query = strings.to_string(widgets_pane.query)
+            widgets_pane.caret.coords.x = len(query)
         }
 
         dir, filename_query := get_dir_and_filename_from_fullpath(query)
@@ -264,7 +285,7 @@ filter_results :: proc() {
                     size     = f.size,
                 }
 
-                append(&widget_pane.results, Result{
+                append(&widgets_pane.results, Result{
                     format    = widgets_get_file_row_format(&value),
                     highlight = { start, end },
                     value     = value,
@@ -274,8 +295,8 @@ filter_results :: proc() {
             os.close(v)
         }
 
-        if len(widget_pane.results) == 0 && len(filename_query) > 0 {
-            append(&widget_pane.results, Result{
+        if len(widgets_pane.results) == 0 && len(filename_query) > 0 {
+            append(&widgets_pane.results, Result{
                 format  = fmt.aprintf(
                     "Create a file in {0} with name {1}", dir, filename_query,
                 ),
@@ -284,7 +305,7 @@ filter_results :: proc() {
         }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         if query_has_value {
-            b := widget_pane.target.buffer
+            b := widgets_pane.target.buffer
             s := ""
 
             if case_sensitive {
@@ -303,35 +324,35 @@ filter_results :: proc() {
                     value     = pos,
                 }
 
-                if widget_pane.action == .SEARCH_REVERSE_IN_BUFFER {
-                    inject_at(&widget_pane.results, 0, result)
+                if widgets_pane.action == .SEARCH_REVERSE_IN_BUFFER {
+                    inject_at(&widgets_pane.results, 0, result)
                 } else {
-                    append(&widget_pane.results, result)
+                    append(&widgets_pane.results, result)
                 }
 
                 s = s[found_index + len(query):]
             }
 
-            if len(widget_pane.results) == 0 {
-                append(&widget_pane.results, Result{
+            if len(widgets_pane.results) == 0 {
+                append(&widgets_pane.results, Result{
                     format  = fmt.aprintf("No results found for \"{0}\"", query),
                     invalid = true,
                 })
             }
         } else {
-            append(&widget_pane.results, Result{
+            append(&widgets_pane.results, Result{
                 format  = strings.clone("Enter a query to start searching..."),
                 invalid = true,
             })
         }
     }
 
-    widget_pane.caret.coords.y = clamp(widget_pane.caret.coords.y, 0, len(widget_pane.results) - 1)
-    widget_pane.viewport.y = 0
+    widgets_pane.caret.coords.y = clamp(widgets_pane.caret.coords.y, 0, len(widgets_pane.results) - 1)
+    widgets_pane.viewport.y = 0
 }
 
 ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    widget_pane.caret.last_keystroke = time.tick_now()
+    widgets_pane.caret.last_keystroke = time.tick_now()
 
     #partial switch cmd {
         case .search_backward:      ui_move_to(.UP)
@@ -361,9 +382,9 @@ ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
 }
 
 ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
-    pos = widget_pane.caret.coords
-    query := strings.to_string(widget_pane.query)
-    results := widget_pane.results
+    pos = widgets_pane.caret.coords
+    query := strings.to_string(widgets_pane.query)
+    results := widgets_pane.results
 
     switch t {
     case .DOWN:
@@ -405,61 +426,61 @@ ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
 
 ui_delete_to :: proc(t: Caret_Translation) {
     new_pos := ui_translate(t)
-    start := min(widget_pane.caret.coords.x, new_pos.x)
-    end := max(widget_pane.caret.coords.x, new_pos.x)
-    remove_range(&widget_pane.query.buf, start, end)
-    widget_pane.caret.coords.x = start
+    start := min(widgets_pane.caret.coords.x, new_pos.x)
+    end := max(widgets_pane.caret.coords.x, new_pos.x)
+    remove_range(&widgets_pane.query.buf, start, end)
+    widgets_pane.caret.coords.x = start
     filter_results()
 }
 
 ui_move_to :: proc(t: Caret_Translation) {
-    widget_pane.caret.coords = ui_translate(t)
+    widgets_pane.caret.coords = ui_translate(t)
 }
 
 ui_select :: proc() {
-    widget_pane.did_select = true
+    widgets_pane.did_select = true
     handled := true
-    query := strings.to_string(widget_pane.query)
+    query := strings.to_string(widgets_pane.query)
 
-    switch widget_pane.action {
+    switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
         // NOTE: We only care about the selection with nil pointer because the other ones
         // are changed on the fly, but this one requires a new buffer to be created.
-        item := widget_pane.results[widget_pane.caret.coords.y]
+        item := widgets_pane.results[widgets_pane.caret.coords.y]
 
         if item.invalid {
-            widget_pane.target.buffer = add(buffer_init(query, 0))
+            widgets_pane.target.buffer = add(buffer_init(query, 0))
         }
 
         widgets_hide()
     case .FILES:
-        item := widget_pane.results[widget_pane.caret.coords.y]
+        item := widgets_pane.results[widgets_pane.caret.coords.y]
         if item.invalid {
             _, filename := get_dir_and_filename_from_fullpath(query)
-            widget_pane.target.buffer = add(buffer_init(filename, 0))
+            widgets_pane.target.buffer = add(buffer_init(filename, 0))
         } else {
             f := item.value.(Result_File_Info)
 
             if f.is_dir {
-                strings.builder_reset(&widget_pane.query)
-                strings.write_string(&widget_pane.query, f.filepath)
-                strings.write_string(&widget_pane.query, "\\")
-                widget_pane.caret.coords.y = 0
-                widget_pane.caret.coords.x = len(widget_pane.query.buf)
+                strings.builder_reset(&widgets_pane.query)
+                strings.write_string(&widgets_pane.query, f.filepath)
+                strings.write_string(&widgets_pane.query, "\\")
+                widgets_pane.caret.coords.y = 0
+                widgets_pane.caret.coords.x = len(widgets_pane.query.buf)
                 filter_results()
                 handled = false
             } else {
-                editor_open_file(widget_pane.target, f.filepath)
+                editor_open_file(widgets_pane.target, f.filepath)
             }
         }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        item := widget_pane.results[widget_pane.caret.coords.y]
+        item := widgets_pane.results[widgets_pane.caret.coords.y]
 
         if item.invalid {
-            cursor_pos := widget_pane.prev_state.cursor_pos
-            clear(&widget_pane.target.cursors)
-            append(&widget_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+            cursor_pos := widgets_pane.prev_state.cursor_pos
+            clear(&widgets_pane.target.cursors)
+            append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
         }
     }
 
@@ -469,18 +490,18 @@ ui_select :: proc() {
 }
 
 ui_self_insert :: proc(s: string) {
-    if ok, _ := inject_at(&widget_pane.query.buf, widget_pane.caret.coords.x, s); ok {
-        widget_pane.caret.coords.x += len(s)
+    if ok, _ := inject_at(&widgets_pane.query.buf, widgets_pane.caret.coords.x, s); ok {
+        widgets_pane.caret.coords.x += len(s)
     }
 
     filter_results()
 }
 
 get_prompt_text :: #force_inline proc() -> string {
-    t := widget_pane.target
+    t := widgets_pane.target
     s := ""
 
-    switch widget_pane.action {
+    switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
         s = "Switch to"
@@ -496,11 +517,11 @@ get_prompt_text :: #force_inline proc() -> string {
 }
 
 clear_results :: proc() {
-    widget_pane.columns_len = { 16, 6, 6, 0 }
+    widgets_pane.columns_len = { 16, 6, 6, 0 }
 
-    for &item in widget_pane.results {
+    for &item in widgets_pane.results {
         delete(item.format)
-        if widget_pane.action == .FILES {
+        if widgets_pane.action == .FILES {
             if !item.invalid {
                 v := item.value.(Result_File_Info)
                 delete(v.filepath)
@@ -509,14 +530,14 @@ clear_results :: proc() {
         }
     }
 
-    clear(&widget_pane.results)
+    clear(&widgets_pane.results)
 }
 
 widgets_set_column_sizes :: #force_inline proc(cl0, cl1, cl2, cl3: int) {
-    widget_pane.columns_len[0] = max(cl0, widget_pane.columns_len[0])
-    widget_pane.columns_len[1] = max(cl1, widget_pane.columns_len[1])
-    widget_pane.columns_len[2] = max(cl2, widget_pane.columns_len[2])
-    widget_pane.columns_len[3] = max(cl3, widget_pane.columns_len[3])
+    widgets_pane.columns_len[0] = max(cl0, widgets_pane.columns_len[0])
+    widgets_pane.columns_len[1] = max(cl1, widgets_pane.columns_len[1])
+    widgets_pane.columns_len[2] = max(cl2, widgets_pane.columns_len[2])
+    widgets_pane.columns_len[3] = max(cl3, widgets_pane.columns_len[3])
 }
 
 widgets_get_buffer_row_format :: #force_inline proc(b: ^Buffer) -> string {
@@ -583,7 +604,7 @@ widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) 
     c3 := ""
 
     { // c0
-        start_pos := caret_to_buffer_cursor(b, pos) - len(strings.to_string(widget_pane.query))
+        start_pos := caret_to_buffer_cursor(b, pos) - len(strings.to_string(widgets_pane.query))
         end_pos := start_pos + 1
         for end_pos < len(b.str) && is_whitespace(b.str[end_pos])  { end_pos += 1 }
         for end_pos < len(b.str) && !is_whitespace(b.str[end_pos]) { end_pos += 1 }
@@ -602,33 +623,31 @@ widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) 
 }
 
 widgets_draw :: proc() {
-    caret := widget_pane.caret
+    caret := widgets_pane.caret
     colors := &bragi.settings.colorscheme_table
     font := &font_ui
     font_bold := &font_ui_bold
-    viewport := widget_pane.viewport
+    viewport := widgets_pane.viewport
 
-    // TODO: Move this to its own texture
-    pane_dest := make_rect(
-        window_width, window_height - 6 * font.line_height,
-        window_width, 6 * line_height,
-    )
+    sdl.SetRenderTarget(renderer, widgets_pane.texture)
+    set_bg(colors[.background])
+    sdl.RenderClear(renderer)
 
     { // Start Results
         profiling_start("ui_pane.odin:widgets_render")
 
-        for item, line_index in widget_pane.results[widget_pane.viewport.y:] {
+        for item, line_index in widgets_pane.results[widgets_pane.viewport.y:] {
             COLUMN_PADDING :: 2
 
-            row := window_height - widget_pane.real_size.y + i32(line_index) * font.line_height
+            row := i32(line_index) * font.line_height
             hl_start := item.highlight[0]
             hl_end := item.highlight[1]
             has_highlight := hl_start != hl_end
             row_builder := strings.builder_make(context.temp_allocator)
-            cl0 := widget_pane.columns_len[0] + COLUMN_PADDING
-            cl1 := cl0 + widget_pane.columns_len[1] + COLUMN_PADDING
-            cl2 := cl1 + widget_pane.columns_len[2] + COLUMN_PADDING
-            cl3 := cl2 + widget_pane.columns_len[3] + COLUMN_PADDING
+            cl0 := widgets_pane.columns_len[0] + COLUMN_PADDING
+            cl1 := cl0 + widgets_pane.columns_len[1] + COLUMN_PADDING
+            cl2 := cl1 + widgets_pane.columns_len[2] + COLUMN_PADDING
+            cl3 := cl2 + widgets_pane.columns_len[3] + COLUMN_PADDING
             x: i32
 
             if item.invalid {
@@ -636,7 +655,7 @@ widgets_draw :: proc() {
             } else {
                 splits := strings.split(item.format, "\n", context.temp_allocator)
 
-                for col_len, col_index in widget_pane.columns_len {
+                for col_len, col_index in widgets_pane.columns_len {
                     col_str := splits[col_index]
                     justify_proc := strings.left_justify
 
@@ -656,7 +675,7 @@ widgets_draw :: proc() {
 
             if caret.coords.y - int(viewport.y) == line_index {
                 set_bg(colors[.region])
-                render_fill_rect(0, row, window_width, font.line_height)
+                render_fill_rect(0, row, widgets_pane.rect.w, font.line_height)
             }
 
             for r, char_index in strings.to_string(row_builder) {
@@ -693,15 +712,15 @@ widgets_draw :: proc() {
     { // Start Prompt
         font := &font_ui
         prompt_fmt := fmt.tprintf(
-            "({0}/{1}) {2}: ", caret.coords.y + 1, len(widget_pane.results), get_prompt_text(),
+            "({0}/{1}) {2}: ", caret.coords.y + 1, len(widgets_pane.results), get_prompt_text(),
         )
-        prompt_str := fmt.tprintf("{0}{1}", prompt_fmt, strings.to_string(widget_pane.query))
-        row := window_height - font.line_height
+        prompt_str := fmt.tprintf("{0}{1}", prompt_fmt, strings.to_string(widgets_pane.query))
+        row := widgets_pane.rect.h - font.line_height
         x: i32
 
         set_bg(colors[.background])
         render_fill_rect(
-            0, window_height - font.line_height, window_width, font.line_height,
+            0, widgets_pane.rect.h - font.line_height, widgets_pane.rect.w, font.line_height,
         )
 
         if !caret.blinking {
@@ -733,4 +752,7 @@ widgets_draw :: proc() {
             x += font.em_width
         }
     } // End Prompt
+
+    sdl.SetRenderTarget(renderer, nil)
+    render_copy(widgets_pane.texture, nil, &widgets_pane.rect)
 }

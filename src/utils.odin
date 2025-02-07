@@ -33,38 +33,15 @@ add :: proc{
 
 add_buffer :: proc(b: Buffer) -> ^Buffer {
     _, err := append(&open_buffers, b)
-
-    if err != .None {
-        log.errorf("Cannot append buffer {0}.", b.name)
-        return nil
-    }
-
+    assert(err == .None, "Cannot append new buffer")
     return &open_buffers[len(open_buffers) - 1]
 }
 
 add_pane :: proc(p: Pane) -> ^Pane {
     _, err := append(&open_panes, p)
-
-    if err != .None {
-        log.error("Cannot append new pane.")
-        return nil
-    }
-
+    assert(err == .None, "Cannot append new pane")
+    resize_panes()
     return &open_panes[len(open_panes) - 1]
-}
-
-get_word_boundaries :: proc(s: string, pos: int) -> (begin, end: int) {
-    begin = pos; end = pos
-
-    for {
-        brtype := get_rune_type(utf8.rune_at(s, begin - 1))
-        ertype := get_rune_type(utf8.rune_at(s, end))
-        bsearch := begin > 0 && (brtype == .alpha || brtype == .numeric)
-        esearch := end < len(s) - 1 && (ertype == .alpha || ertype == .numeric)
-        if bsearch { begin -= 1 }
-        if esearch { end += 1 }
-        if !bsearch && !esearch { return }
-    }
 }
 
 get_rune_category :: proc(r: rune) -> Rune_Category {

@@ -28,7 +28,6 @@ Program_Context :: struct {
     profiling:      bool,
     spall_buf:      spall.Buffer,
     spall_ctx:      spall.Context,
-    pane_texture:   ^sdl.Texture,
 }
 
 Bragi :: struct {
@@ -147,11 +146,6 @@ initialize_context :: proc() {
     assert(renderer != nil, "Cannot create renderer")
 
     sdl.SetCursor(sdl.CreateSystemCursor(.IBEAM))
-
-    bragi.ctx.pane_texture = sdl.CreateTexture(
-        renderer, .RGBA8888, .TARGET,
-        DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
-    )
 
     sdl.GetWindowPosition(window, &window_x, &window_y)
     sdl.GetWindowSize(window, &window_width, &window_height)

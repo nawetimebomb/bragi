@@ -54,13 +54,12 @@ Pane :: struct {
     // If the pane should align the caret to the buffer cursor
     should_resync_cursor: bool,
 
-    texture: sdl.Texture,
+    rect: sdl.Rect,
+    texture: ^sdl.Texture,
     // Values that define the UI.
     show_scrollbar: bool,
     // The size of the pane, in relative positions (dimensions / size of character).
     relative_size:  [2]i32,
-    // The size of the pane, in pixels.
-    real_size:      [2]i32,
     // The amount of scrolling the pane has done so far, depending of the caret.
     viewport:       [2]i32,
 }
@@ -70,7 +69,6 @@ pane_create :: proc(b: ^Buffer = nil, c: [2]int = {}) -> Pane {
     result.id = uuid.generate_v7()
     result.cursors = make([dynamic]Cursor, 0, 1)
     result.buffer = b
-    result.real_size = { window_width, window_height }
     // NOTE: Panes can have many cursors on the screen, but only one is
     // inherited when the user creates a new pane.
     append(&result.cursors, Cursor{ c, c })
@@ -86,8 +84,8 @@ pane_begin :: proc(p: ^Pane) {
     buffer := p.buffer
     viewport := &p.viewport
 
-    p.relative_size.x = (p.real_size.x / char_width) - 2
-    p.relative_size.y = (p.real_size.y / line_height) - 2
+    p.relative_size.x = (p.rect.w / char_width) - 2
+    p.relative_size.y = (p.rect.h / line_height) - 2
 
     if buffer  != nil { buffer_update(buffer) }
 
@@ -164,23 +162,20 @@ pane_destroy :: proc(p: ^Pane) {
 }
 
 resize_panes :: proc() {
-    size_y := window_height
-    size_x := window_width / i32(len(open_panes))
+    for &p, index in open_panes {
+        sdl.DestroyTexture(p.texture)
 
-    if widget_pane.enabled {
-        size_y = window_height - widget_pane.real_size.y
+        w := window_width / i32(len(open_panes))
+        h := window_height
+        x := w * i32(index)
+
+        if widget_pane.enabled {
+            h = window_height - widget_pane.real_size.y
+        }
+
+        p.rect = make_rect(x, 0, w, h)
+        p.texture = sdl.CreateTexture(renderer, .RGBA8888, .TARGET, w, h)
     }
-
-    for &p in open_panes {
-        p.real_size.x = window_width / i32(len(open_panes))
-        p.real_size.y = size_y
-    }
-
-    sdl.DestroyTexture(bragi.ctx.pane_texture)
-
-    bragi.ctx.pane_texture = sdl.CreateTexture(
-        renderer, .RGBA8888, .TARGET, size_x, size_y,
-    )
 }
 
 sync_caret_coords :: proc(p: ^Pane) {
@@ -211,10 +206,7 @@ should_cursor_blink :: #force_inline proc(p: ^Pane) -> bool {
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
     for &p, index in open_panes {
-        origin := [2]i32{ p.real_size.x * i32(index), 0 }
-        size := [2]i32{ origin.x + p.real_size.x, p.real_size.y }
-
-        if origin.x <= x && size.x > x && origin.y <= y && size.y > y {
+        if p.rect.x <= x && p.rect.w > x && p.rect.y <= y && p.rect.h > y {
             return &p, index
         }
     }
@@ -251,7 +243,7 @@ translate_cursor :: proc(p: ^Pane, t: Caret_Translation) -> (pos: [2]int) {
 
     switch t {
     case .DOWN:
-        if pos.y < lines_count {
+        if pos.y < lines_count - 1 {
             pos.y += 1
 
             if pos.x > get_line_length(b, pos.y) {

@@ -115,7 +115,6 @@ editor_new_pane :: proc(p: ^Pane) {
     cursor_pos, _ := get_last_cursor(p)
     new_pane := pane_create(p.buffer, cursor_pos)
     current_pane = add(new_pane)
-    resize_panes()
 }
 
 editor_other_pane :: proc(p: ^Pane) {
@@ -207,8 +206,8 @@ editor_switch_to_pane_on_click :: proc(x, y: i32) {
 }
 
 get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32) {
-    rel_x = x % p.real_size.x
-    rel_y = y % p.real_size.y
+    rel_x = x % p.rect.w
+    rel_y = y % p.rect.h
     return
 }
 

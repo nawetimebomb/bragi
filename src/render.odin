@@ -2,12 +2,9 @@ package main
 
 import     "core:fmt"
 import     "core:strings"
+import     "core:time"
 import sdl "vendor:sdl2"
 import     "languages"
-
-// is_cursor_showing :: #force_inline proc(p: ^Pane, x, y, offset: i32) -> bool {
-//     return !p.cursor_blinking && i32(p.coords.x) == x && i32(c.coords.y) - offset == y
-// }
 
 set_bg :: #force_inline proc(c: Color) {
     if c.a != 0 {
@@ -24,7 +21,6 @@ set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
 render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     profiling_start("render.odin:render_pane")
     colors := &bragi.settings.colorscheme_table
-    pane_dest := sdl.Rect{ p.real_size.x * i32(index), 0, p.real_size.x, p.real_size.y }
     viewport := p.viewport
     buffer := p.buffer
 
@@ -43,7 +39,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     region          := colors[.region]
     string          := colors[.string]
 
-    sdl.SetRenderTarget(renderer, bragi.ctx.pane_texture)
+    sdl.SetRenderTarget(renderer, p.texture)
 
     set_bg(background)
     sdl.RenderClear(renderer)
@@ -160,13 +156,13 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             "{0}", settings_get_major_mode_name(buffer.major_mode),
         )
         rml_fmt_size := i32(len(rml_fmt)) * font_ui.em_width
-        row := p.real_size.y - font_ui.line_height
+        row := p.rect.h - font_ui.line_height
         dest_rect := sdl.Rect{
-            0, row, p.real_size.x, font_ui.line_height,
+            0, row, p.rect.w, font_ui.line_height,
         }
 
         left_start_column  :: PADDING
-        right_start_column := p.real_size.x - PADDING - rml_fmt_size
+        right_start_column := p.rect.w - PADDING - rml_fmt_size
 
         if focused {
             set_bg(modeline_on_bg)
@@ -226,7 +222,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 
     sdl.SetRenderTarget(renderer, nil)
 
-    sdl.RenderCopy(renderer, bragi.ctx.pane_texture, nil, &pane_dest)
+    sdl.RenderCopy(renderer, p.texture, nil, &p.rect)
     profiling_end()
 }
 

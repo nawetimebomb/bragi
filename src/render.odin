@@ -239,6 +239,11 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
 make_rect :: proc{
     make_rect_f32,
     make_rect_i32,
+    make_rect_i32_empty,
+}
+
+make_rect_i32_empty :: #force_inline proc() -> sdl.Rect {
+    return sdl.Rect{}
 }
 
 make_rect_i32 :: #force_inline proc(x, y, w, h: i32) -> sdl.Rect {
@@ -254,9 +259,9 @@ make_texture :: #force_inline proc(
     format: sdl.PixelFormatEnum,
     access: sdl.TextureAccess,
     rect: sdl.Rect,
-) {
+) -> Texture {
     sdl.DestroyTexture(handle)
-    handle := sdl.CreateTexture(renderer, format, access, rect.w, rect.h)
+    return sdl.CreateTexture(renderer, format, access, rect.w, rect.h)
 }
 
 clear_background :: #force_inline proc(color: Color) {

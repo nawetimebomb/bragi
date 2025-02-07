@@ -147,7 +147,7 @@ rollback_to_prev_value :: proc() {
 
 maybe_create_new_texture_for_widgets :: proc() {
     last_rect := widgets_pane.rect
-    new_rect := make_rect_i32(0, 0, 0, 0)
+    new_rect := make_rect()
     local_line_height := font_ui.line_height
 
     switch widgets_pane.action {
@@ -161,7 +161,7 @@ maybe_create_new_texture_for_widgets :: proc() {
 
     if last_rect != new_rect {
         widgets_pane.rect = new_rect
-        make_texture(widgets_pane.texture, .RGBA32, .TARGET, new_rect)
+        widgets_pane.texture = make_texture(widgets_pane.texture, .RGBA32, .TARGET, new_rect)
     }
 }
 

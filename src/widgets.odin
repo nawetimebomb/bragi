@@ -1,13 +1,12 @@
 package main
 
-import     "core:fmt"
-import     "core:log"
-import     "core:os"
-import     "core:reflect"
-import     "core:slice"
-import     "core:strings"
-import     "core:time"
-import sdl "vendor:sdl2"
+import "core:fmt"
+import "core:log"
+import "core:os"
+import "core:reflect"
+import "core:slice"
+import "core:strings"
+import "core:time"
 
 MAX_VIEW_COLUMNS :: 4
 VIEWPORT_MAX_ITEMS :: 8
@@ -61,8 +60,8 @@ Widget :: struct {
     columns_len:   [MAX_VIEW_COLUMNS]int,
     results:       [dynamic]Result,
     target:        ^Pane,
-    texture:       ^sdl.Texture,
-    rect:          sdl.Rect,
+    texture:       Texture,
+    rect:          Rect,
     relative_size: [2]i32,
     viewport:      [2]i32,
 }
@@ -148,7 +147,7 @@ rollback_to_prev_value :: proc() {
 
 maybe_create_new_texture_for_widgets :: proc() {
     last_rect := widgets_pane.rect
-    new_rect := sdl.Rect{}
+    new_rect := make_rect_i32(0, 0, 0, 0)
     local_line_height := font_ui.line_height
 
     switch widgets_pane.action {
@@ -161,10 +160,8 @@ maybe_create_new_texture_for_widgets :: proc() {
     }
 
     if last_rect != new_rect {
-        sdl.DestroyTexture(widgets_pane.texture)
         widgets_pane.rect = new_rect
-        widgets_pane.texture =
-            sdl.CreateTexture(renderer, .RGBA32, .TARGET, new_rect.w, new_rect.h)
+        make_texture(widgets_pane.texture, .RGBA32, .TARGET, new_rect)
     }
 }
 
@@ -629,9 +626,8 @@ widgets_draw :: proc() {
     font_bold := &font_ui_bold
     viewport := widgets_pane.viewport
 
-    sdl.SetRenderTarget(renderer, widgets_pane.texture)
-    set_bg(colors[.background])
-    sdl.RenderClear(renderer)
+    renderer_target(widgets_pane.texture)
+    clear_background(colors[.background])
 
     { // Start Results
         profiling_start("ui_pane.odin:widgets_render")
@@ -675,7 +671,7 @@ widgets_draw :: proc() {
 
             if caret.coords.y - int(viewport.y) == line_index {
                 set_bg(colors[.highlight_line])
-                render_fill_rect(0, row, widgets_pane.rect.w, font.line_height)
+                draw_fill_rect(0, row, widgets_pane.rect.w, font.line_height)
             }
 
             for r, char_index in strings.to_string(row_builder) {
@@ -701,7 +697,7 @@ widgets_draw :: proc() {
                     f32(row + glyph.yoffset) - used_font.y_offset_for_centering,
                     f32(glyph.w), f32(glyph.h),
                 )
-                render_copy(used_font.texture, &src, &dest)
+                draw_copy(used_font.texture, &src, &dest)
                 x += used_font.em_width
             }
         }
@@ -719,14 +715,14 @@ widgets_draw :: proc() {
         x: i32
 
         set_bg(colors[.background])
-        render_fill_rect(
+        draw_fill_rect(
             0, widgets_pane.rect.h - current_font.line_height,
             widgets_pane.rect.w, current_font.line_height,
         )
 
         if !caret.blinking {
             set_bg(colors[.cursor])
-            render_fill_rect(
+            draw_fill_rect(
                 i32(caret.coords.x + len(prompt_fmt)) * current_font.em_width, row,
                 current_font.em_width, current_font.line_height,
             )
@@ -752,11 +748,11 @@ widgets_draw :: proc() {
                 f32(row + glyph.yoffset) - current_font.y_offset_for_centering,
                 f32(glyph.w), f32(glyph.h),
             )
-            render_copy(current_font.texture, &src, &dest)
+            draw_copy(current_font.texture, &src, &dest)
             x += glyph.xadvance
         }
     } // End Prompt
 
-    sdl.SetRenderTarget(renderer, nil)
-    render_copy(widgets_pane.texture, nil, &widgets_pane.rect)
+    renderer_target()
+    draw_copy(widgets_pane.texture, nil, &widgets_pane.rect)
 }

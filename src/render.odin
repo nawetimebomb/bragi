@@ -6,6 +6,9 @@ import     "core:time"
 import sdl "vendor:sdl2"
 import     "languages"
 
+Rect :: sdl.Rect
+Texture :: ^sdl.Texture
+
 set_bg :: #force_inline proc(c: Color) {
     if c.a != 0 {
         sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
@@ -39,14 +42,14 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     region          := colors[.region]
     string          := colors[.string]
 
-    sdl.SetRenderTarget(renderer, p.texture)
+    renderer_target(p.texture)
 
     set_bg(background)
     sdl.RenderClear(renderer)
 
     if index > 0 {
         set_bg(colors[.ui_border])
-        sdl.RenderDrawLine(renderer, 0, 0, 0, window_height)
+        draw_line(0, 0, 0, p.rect.h)
     }
 
     { // Start Buffer
@@ -84,7 +87,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                 }
 
                 set_fg(font_editor.texture, default)
-                sdl.RenderCopyF(renderer, font_editor.texture, &src, &dest)
+                draw_copy(font_editor.texture, &src, &dest)
             }
 
             sx += glyph.xadvance
@@ -128,7 +131,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     )
 
                     set_fg(font_editor.texture, background)
-                    render_copy(font_editor.texture, &glyph_src, &glyph_dest)
+                    draw_copy(font_editor.texture, &glyph_src, &glyph_dest)
                 }
             }
         } else {
@@ -166,7 +169,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         right_start_column := p.rect.w - HORIZONTAL_PADDING - rml_fmt_size
 
         set_bg(colors[.ui_border])
-        sdl.RenderDrawLine(renderer, 0, borderline_y, p.rect.w, borderline_y)
+        draw_line(0, borderline_y, p.rect.w, borderline_y)
 
         // TODO: This is adding a shadow to limit the modeline, it looks great, but I
         // rather create a texture with this and use it instead of doing it manually.
@@ -204,7 +207,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     f32(glyph.w), f32(glyph.h),
                 )
                 set_fg(used_font.texture, focused ? modeline_on_fg : modeline_off_fg)
-                render_copy(used_font.texture, &src, &dest)
+                draw_copy(used_font.texture, &src, &dest)
                 x += glyph.xadvance
             }
         }
@@ -221,13 +224,13 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     f32(glyph.w), f32(glyph.h),
                 )
                 set_fg(font_ui.texture, focused ? modeline_on_fg : modeline_off_fg)
-                render_copy(font_ui.texture, &src, &dest)
+                draw_copy(font_ui.texture, &src, &dest)
                 x += font_ui.em_width
             }
         }
     } // End Modeline
 
-    sdl.SetRenderTarget(renderer, nil)
+    renderer_target()
 
     sdl.RenderCopy(renderer, p.texture, nil, &p.rect)
     profiling_end()
@@ -246,20 +249,43 @@ make_rect_f32 :: #force_inline proc(x, y, w, h: f32) -> sdl.FRect {
     return sdl.FRect{ x, y, w, h }
 }
 
-render_fill_rect :: #force_inline proc(x, y, w, h: i32) {
+make_texture :: #force_inline proc(
+    handle: ^sdl.Texture,
+    format: sdl.PixelFormatEnum,
+    access: sdl.TextureAccess,
+    rect: sdl.Rect,
+) {
+    sdl.DestroyTexture(handle)
+    handle := sdl.CreateTexture(renderer, format, access, rect.w, rect.h)
+}
+
+clear_background :: #force_inline proc(color: Color) {
+    set_bg(color)
+    sdl.RenderClear(renderer)
+}
+
+draw_line :: #force_inline proc(x1, y1, x2, y2: i32) {
+    sdl.RenderDrawLine(renderer, x1, y1, x2, y2)
+}
+
+draw_fill_rect :: #force_inline proc(x, y, w, h: i32) {
     rect := make_rect(x, y, w, h)
     sdl.RenderFillRect(renderer, &rect)
 }
 
-render_copy :: proc{
-    render_copy_frect,
-    render_copy_rect,
+draw_copy :: proc{
+    draw_copy_frect,
+    draw_copy_rect,
 }
 
-render_copy_frect :: #force_inline proc(texture: ^sdl.Texture, src: ^sdl.Rect, dest: ^sdl.FRect) {
+draw_copy_frect :: #force_inline proc(texture: ^sdl.Texture, src: ^sdl.Rect, dest: ^sdl.FRect) {
     sdl.RenderCopyF(renderer, texture, src, dest)
 }
 
-render_copy_rect :: #force_inline proc(texture: ^sdl.Texture, src, dest: ^sdl.Rect) {
+draw_copy_rect :: #force_inline proc(texture: ^sdl.Texture, src, dest: ^sdl.Rect) {
     sdl.RenderCopy(renderer, texture, src, dest)
+}
+
+renderer_target :: #force_inline proc(texture: ^sdl.Texture = nil) {
+    sdl.SetRenderTarget(renderer, texture)
 }

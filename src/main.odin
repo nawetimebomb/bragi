@@ -63,7 +63,7 @@ font_editor:  Font
 font_ui:      Font
 font_ui_bold: Font
 
-DEFAULT_FONT_EDITOR_SIZE :: 25
+DEFAULT_FONT_EDITOR_SIZE :: 20
 DEFAULT_FONT_UI_SIZE     :: 20
 
 // font base size is the one configured by the user, the other ones are derived

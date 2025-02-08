@@ -38,25 +38,9 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     viewport := p.viewport
     buffer := p.buffer
 
-    background      := colors[.background]
-    builtin         := colors[.builtin]
-    comment         := colors[.comment]
-    constant        := colors[.constant]
-    cursor          := colors[.cursor]
-    default         := colors[.default]
-    highlight       := colors[.highlight]
-    keyword         := colors[.keyword]
-    modeline_off_bg := colors[.modeline_off_bg]
-    modeline_off_fg := colors[.modeline_off_fg]
-    modeline_on_bg  := colors[.modeline_on_bg]
-    modeline_on_fg  := colors[.modeline_on_fg]
-    region          := colors[.region]
-    string          := colors[.string]
-
     set_renderer_target(p.texture)
 
-    set_bg(background)
-    sdl.RenderClear(renderer)
+    clear_background(colors[.background])
 
     if index > 0 {
         set_bg(colors[.ui_border])
@@ -145,7 +129,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         // sdl.SetRenderDrawBlendMode(renderer, .NONE)
 
         background_rect := make_rect(0, background_y, p.rect.w, background_h)
-        set_bg(focused ? modeline_on_bg : modeline_off_bg)
+        set_bg(focused ? colors[.modeline_on_bg] : colors[.modeline_off_bg])
         sdl.RenderFillRect(renderer, &background_rect)
 
         { // Left side
@@ -165,7 +149,10 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     f32(row + glyph.yoffset) - used_font.y_offset_for_centering,
                     f32(glyph.w), f32(glyph.h),
                 )
-                set_fg(used_font.texture, focused ? modeline_on_fg : modeline_off_fg)
+                set_fg(
+                    used_font.texture,
+                    focused ? colors[.modeline_on_fg] : colors[.modeline_off_fg],
+                )
                 draw_copy(used_font.texture, &src, &dest)
                 x += glyph.xadvance
             }
@@ -182,7 +169,10 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                     f32(row + glyph.yoffset) - font_ui.y_offset_for_centering,
                     f32(glyph.w), f32(glyph.h),
                 )
-                set_fg(font_ui.texture, focused ? modeline_on_fg : modeline_off_fg)
+                set_fg(
+                    font_ui.texture,
+                    focused ? colors[.modeline_on_fg] : colors[.modeline_off_fg],
+                )
                 draw_copy(font_ui.texture, &src, &dest)
                 x += font_ui.em_width
             }

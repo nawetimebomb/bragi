@@ -62,8 +62,6 @@ Pane :: struct {
     relative_size:  [2]i32,
     // The amount of scrolling the pane has done so far, depending of the caret.
     viewport:       [2]i32,
-    line_offset:    int,
-    lines_visible:  int,
 }
 
 pane_create :: proc(b: ^Buffer = nil, c: [2]int = {}) -> Pane {
@@ -84,7 +82,8 @@ pane_init :: proc() -> Pane {
 
 pane_begin :: proc(p: ^Pane) {
     assert(p.buffer != nil)
-    viewport := &p.viewport
+
+    buffer_update(p.buffer)
 
     p.relative_size.x = (p.rect.w / char_width) - 2
     p.relative_size.y = (p.rect.h / line_height) - 2
@@ -115,20 +114,17 @@ pane_begin :: proc(p: ^Pane) {
     cursor_x := i32(cursor_head.x)
     cursor_y := i32(cursor_head.y)
 
-    if cursor_x > viewport.x + p.relative_size.x {
-        viewport.x = cursor_x - p.relative_size.x
-    } else if cursor_x < viewport.x {
-        viewport.x = cursor_x
+    if cursor_x > p.viewport.x + p.relative_size.x {
+        p.viewport.x = cursor_x - p.relative_size.x
+    } else if cursor_x < p.viewport.x {
+        p.viewport.x = cursor_x
     }
 
-    if cursor_y > viewport.y + p.relative_size.y {
-        viewport.y = cursor_y - p.relative_size.y
-    } else if cursor_y < viewport.y {
-        viewport.y = cursor_y
+    if cursor_y > p.viewport.y + p.relative_size.y {
+        p.viewport.y = cursor_y - p.relative_size.y
+    } else if cursor_y < p.viewport.y {
+        p.viewport.y = cursor_y
     }
-
-    p.line_offset = int(viewport.y)
-    p.lines_visible = buffer_update(p.buffer, p.line_offset, int(p.relative_size.y))
 }
 
 find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
@@ -231,10 +227,7 @@ create_basic_cursor :: #force_inline proc(p: ^Pane) {
 
 get_last_cursor :: #force_inline proc(p: ^Pane) -> (head, tail: [2]int) {
     // If there are no cursors alive, create one
-    if len(p.cursors) == 0 {
-        create_basic_cursor(p)
-    }
-    assert(len(p.cursors) > 0)
+    if len(p.cursors) == 0 { create_basic_cursor(p) }
     cursor := p.cursors[len(p.cursors) - 1]
     return cursor.head, cursor.tail
 }

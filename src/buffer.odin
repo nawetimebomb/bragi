@@ -34,8 +34,6 @@ Buffer :: struct {
     gap_start:            Buffer_Cursor,
     lines:                [dynamic]Line,
 
-    first_line_offset:    int,
-    last_line_offset:     int,
     str:                  string,
     tokens:               []tokenizer.Token_Kind,
 
@@ -158,26 +156,17 @@ get_or_create_buffer :: proc(
     return create_buffer(name, bytes, undo_timeout, allocator)
 }
 
-buffer_update :: proc(b: ^Buffer, line_offset, lines_fitting_the_screen: int) -> int {
+buffer_update :: proc(b: ^Buffer) {
     update_buffer_time(b)
-    first_line_offset_changed := line_offset != b.first_line_offset
-    last_line_offset_changed :=
-        line_offset + lines_fitting_the_screen != b.last_line_offset
 
-    if b.dirty || first_line_offset_changed || last_line_offset_changed {
+    if b.dirty {
         b.dirty = false
+        b.status = get_buffer_status(b)
 
         recalculate_lines(b)
-
-        b.status = get_buffer_status(b)
-        b.first_line_offset = line_offset
-        b.last_line_offset = min(line_offset + lines_fitting_the_screen, len(b.lines) - 1)
-
         refresh_string_buffer(b)
         maybe_tokenize_buffer(b)
     }
-
-    return b.last_line_offset - b.first_line_offset
 }
 
 buffer_destroy :: proc(b: ^Buffer) {
@@ -419,11 +408,18 @@ sanitize_buffer :: proc(buffer: ^Buffer) {
     }
 }
 
-flush_range :: proc(b: ^Buffer, start, end: int) {
+buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
+    left  = string(buffer.data[:buffer.gap_start])
+    right = string(buffer.data[buffer.gap_end:])
+    return
+}
+
+refresh_string_buffer :: proc(b: ^Buffer) {
+    profiling_start("buffer.odin:refresh_string_buffer")
     builder := strings.builder_make(context.temp_allocator)
+    start := 0
+    end := buffer_len(b)
     left, right := buffer_get_strings(b)
-    assert(start >= 0, "invalid start position")
-    assert(end <= buffer_len(b), "invalud end position")
 
     left_len := len(left)
 
@@ -436,21 +432,8 @@ flush_range :: proc(b: ^Buffer, start, end: int) {
         strings.write_string(&builder, right[:end - left_len])
     }
 
-    b.str = strings.clone(strings.to_string(builder))
-}
-
-buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
-    left  = string(buffer.data[:buffer.gap_start])
-    right = string(buffer.data[buffer.gap_end:])
-    return
-}
-
-refresh_string_buffer :: proc(b: ^Buffer) {
-    profiling_start("buffer.odin:refresh_string_buffer")
     delete(b.str)
-    start := b.lines[b.first_line_offset][0]
-    end := b.lines[b.last_line_offset][1]
-    flush_range(b, start, end)
+    b.str = strings.clone(strings.to_string(builder))
     profiling_end()
 }
 

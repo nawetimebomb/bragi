@@ -70,16 +70,25 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             fill = focused,
             showing = p.cursor_showing,
         }
+        first_line := int(p.viewport.y)
+        last_line :=
+            min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines) - 1)
+
+        if len(buffer.lines) > int(p.relative_size.y) {
+            start := buffer.lines[first_line][0]
+            end := buffer.lines[last_line][1]
+            screen_buffer = buffer.str[start:end]
+        }
 
         if mm == .Fundamental {
-            draw_text(font_editor, buffer.str, p.cursors[:], cursor_settings)
+            draw_text(font_editor, screen_buffer, p.cursors[:], cursor_settings)
         } else {
-            code_lines := make([]Code_Line, p.lines_visible, context.temp_allocator)
+            code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
 
-            for index in 0..<p.lines_visible {
-                line_index := p.line_offset + index
+            for li in first_line..<last_line {
+                index := li - first_line
                 code_line := Code_Line{}
-                start, end := get_line_boundaries(buffer, line_index)
+                start, end := get_line_boundaries(buffer, li)
                 code_line.line = buffer.str[start:end]
                 code_line.tokens = buffer.tokens[start:end]
                 code_lines[index] = code_line
@@ -228,10 +237,6 @@ draw_text :: proc(
     colors := bragi.settings.colorscheme_table
     sx, sy: i32
 
-    is_valid_glyph :: proc(r: rune) -> bool {
-        return r >= 32 && r < 128
-    }
-
     set_fg(font.texture, colors[.default])
 
     for r in string_buffer {
@@ -258,6 +263,10 @@ draw_text :: proc(
     }
 }
 
+is_valid_glyph :: proc(r: rune) -> bool {
+    return r >= 32 && r < 128
+}
+
 draw_code :: proc(
     font: Font,
     code_lines: []Code_Line,
@@ -266,10 +275,6 @@ draw_code :: proc(
 ) {
     colors := bragi.settings.colorscheme_table
     line_height := font.line_height
-
-    is_valid_glyph :: proc(r: rune) -> bool {
-        return r >= 32 && r < 128
-    }
 
     for code, y_offset in code_lines {
         sx, sy: i32
@@ -316,25 +321,42 @@ draw_code :: proc(
 
         // Cursor head
         ch := cursor.head
-        sy := i32(ch.y) * font.line_height
-        sx := get_text_size(font, code_lines[ch.y].line[:ch.x])
-        set_bg(colors[.cursor])
-        draw_rect(sx, sy, font.em_width, font.line_height, cursor_settings.fill)
+        cursor_rect := make_rect(
+            0, i32(ch.y) * font.line_height,
+            font.em_width, font.line_height,
+        )
+        char_behind_cursor: byte
 
-        if ch.y < len(code_lines) && ch.x < len(code_lines[ch.y].line) {
-            char_behind_cursor := code_lines[cursor.head.y].line[ch.x]
-            if is_valid_glyph(rune(char_behind_cursor)) {
-                g := font.glyphs[char_behind_cursor]
-                src := make_rect(g.x, g.y, g.w, g.h)
-                dest := make_rect(
-                    f32(sx + g.xoffset),
-                    f32(sy + g.yoffset) - font.y_offset_for_centering,
-                    f32(g.w), f32(g.h),
-                )
-                set_fg(font.texture, colors[.background])
-                draw_copy(font.texture, &src, &dest)
+        if ch.y < len(code_lines) {
+            str := code_lines[ch.y].line
+            cut := clamp(ch.x, 0, len(str))
+            cursor_rect.x = get_width_based_on_text_size(font, str[:cut], ch.x)
+            if ch.x < len(str) - 1 {
+                char_behind_cursor = code_lines[ch.y].line[ch.x]
             }
         }
+
+        draw_cursor(
+            font, cursor_rect, cursor_settings.fill, char_behind_cursor,
+        )
+    }
+}
+
+draw_cursor :: #force_inline proc(f: Font, r: Rect, fill: bool, behind_cursor: byte) {
+    colors := bragi.settings.colorscheme_table
+    set_bg(colors[.cursor])
+    draw_rect(r.x, r.y, r.w, r.h, fill)
+
+    if is_valid_glyph(rune(behind_cursor)) {
+        g := f.glyphs[behind_cursor]
+        src := make_rect(g.x, g.y, g.w, g.h)
+        dest := make_rect(
+            f32(r.x + g.xoffset),
+            f32(r.y + g.yoffset) - f.y_offset_for_centering,
+            f32(g.w), f32(g.h),
+        )
+        set_fg(f.texture, colors[.background])
+        draw_copy(f.texture, &src, &dest)
     }
 }
 

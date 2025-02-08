@@ -63,9 +63,16 @@ fonts_deinit :: proc() {
     profiling_end()
 }
 
-get_text_size :: proc(font: Font, text: string) -> (size: i32) {
-    for r in text {
-        g := font.glyphs[r]
+get_width_based_on_text_size :: proc(f: Font, s: string, dwidth: int) -> (size: i32) {
+    delta := dwidth - len(s)
+    size = get_text_size(f, s)
+    if delta > 0 { size += i32(delta) * f.em_width }
+    return
+}
+
+get_text_size :: proc(f: Font, s: string) -> (size: i32) {
+    for r in s {
+        g := f.glyphs[r]
         // TODO: add support for invalid glyph
         size += g.xadvance
     }

@@ -63,22 +63,24 @@ end_of_line                     <C-e>
 
 # Comments
 [colors]
-# the ayu theme https://github.com/dempfi/ayu?tab=readme-ov-file
-background                      10141c
-comment                         848484
-constant                        e6b450
-cursor                          e6b450
-default                         bfbdb6
-highlight                       e6b450
-highlight_line                  232b3c
-keyword                         ff8f40
-region                          3388ff
-string                          aad94c
+# based on night-owl: https://github.com/aaronjensen/night-owl-emacs
+background                      011627
+builtin                         c792ea
+comment                         637777
+constant                        f78c6c
+cursor                          80A4C2
+default                         d6deeb
+highlight                       ffeb95
+highlight_line                  1d3b53
+keyword                         c792ea
+region                          1d3b53
+string                          ecc48d
+type                            ffcb8b
 
-modeline_off_bg                 07080c
-modeline_off_fg                 3f424a
-modeline_on_bg                  0d1017
-modeline_on_fg                  bfbdb6
-modeline_shadow                 0d1017
+modeline_off_bg                 011627
+modeline_off_fg                 676e95
+modeline_on_bg                  0b2942
+modeline_on_fg                  d6deeb
+modeline_shadow                 5f7e97
 
-ui_border                       1b1f29
+ui_border                       5f7e97

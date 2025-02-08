@@ -5,6 +5,7 @@ import     "core:slice"
 import     "core:strings"
 import     "core:time"
 import sdl "vendor:sdl2"
+import "tokenizer"
 
 Rect :: sdl.Rect
 Texture :: ^sdl.Texture
@@ -293,7 +294,7 @@ draw_text :: proc(font: Font, string_buffer: string) {
 
 Code_Line :: struct {
     line: string,
-    tokens: []Token_Kind,
+    tokens: []tokenizer.Token_Kind,
 }
 
 draw_code :: proc(font: Font, char_xadvance: i32, line_height: i32, code_lines: []Code_Line) {
@@ -328,6 +329,7 @@ draw_code :: proc(font: Font, char_xadvance: i32, line_height: i32, code_lines: 
             case .constant: set_fg(font.texture, colors[.constant])
             case .keyword:  set_fg(font.texture, colors[.keyword])
             case .string:   set_fg(font.texture, colors[.string])
+            case .type:     set_fg(font.texture, colors[.type])
             }
 
 

@@ -10,6 +10,7 @@ import "core:strings"
 import "core:thread"
 import "core:time"
 import "core:unicode/utf8"
+import "tokenizer"
 
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
@@ -33,7 +34,7 @@ Buffer :: struct {
     gap_end:              Buffer_Cursor,
     gap_start:            Buffer_Cursor,
     lines:                [dynamic]Line,
-    tokens:               []Token_Kind,
+    tokens:               []tokenizer.Token_Kind,
 
     enable_history:       bool,
     redo:                 [dynamic]History_State,
@@ -215,13 +216,17 @@ maybe_tokenize_buffer :: proc(b: ^Buffer) {
         return
     }
 
+    tokenize_proc: #type proc(^string) -> []tokenizer.Token_Kind
+
     delete(b.tokens)
-    b.tokens = make([]Token_Kind, len(b.str))
 
     #partial switch b.major_mode {
         case .Bragi: log.error("not implemented")
-        case .Odin:  tokenize_buffer(b)
+        case .Odin:  tokenize_proc = tokenizer.tokenize_odin
     }
+
+    b.tokens = tokenize_proc(&b.str)
+
     profiling_end()
 }
 

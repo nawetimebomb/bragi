@@ -7,8 +7,6 @@ import "core:reflect"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
-import "languages"
-import "tokenizer"
 
 PARSE_ERROR_KEYBINDING_EXISTS_FMT :: "Error in line {0}: Keybinding {1} already bound"
 PARSE_ERROR_EXPECT_GOT_FMT        :: "Error in line {0}: Invalid setting.\n\tExpect: {1}\n\tGot: {2}"
@@ -20,13 +18,6 @@ Color :: distinct [4]u8
 Major_Modes_Table :: map[Major_Mode]Major_Mode_Settings
 Colorscheme_Table :: map[Face]Color
 Keybindings_Table :: map[string]Command
-
-// NOTE:
-//   ^Render_State is .Default, .Keyword, etc
-//   ^string is the buffer string
-//   int is the cursor position
-Lexer_Proc :: #type proc(^languages.Lexer)
-Tokenization_Proc :: #type proc(^tokenizer.Tokenizer)
 
 DEFAULT_COLORSCHEME :: #load("../res/config.bragi")
 
@@ -57,6 +48,7 @@ Face :: enum {
     keyword,
     region,
     string,
+    type,
 
     modeline_off_bg,
     modeline_off_fg,
@@ -85,8 +77,6 @@ Settings :: struct {
 
 Major_Mode_Settings :: struct {
     enable_lexer:       bool,
-    lexer_proc:         Lexer_Proc,
-    tokenization_proc:  Tokenization_Proc,
     name:               string,
     file_extensions:    string,
     word_delimiters:    string,
@@ -123,10 +113,6 @@ settings_get_major_mode_name :: proc(mm: Major_Mode) -> string {
 
 settings_is_lexer_enabled :: proc(mm: Major_Mode) -> bool {
     return bragi.settings.major_modes_table[mm].enable_lexer
-}
-
-settings_get_lexer_proc :: proc(mm: Major_Mode) -> Lexer_Proc {
-    return bragi.settings.major_modes_table[mm].lexer_proc
 }
 
 load_settings_from_internal_data :: proc() {
@@ -318,8 +304,6 @@ major_mode_bragi :: proc() -> Major_Mode_Settings {
     return {
         auto_indent_type  = .Relaxed,
         enable_lexer      = true,
-        lexer_proc        = languages.bragi_lexer,
-        tokenization_proc = tokenizer.tokenize_bragi,
         file_extensions   = "bragi",
         indentation_char  = .Space,
         indentation_width = 0,
@@ -345,8 +329,6 @@ major_mode_odin :: proc() -> Major_Mode_Settings {
     return {
         auto_indent_type  = .Electric,
         enable_lexer      = true,
-        lexer_proc        = languages.odin_lexer,
-        tokenization_proc = tokenizer.tokenize_odin,
         file_extensions   = "odin",
         indentation_char  = .Space,
         indentation_width = 4,

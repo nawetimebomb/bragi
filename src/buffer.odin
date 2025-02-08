@@ -29,11 +29,14 @@ Buffer :: struct {
 
     cursor:               Buffer_Cursor,
     data:                 []byte,
-    str:                  string,
     dirty:                bool,
     gap_end:              Buffer_Cursor,
     gap_start:            Buffer_Cursor,
     lines:                [dynamic]Line,
+
+    first_line_offset:    int,
+    last_line_offset:     int,
+    str:                  string,
     tokens:               []tokenizer.Token_Kind,
 
     enable_history:       bool,
@@ -155,16 +158,26 @@ get_or_create_buffer :: proc(
     return create_buffer(name, bytes, undo_timeout, allocator)
 }
 
-buffer_update :: proc(b: ^Buffer) {
+buffer_update :: proc(b: ^Buffer, line_offset, lines_fitting_the_screen: int) -> int {
     update_buffer_time(b)
+    first_line_offset_changed := line_offset != b.first_line_offset
+    last_line_offset_changed :=
+        line_offset + lines_fitting_the_screen != b.last_line_offset
 
-    if b.dirty {
+    if b.dirty || first_line_offset_changed || last_line_offset_changed {
         b.dirty = false
-        b.status = get_buffer_status(b)
-        refresh_string_buffer(b)
+
         recalculate_lines(b)
+
+        b.status = get_buffer_status(b)
+        b.first_line_offset = line_offset
+        b.last_line_offset = min(line_offset + lines_fitting_the_screen, len(b.lines) - 1)
+
+        refresh_string_buffer(b)
         maybe_tokenize_buffer(b)
     }
+
+    return b.last_line_offset - b.first_line_offset
 }
 
 buffer_destroy :: proc(b: ^Buffer) {
@@ -191,21 +204,32 @@ update_buffer_time :: proc(b: ^Buffer) {
 
 recalculate_lines :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:recalculate_lines")
-    buf := transmute([]byte)b.str
+    left, right := buffer_get_strings(b)
+
     clear(&b.lines)
     append(&b.lines, Line{0, 0})
 
-    for c, index in buf {
-        if c == '\n' {
+	for index := 0; index < len(left); index += 1 {
+		if left[index] == '\n' {
             eocl := index
-            bonl := index + 1
+            bonl := eocl + 1
             last_line_index := len(b.lines) - 1
             b.lines[last_line_index][1] = eocl
             append(&b.lines, Line{bonl, bonl})
         }
-    }
+	}
 
-    b.lines[len(b.lines) - 1][1] = len(buf)
+	for index := 0; index < len(right); index += 1 {
+		if right[index] == '\n' {
+            eocl := len(left) + index
+            bonl := eocl + 1
+            last_line_index := len(b.lines) - 1
+            b.lines[last_line_index][1] = eocl
+            append(&b.lines, Line{bonl, bonl})
+        }
+	}
+
+    b.lines[len(b.lines) - 1][1] = buffer_len(b)
     profiling_end()
 }
 
@@ -424,8 +448,20 @@ buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
 refresh_string_buffer :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:refresh_string_buffer")
     delete(b.str)
-    flush_range(b, 0, buffer_len(b))
+    start := b.lines[b.first_line_offset][0]
+    end := b.lines[b.last_line_offset][1]
+    flush_range(b, start, end)
     profiling_end()
+}
+
+rune_at :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> rune {
+	left, right := buffer_get_strings(b)
+
+	if pos < len(left) {
+		return rune(left[pos])
+	} else {
+		return rune(right[pos - len(left)])
+	}
 }
 
 // Deletes X characters. If positive, deletes forward

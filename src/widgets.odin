@@ -672,7 +672,7 @@ widgets_draw :: proc() {
 
             if caret.coords.y - int(viewport.y) == line_index {
                 set_bg(colors[.highlight_line])
-                draw_fill_rect(0, row, widgets_pane.rect.w, font.line_height)
+                draw_rect(0, row, widgets_pane.rect.w, font.line_height)
             }
 
             for r, char_index in strings.to_string(row_builder) {
@@ -691,15 +691,15 @@ widgets_draw :: proc() {
                     }
                 }
 
-                glyph := used_font.glyphs[r]
-                src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+                g := used_font.glyphs[r]
+                src := make_rect(g.x, g.y, g.w, g.h)
                 dest := make_rect(
-                    f32(x + glyph.xoffset),
-                    f32(row + glyph.yoffset) - used_font.y_offset_for_centering,
-                    f32(glyph.w), f32(glyph.h),
+                    f32(x + g.xoffset),
+                    f32(row + g.yoffset) - used_font.y_offset_for_centering,
+                    f32(g.w), f32(g.h),
                 )
                 draw_copy(used_font.texture, &src, &dest)
-                x += used_font.em_width
+                x += g.xadvance
             }
         }
 
@@ -716,14 +716,14 @@ widgets_draw :: proc() {
         x: i32
 
         set_bg(colors[.background])
-        draw_fill_rect(
+        draw_rect(
             0, widgets_pane.rect.h - current_font.line_height,
             widgets_pane.rect.w, current_font.line_height,
         )
 
         if !caret.blinking {
             set_bg(colors[.cursor])
-            draw_fill_rect(
+            draw_rect(
                 i32(caret.coords.x + len(prompt_fmt)) * current_font.em_width, row,
                 current_font.em_width, current_font.line_height,
             )

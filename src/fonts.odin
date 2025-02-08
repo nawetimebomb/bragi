@@ -8,6 +8,25 @@ import     "core:unicode/utf8"
 import  ft "shared:freetype"
 import sdl "vendor:sdl2"
 
+NUM_GLYPHS :: 128
+
+Glyph :: struct {
+    x, y: i32,
+    w, h: i32,
+    xoffset: i32,
+    yoffset: i32,
+    xadvance: i32,
+}
+
+Font :: struct {
+    em_width: i32,
+    face: ft.Face,
+    glyphs: [NUM_GLYPHS]Glyph,
+    line_height: i32,
+    texture: ^sdl.Texture,
+    y_offset_for_centering: f32,
+}
+
 @(private="file")
 library: ft.Library
 
@@ -44,13 +63,60 @@ fonts_deinit :: proc() {
     profiling_end()
 }
 
+get_text_size :: proc(font: Font, text: string) -> (size: i32) {
+    for r in text {
+        g := font.glyphs[r]
+        // TODO: add support for invalid glyph
+        size += g.xadvance
+    }
+    return
+}
+
+increase_font_size :: proc() {
+    MAX_FONT_SIZE :: 144
+
+    if font_editor_size < MAX_FONT_SIZE {
+        font_editor_size = auto_cast min(f32(font_editor_size) * 1.2, MAX_FONT_SIZE)
+        assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
+        generate_font_bitmap_texture(&font_editor)
+
+        char_width             = font_editor.em_width
+        line_height            = font_editor.line_height
+        y_offset_for_centering = font_editor.y_offset_for_centering
+    }
+}
+
+decrease_font_size :: proc() {
+    MIN_FONT_SIZE :: 8
+
+    if font_editor_size > MIN_FONT_SIZE {
+        font_editor_size = auto_cast max(f32(font_editor_size) * 0.8, MIN_FONT_SIZE)
+        assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
+        generate_font_bitmap_texture(&font_editor)
+
+        char_width             = font_editor.em_width
+        line_height            = font_editor.line_height
+        y_offset_for_centering = font_editor.y_offset_for_centering
+    }
+}
+
+reset_font_size :: proc() {
+    // TODO: Should actually use the font size from the settings
+    font_editor_size = DEFAULT_FONT_EDITOR_SIZE
+    assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
+    generate_font_bitmap_texture(&font_editor)
+
+    char_width             = font_editor.em_width
+    line_height            = font_editor.line_height
+    y_offset_for_centering = font_editor.y_offset_for_centering
+}
+
 @(private="file")
 generate_font_bitmap_texture :: proc(result: ^Font) {
     // Clean-up previous texture
     sdl.DestroyTexture(result.texture)
 
     result.line_height = i32((result.face.size.metrics.ascender - result.face.size.metrics.descender) >> 6)
-    result.em_width = 0
 
     // TODO: I'm trying to figure out the size of the texture to be created, but this is super slow and it's taken from the link below:
     // https://gist.github.com/baines/b0f9e4be04ba4e6f56cab82eef5008ff#file-freetype-atlas-c-L28
@@ -131,43 +197,4 @@ prepare_font :: proc(font_data: []byte, size: u32) -> Font {
 @(private="file")
 prepare_font_from_filename :: proc(font: Font, filename: string, size: u32) {
     // TODO: Read entire file and call prepare_font
-}
-
-increase_font_size :: proc() {
-    MAX_FONT_SIZE :: 144
-
-    if font_editor_size < MAX_FONT_SIZE {
-        font_editor_size = auto_cast min(f32(font_editor_size) * 1.2, MAX_FONT_SIZE)
-        assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
-        generate_font_bitmap_texture(&font_editor)
-
-        char_width             = font_editor.em_width
-        line_height            = font_editor.line_height
-        y_offset_for_centering = font_editor.y_offset_for_centering
-    }
-}
-
-decrease_font_size :: proc() {
-    MIN_FONT_SIZE :: 8
-
-    if font_editor_size > MIN_FONT_SIZE {
-        font_editor_size = auto_cast max(f32(font_editor_size) * 0.8, MIN_FONT_SIZE)
-        assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
-        generate_font_bitmap_texture(&font_editor)
-
-        char_width             = font_editor.em_width
-        line_height            = font_editor.line_height
-        y_offset_for_centering = font_editor.y_offset_for_centering
-    }
-}
-
-reset_font_size :: proc() {
-    // TODO: Should actually use the font size from the settings
-    font_editor_size = DEFAULT_FONT_EDITOR_SIZE
-    assert(ft.set_pixel_sizes(font_editor.face, 0, font_editor_size) == .Ok, "Can't set pixel size")
-    generate_font_bitmap_texture(&font_editor)
-
-    char_width             = font_editor.em_width
-    line_height            = font_editor.line_height
-    y_offset_for_centering = font_editor.y_offset_for_centering
 }

@@ -13,7 +13,6 @@ import     "core:slice"
 import     "core:strings"
 import     "core:time"
 import     "core:unicode/utf8"
-import  ft "shared:freetype"
 import sdl "vendor:sdl2"
 
 TITLE   :: "Bragi"
@@ -40,30 +39,11 @@ FONT_EDITOR  :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI      :: #load("../res/FiraCode-Retina.ttf")
 FONT_UI_BOLD :: #load("../res/FiraCode-SemiBold.ttf")
 
-NUM_GLYPHS :: 128
-
-Glyph :: struct {
-    x, y: i32,
-    w, h: i32,
-    xoffset: i32,
-    yoffset: i32,
-    xadvance: i32,
-}
-
-Font :: struct {
-    em_width: i32,
-    face: ft.Face,
-    glyphs: [NUM_GLYPHS]Glyph,
-    line_height: i32,
-    texture: ^sdl.Texture,
-    y_offset_for_centering: f32,
-}
-
 font_editor:  Font
 font_ui:      Font
 font_ui_bold: Font
 
-DEFAULT_FONT_EDITOR_SIZE :: 20
+DEFAULT_FONT_EDITOR_SIZE :: 25
 DEFAULT_FONT_UI_SIZE     :: 20
 
 // font base size is the one configured by the user, the other ones are derived

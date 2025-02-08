@@ -36,8 +36,8 @@ Cursor :: struct {
 Pane :: struct {
     cursors: [dynamic]Cursor,
     cursor_max_offset: int,
-    cursor_blinking: bool,
-    cursor_blinking_count: int,
+    cursor_showing: bool,
+    cursor_blink_count: int,
     cursor_last_update: time.Tick,
 
     last_keystroke: time.Tick,
@@ -62,6 +62,8 @@ Pane :: struct {
     relative_size:  [2]i32,
     // The amount of scrolling the pane has done so far, depending of the caret.
     viewport:       [2]i32,
+    line_offset:    int,
+    lines_visible:  int,
 }
 
 pane_create :: proc(b: ^Buffer = nil, c: [2]int = {}) -> Pane {
@@ -81,35 +83,37 @@ pane_init :: proc() -> Pane {
 }
 
 pane_begin :: proc(p: ^Pane) {
-    buffer := p.buffer
+    assert(p.buffer != nil)
     viewport := &p.viewport
 
     p.relative_size.x = (p.rect.w / char_width) - 2
     p.relative_size.y = (p.rect.h / line_height) - 2
-
-    if buffer  != nil { buffer_update(buffer) }
 
     if p.should_resync_cursor {
         p.should_resync_cursor = false
         sync_caret_coords(p)
     }
 
-    if should_cursor_reset_blink_timers(p) {
-        p.cursor_blinking = false
-        p.cursor_blinking_count = 0
-        p.cursor_last_update = time.tick_now()
-    }
+    if current_pane.id == p.id {
+        if should_cursor_reset_blink_timers(p) {
+            p.cursor_showing = true
+            p.cursor_blink_count = 0
+            p.cursor_last_update = time.tick_now()
+        }
 
-    if should_cursor_blink(p) {
-        p.cursor_blinking = !p.cursor_blinking
-        p.cursor_blinking_count += 1
-        p.cursor_last_update = time.tick_now()
+        if should_cursor_blink(p) {
+            p.cursor_showing = !p.cursor_showing
+            p.cursor_blink_count += 1
+            p.cursor_last_update = time.tick_now()
+        }
+    } else {
+        p.cursor_showing = true
+        p.cursor_blink_count = 0
     }
 
     cursor_head, _ := get_last_cursor(p)
     cursor_x := i32(cursor_head.x)
     cursor_y := i32(cursor_head.y)
-
 
     if cursor_x > viewport.x + p.relative_size.x {
         viewport.x = cursor_x - p.relative_size.x
@@ -122,6 +126,9 @@ pane_begin :: proc(p: ^Pane) {
     } else if cursor_y < viewport.y {
         viewport.y = cursor_y
     }
+
+    p.line_offset = int(viewport.y)
+    p.lines_visible = buffer_update(p.buffer, p.line_offset, int(p.relative_size.y))
 }
 
 find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
@@ -199,7 +206,7 @@ should_cursor_blink :: #force_inline proc(p: ^Pane) -> bool {
     CARET_BLINK_COUNT   :: 20
     CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
     time_diff := time.tick_diff(p.cursor_last_update, time.tick_now())
-    return p.cursor_blinking_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
+    return p.cursor_blink_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
 }
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
@@ -241,7 +248,6 @@ update_cursor :: #force_inline proc(p: ^Pane, head, tail: [2]int) {
 translate_cursor :: proc(p: ^Pane, t: Caret_Translation) -> (pos: [2]int) {
     pos, _ = get_last_cursor(p)
     b := p.buffer
-    s := b.str
     lines_count := len(b.lines)
 
     switch t {
@@ -307,17 +313,15 @@ translate_cursor :: proc(p: ^Pane, t: Caret_Translation) -> (pos: [2]int) {
         pos.x = get_line_length(b, pos.y)
         return
     case .WORD_START:
-        s := b.str
         x := caret_to_buffer_cursor(b, pos)
-        for x > 0 && is_whitespace(s[x - 1]) { x -= 1 }
-        for x > 0 && !is_whitespace(s[x - 1]) { x -= 1 }
+        for x > 0 && is_whitespace(rune_at(b, x - 1)) { x -= 1 }
+        for x > 0 && !is_whitespace(rune_at(b, x - 1)) { x -= 1 }
         pos = buffer_cursor_to_caret(b, x)
         return
     case .WORD_END:
-        s := b.str
         x := caret_to_buffer_cursor(b, pos)
-        for x < len(s) && is_whitespace(s[x])  { x += 1 }
-        for x < len(s) && !is_whitespace(s[x]) { x += 1}
+        for x < buffer_len(b) && is_whitespace(rune_at(b, x))  { x += 1 }
+        for x < buffer_len(b) && !is_whitespace(rune_at(b, x)) { x += 1}
         pos = buffer_cursor_to_caret(b, x)
         return
     }

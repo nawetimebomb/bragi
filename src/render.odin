@@ -4,11 +4,21 @@ import     "core:fmt"
 import     "core:slice"
 import     "core:strings"
 import     "core:time"
+import     "tokenizer"
 import sdl "vendor:sdl2"
-import "tokenizer"
 
 Rect :: sdl.Rect
 Texture :: ^sdl.Texture
+
+Code_Line :: struct {
+    line: string,
+    tokens: []tokenizer.Token_Kind,
+}
+
+Cursor_Settings :: struct {
+    fill: bool,
+    showing: bool,
+}
 
 set_bg :: #force_inline proc(c: Color) {
     if c.a != 0 {
@@ -56,82 +66,28 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     { // Start Buffer
         mm := buffer.major_mode
         screen_buffer := buffer.str
-        first_line := int(p.viewport.y)
-        last_line :=
-            min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines) - 1)
-
-        if len(buffer.lines) > int(p.relative_size.y) {
-            start := buffer.lines[first_line][0]
-            end := buffer.lines[last_line][1]
-            screen_buffer = buffer.str[start:end]
+        cursor_settings := Cursor_Settings{
+            fill = focused,
+            showing = p.cursor_showing,
         }
 
         if mm == .Fundamental {
-            draw_text(font_editor, screen_buffer)
+            draw_text(font_editor, buffer.str, p.cursors[:], cursor_settings)
         } else {
-            visible_lines := make(
-                []Code_Line,
-                last_line - first_line,
-                context.temp_allocator,
-            )
+            code_lines := make([]Code_Line, p.lines_visible, context.temp_allocator)
 
-            for li in first_line..<last_line {
-                index := li - first_line
+            for index in 0..<p.lines_visible {
+                line_index := p.line_offset + index
                 code_line := Code_Line{}
-                start, end := get_line_boundaries(buffer, li)
+                start, end := get_line_boundaries(buffer, line_index)
                 code_line.line = buffer.str[start:end]
                 code_line.tokens = buffer.tokens[start:end]
-                visible_lines[index] = code_line
+                code_lines[index] = code_line
             }
 
-            draw_code(font_editor, char_width, line_height, visible_lines[:])
+            draw_code(font_editor, code_lines[:], p.cursors[:], cursor_settings)
         }
     } // End Buffer
-
-    { // Start Cursor
-        set_bg(cursor)
-        pos, _ := get_last_cursor(p)
-        x: f32
-        y := f32(i32(pos.y) - viewport.y) * f32(line_height)
-        start, end := get_line_boundaries(buffer, pos.y)
-        rune_behind_cursor: rune
-
-        for r, index in buffer.str[start:end] {
-            if pos.x == index {
-                rune_behind_cursor = r
-                break
-            }
-
-            glyph := font_editor.glyphs[r]
-            x += f32(glyph.xadvance)
-        }
-
-        dest := make_rect(x, y, f32(char_width), f32(line_height))
-
-        set_bg(cursor)
-
-        if focused && !widgets_pane.enabled {
-            if !p.cursor_blinking {
-                sdl.RenderFillRectF(renderer, &dest)
-
-                // draw the glyph behind the cursor
-                if rune_behind_cursor >= 32 && rune_behind_cursor < 128 {
-                    glyph := font_editor.glyphs[rune_behind_cursor]
-                    glyph_src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
-                    glyph_dest := make_rect(
-                        x + f32(glyph.xoffset),
-                        y + f32(glyph.yoffset) - y_offset_for_centering,
-                        f32(glyph.w), f32(glyph.h),
-                    )
-
-                    set_fg(font_editor.texture, background)
-                    draw_copy(font_editor.texture, &glyph_src, &glyph_dest)
-                }
-            }
-        } else {
-            sdl.RenderDrawRectF(renderer, &dest)
-        }
-    } // End Cursor
 
     { // Start Modeline
         HORIZONTAL_PADDING :: 10
@@ -234,10 +190,15 @@ make_rect :: proc{
     make_rect_f32,
     make_rect_i32,
     make_rect_i32_empty,
+    make_rect_int,
 }
 
 make_rect_i32_empty :: #force_inline proc() -> sdl.Rect {
     return sdl.Rect{}
+}
+
+make_rect_int :: #force_inline proc(x, y, w, h: int) -> sdl.Rect {
+    return make_rect_i32(i32(x), i32(y), i32(w), i32(h))
 }
 
 make_rect_i32 :: #force_inline proc(x, y, w, h: i32) -> sdl.Rect {
@@ -258,7 +219,12 @@ make_texture :: #force_inline proc(
     return sdl.CreateTexture(renderer, format, access, rect.w, rect.h)
 }
 
-draw_text :: proc(font: Font, string_buffer: string) {
+draw_text :: proc(
+    font: Font,
+    string_buffer: string,
+    selections: []Cursor,
+    cursor_settings: Cursor_Settings,
+) {
     colors := bragi.settings.colorscheme_table
     sx, sy: i32
 
@@ -275,52 +241,53 @@ draw_text :: proc(font: Font, string_buffer: string) {
             continue
         }
 
-        glyph := font.glyphs[r]
+        g := font.glyphs[r]
 
         if !is_valid_glyph(r) {
-            glyph = font.glyphs['?']
+            g = font.glyphs['?']
         }
 
-        src := sdl.Rect{ glyph.x, glyph.y, glyph.w, glyph.h }
+        src := sdl.Rect{ g.x, g.y, g.w, g.h }
         dest := sdl.FRect{
-            f32(sx + glyph.xoffset),
-            f32(sy + glyph.yoffset) - y_offset_for_centering,
-            f32(glyph.w), f32(glyph.h),
+            f32(sx + g.xoffset),
+            f32(sy + g.yoffset) - y_offset_for_centering,
+            f32(g.w), f32(g.h),
         }
         draw_copy(font.texture, &src, &dest)
-        sx += glyph.xadvance
+        sx += g.xadvance
     }
 }
 
-Code_Line :: struct {
-    line: string,
-    tokens: []tokenizer.Token_Kind,
-}
-
-draw_code :: proc(font: Font, char_xadvance: i32, line_height: i32, code_lines: []Code_Line) {
+draw_code :: proc(
+    font: Font,
+    code_lines: []Code_Line,
+    selections: []Cursor,
+    cursor_settings: Cursor_Settings,
+) {
     colors := bragi.settings.colorscheme_table
+    line_height := font.line_height
 
     is_valid_glyph :: proc(r: rune) -> bool {
         return r >= 32 && r < 128
     }
 
     for code, y_offset in code_lines {
-        sy := i32(y_offset) * line_height
+        sx, sy: i32
+        sy = auto_cast y_offset * line_height
 
         for r, x_offset in code.line {
-            sx := i32(x_offset) * char_xadvance
-            glyph := font.glyphs[r]
+            g := font.glyphs[r]
 
             if !is_valid_glyph(r) {
-                glyph = font.glyphs['?']
+                g = font.glyphs['?']
             }
 
-            src := sdl.Rect{ glyph.x, glyph.y, glyph.w, glyph.h }
-            dest := sdl.FRect{
-                f32(sx + glyph.xoffset),
-                f32(sy + glyph.yoffset) - y_offset_for_centering,
-                f32(glyph.w), f32(glyph.h),
-            }
+            src := make_rect(g.x, g.y, g.w, g.h)
+            dest := make_rect(
+                f32(sx + g.xoffset),
+                f32(sy + g.yoffset) - font.y_offset_for_centering,
+                f32(g.w), f32(g.h),
+            )
 
             switch code.tokens[x_offset] {
             case .generic:      set_fg(font.texture, colors[.default])
@@ -333,11 +300,42 @@ draw_code :: proc(font: Font, char_xadvance: i32, line_height: i32, code_lines: 
             case .type:         set_fg(font.texture, colors[.type])
             }
 
-
             draw_copy(font.texture, &src, &dest)
+            sx += g.xadvance
         }
     }
 
+    for cursor in selections {
+        // Cursor tail
+        if cursor.tail != cursor.head {
+            // TODO: add Cursor tail
+        }
+
+        // NOTE: We skip the cursor head rendering if it's not showing
+        if !cursor_settings.showing { continue }
+
+        // Cursor head
+        ch := cursor.head
+        sy := i32(ch.y) * font.line_height
+        sx := get_text_size(font, code_lines[ch.y].line[:ch.x])
+        set_bg(colors[.cursor])
+        draw_rect(sx, sy, font.em_width, font.line_height, cursor_settings.fill)
+
+        if ch.y < len(code_lines) && ch.x < len(code_lines[ch.y].line) {
+            char_behind_cursor := code_lines[cursor.head.y].line[ch.x]
+            if is_valid_glyph(rune(char_behind_cursor)) {
+                g := font.glyphs[char_behind_cursor]
+                src := make_rect(g.x, g.y, g.w, g.h)
+                dest := make_rect(
+                    f32(sx + g.xoffset),
+                    f32(sy + g.yoffset) - font.y_offset_for_centering,
+                    f32(g.w), f32(g.h),
+                )
+                set_fg(font.texture, colors[.background])
+                draw_copy(font.texture, &src, &dest)
+            }
+        }
+    }
 }
 
 clear_background :: #force_inline proc(color: Color) {
@@ -349,9 +347,13 @@ draw_line :: #force_inline proc(x1, y1, x2, y2: i32) {
     sdl.RenderDrawLine(renderer, x1, y1, x2, y2)
 }
 
-draw_fill_rect :: #force_inline proc(x, y, w, h: i32) {
+draw_rect :: #force_inline proc(x, y, w, h: i32, fill: bool = true) {
     rect := make_rect(x, y, w, h)
-    sdl.RenderFillRect(renderer, &rect)
+    if fill {
+        sdl.RenderFillRect(renderer, &rect)
+    } else {
+        sdl.RenderDrawRect(renderer, &rect)
+    }
 }
 
 draw_copy :: proc{

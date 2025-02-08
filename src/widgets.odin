@@ -161,7 +161,8 @@ maybe_create_new_texture_for_widgets :: proc() {
 
     if last_rect != new_rect {
         widgets_pane.rect = new_rect
-        widgets_pane.texture = make_texture(widgets_pane.texture, .RGBA32, .TARGET, new_rect)
+        widgets_pane.texture =
+            make_texture(widgets_pane.texture, .RGBA32, .TARGET, new_rect)
     }
 }
 

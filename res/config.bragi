@@ -65,7 +65,8 @@ end_of_line                     <C-e>
 [colors]
 # the ayu theme https://github.com/dempfi/ayu?tab=readme-ov-file
 background                      10141c
-comment                         acb6bf
+comment                         848484
+constant                        e6b450
 cursor                          e6b450
 default                         bfbdb6
 highlight                       e6b450

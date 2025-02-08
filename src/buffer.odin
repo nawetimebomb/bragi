@@ -33,6 +33,7 @@ Buffer :: struct {
     gap_end:              Buffer_Cursor,
     gap_start:            Buffer_Cursor,
     lines:                [dynamic]Line,
+    tokens:               []Token_Kind,
 
     enable_history:       bool,
     redo:                 [dynamic]History_State,
@@ -161,6 +162,7 @@ buffer_update :: proc(b: ^Buffer) {
         b.status = get_buffer_status(b)
         refresh_string_buffer(b)
         recalculate_lines(b)
+        maybe_tokenize_buffer(b)
     }
 }
 
@@ -173,6 +175,7 @@ buffer_destroy :: proc(b: ^Buffer) {
     delete(b.name)
     delete(b.redo)
     delete(b.str)
+    delete(b.tokens)
     delete(b.undo)
 }
 
@@ -187,7 +190,7 @@ update_buffer_time :: proc(b: ^Buffer) {
 
 recalculate_lines :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:recalculate_lines")
-    buf := transmute([]u8)b.str
+    buf := transmute([]byte)b.str
     clear(&b.lines)
     append(&b.lines, Line{0, 0})
 
@@ -202,6 +205,23 @@ recalculate_lines :: proc(b: ^Buffer) {
     }
 
     b.lines[len(b.lines) - 1][1] = len(buf)
+    profiling_end()
+}
+
+maybe_tokenize_buffer :: proc(b: ^Buffer) {
+    profiling_start("buffer.odin:maybe_tokenize_buffer")
+    if b.major_mode == .Fundamental {
+        // We don't tokenize Fundamental mode
+        return
+    }
+
+    delete(b.tokens)
+    b.tokens = make([]Token_Kind, len(b.str))
+
+    #partial switch b.major_mode {
+        case .Bragi: log.error("not implemented")
+        case .Odin:  tokenize_buffer(b)
+    }
     profiling_end()
 }
 
@@ -330,7 +350,7 @@ buffer_save :: proc(b: ^Buffer) {
     if b.modified {
         log.debugf("Saving {0}", b.name)
         // sanitize_buffer(buffer)
-        err := os.write_entire_file_or_err(b.filepath, transmute([]u8)b.str)
+        err := os.write_entire_file_or_err(b.filepath, transmute([]byte)b.str)
 
         if err != nil {
             log.errorf("Error saving buffer {0}", b.name)
@@ -431,7 +451,7 @@ insert :: proc{
 }
 
 // Inserts u8 character at pos
-insert_char :: proc(b: ^Buffer, pos: Buffer_Cursor, char: u8) -> int {
+insert_char :: proc(b: ^Buffer, pos: Buffer_Cursor, char: byte) -> int {
     assert(pos >= 0 && pos <= buffer_len(b))
     b.cursor = pos
     check_buffer_history_state(b)

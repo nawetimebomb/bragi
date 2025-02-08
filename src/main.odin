@@ -166,6 +166,8 @@ initialize_editor :: proc() {
     p := add(pane_init())
     p.buffer = add(buffer_init("*notes*", 0))
     current_pane = p
+
+    editor_open_file(current_pane, "C:/Code/bragi/demo/hello.odin")
 }
 
 initialize_settings :: proc() {

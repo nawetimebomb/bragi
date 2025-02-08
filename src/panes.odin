@@ -54,8 +54,8 @@ Pane :: struct {
     // If the pane should align the caret to the buffer cursor
     should_resync_cursor: bool,
 
-    rect: sdl.Rect,
-    texture: ^sdl.Texture,
+    rect: Rect,
+    texture: Texture,
     // Values that define the UI.
     show_scrollbar: bool,
     // The size of the pane, in relative positions (dimensions / size of character).
@@ -163,8 +163,6 @@ pane_destroy :: proc(p: ^Pane) {
 
 resize_panes :: proc() {
     for &p, index in open_panes {
-        sdl.DestroyTexture(p.texture)
-
         w := window_width / i32(len(open_panes))
         h := window_height
         x := w * i32(index)
@@ -174,7 +172,7 @@ resize_panes :: proc() {
         }
 
         p.rect = make_rect(x, 0, w, h)
-        p.texture = sdl.CreateTexture(renderer, .RGBA8888, .TARGET, w, h)
+        p.texture = make_texture(p.texture, .RGBA32, .TARGET, p.rect)
     }
 }
 

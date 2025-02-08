@@ -73,6 +73,7 @@ default                         d6deeb
 highlight                       ffeb95
 highlight_line                  1d3b53
 keyword                         c792ea
+preprocessor                    c792ea
 region                          1d3b53
 string                          ecc48d
 type                            ffcb8b

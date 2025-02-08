@@ -47,7 +47,12 @@ tokenize_odin :: proc(s: ^string) -> []Token_Kind {
         "else", "enum", "fallthrough", "for", "foreign", "if",
         "import", "in", "map", "not_in", "or_else", "or_return",
         "package", "proc", "return", "struct", "switch", "transmute",
-        "typeid", "union", "using", "when", "where", "#load",
+        "typeid", "union", "using", "when", "where",
+    }
+    PREPROCESSORS := [?]string{
+        "#assert", "#config", "#defined", "#directory", "#file", "#force_inline",
+        "#line", "#load", "#load_hash", "#location", "#panic", "#partial",
+        "#procedure", "#type",
     }
     TYPES := [?]string{
         "bool", "b8", "b16", "b32", "b64",
@@ -97,6 +102,8 @@ tokenize_odin :: proc(s: ^string) -> []Token_Kind {
                 save_tokens(.constant, start, end)
             case slice.contains(KEYWORDS[:], word):
                 save_tokens(.keyword, start, end)
+            case slice.contains(PREPROCESSORS[:], word):
+                save_tokens(.preprocessor, start, end)
             case slice.contains(TYPES[:], word):
                 save_tokens(.type, start, end)
             }

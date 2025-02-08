@@ -46,6 +46,7 @@ Face :: enum {
     highlight,
     highlight_line,
     keyword,
+    preprocessor,
     region,
     string,
     type,

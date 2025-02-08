@@ -47,6 +47,7 @@ Token_Kind :: enum u8 {
     comment,
     constant,
     keyword,
+    preprocessor,
     string,
     type,
 }

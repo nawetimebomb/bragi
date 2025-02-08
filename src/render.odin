@@ -323,13 +323,14 @@ draw_code :: proc(font: Font, char_xadvance: i32, line_height: i32, code_lines: 
             }
 
             switch code.tokens[x_offset] {
-            case .generic:  set_fg(font.texture, colors[.default])
-            case .builtin:  set_fg(font.texture, colors[.builtin])
-            case .comment:  set_fg(font.texture, colors[.comment])
-            case .constant: set_fg(font.texture, colors[.constant])
-            case .keyword:  set_fg(font.texture, colors[.keyword])
-            case .string:   set_fg(font.texture, colors[.string])
-            case .type:     set_fg(font.texture, colors[.type])
+            case .generic:      set_fg(font.texture, colors[.default])
+            case .builtin:      set_fg(font.texture, colors[.builtin])
+            case .comment:      set_fg(font.texture, colors[.comment])
+            case .constant:     set_fg(font.texture, colors[.constant])
+            case .keyword:      set_fg(font.texture, colors[.keyword])
+            case .preprocessor: set_fg(font.texture, colors[.preprocessor])
+            case .string:       set_fg(font.texture, colors[.string])
+            case .type:         set_fg(font.texture, colors[.type])
             }
 
 

@@ -627,7 +627,7 @@ widgets_draw :: proc() {
     font_bold := &font_ui_bold
     viewport := widgets_pane.viewport
 
-    renderer_target(widgets_pane.texture)
+    set_renderer_target(widgets_pane.texture)
     clear_background(colors[.background])
 
     { // Start Results
@@ -754,6 +754,6 @@ widgets_draw :: proc() {
         }
     } // End Prompt
 
-    renderer_target()
+    set_renderer_target()
     draw_copy(widgets_pane.texture, nil, &widgets_pane.rect)
 }

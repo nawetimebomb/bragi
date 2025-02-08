@@ -53,7 +53,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     region          := colors[.region]
     string          := colors[.string]
 
-    renderer_target(p.texture)
+    set_renderer_target(p.texture)
 
     set_bg(background)
     sdl.RenderClear(renderer)
@@ -189,7 +189,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         }
     } // End Modeline
 
-    renderer_target()
+    set_renderer_target()
 
     sdl.RenderCopy(renderer, p.texture, nil, &p.rect)
     profiling_end()
@@ -228,6 +228,15 @@ make_texture :: #force_inline proc(
     return sdl.CreateTexture(renderer, format, access, rect.w, rect.h)
 }
 
+is_valid_glyph :: proc(r: rune) -> bool {
+    return r >= 32 && r < 128
+}
+
+clear_background :: #force_inline proc(color: Color) {
+    set_bg(color)
+    sdl.RenderClear(renderer)
+}
+
 draw_text :: proc(
     font: Font,
     string_buffer: string,
@@ -261,10 +270,6 @@ draw_text :: proc(
         draw_copy(font.texture, &src, &dest)
         sx += g.xadvance
     }
-}
-
-is_valid_glyph :: proc(r: rune) -> bool {
-    return r >= 32 && r < 128
 }
 
 draw_code :: proc(
@@ -360,11 +365,6 @@ draw_cursor :: #force_inline proc(f: Font, r: Rect, fill: bool, behind_cursor: b
     }
 }
 
-clear_background :: #force_inline proc(color: Color) {
-    set_bg(color)
-    sdl.RenderClear(renderer)
-}
-
 draw_line :: #force_inline proc(x1, y1, x2, y2: i32) {
     sdl.RenderDrawLine(renderer, x1, y1, x2, y2)
 }
@@ -391,6 +391,6 @@ draw_copy_rect :: #force_inline proc(texture: ^sdl.Texture, src, dest: ^sdl.Rect
     sdl.RenderCopy(renderer, texture, src, dest)
 }
 
-renderer_target :: #force_inline proc(texture: ^sdl.Texture = nil) {
+set_renderer_target :: #force_inline proc(texture: ^sdl.Texture = nil) {
     sdl.SetRenderTarget(renderer, texture)
 }

@@ -26,6 +26,7 @@ tokenizer_init :: proc(s: ^string) {
     R = make([]Token_Kind, len(s))
 }
 
+@private
 tokenizer_finish :: proc() -> []Token_Kind {
     result := slice.clone(R[:])
     S = nil
@@ -34,6 +35,7 @@ tokenizer_finish :: proc() -> []Token_Kind {
     return result
 }
 
+@private
 tokenizer_complete :: proc() -> bool {
     advance()
     return is_eof()

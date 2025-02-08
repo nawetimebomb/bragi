@@ -1,14 +1,14 @@
 package tokenizer
 
-import "core:fmt"
 import "core:slice"
 
 tokenize_odin :: proc(s: ^string) -> []Token_Kind {
     tokenizer_init(s)
 
-    SINGLE_LINE_COMMENT      :: "//"
-    MULTI_LINE_COMMENT_START :: "/*"
+    COMMON_DELIMITERS        :: "().,:;[]{} \n\t"
     MULTI_LINE_COMMENT_END   :: "*/"
+    MULTI_LINE_COMMENT_START :: "/*"
+    SINGLE_LINE_COMMENT      :: "//"
 
     BUILTINS := [?]string{
         "len", "cap", "size_of", "align_of", "offset_of", "offset_of_selector",
@@ -60,10 +60,7 @@ tokenize_odin :: proc(s: ^string) -> []Token_Kind {
         "quaternion64", "quaternion128", "quaternion256",
         "rune", "string", "cstring", "rawptr", "typeid", "any",
     }
-
     STRING_DELIMITERS := [?]byte{ '\'', '"', '`' }
-    COMMON_DELIMITERS :: "().,:;[]{} \n\t"
-
 
     for !tokenizer_complete() {
         skip_all_whitespaces()

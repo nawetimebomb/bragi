@@ -19,10 +19,6 @@ is_whitespace :: #force_inline proc() -> bool {
     return c == ' ' || c == '\t' || c == '\n'
 }
 
-// is_string_delimiter :: #force_inline proc() -> bool {
-//     return strings.contains_rune(R.string_delimiters, rune(get_char()))
-// }
-
 is_number :: #force_inline proc() -> bool {
     c := get_char()
     return c >= '0' && c <= '9'

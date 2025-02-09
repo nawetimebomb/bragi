@@ -57,6 +57,12 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         first_line := int(p.viewport.y)
         last_line :=
             min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines) - 1)
+        screen_cursors : []Cursor = slice.clone(p.cursors[:], context.temp_allocator)
+
+        for &c in screen_cursors {
+            c.head = { c.head.x - int(p.viewport.x), c.head.y - int(p.viewport.y) }
+            c.tail = { c.tail.x - int(p.viewport.x), c.tail.y - int(p.viewport.y) }
+        }
 
         if len(buffer.lines) > int(p.relative_size.y) {
             start := buffer.lines[first_line][0]
@@ -65,7 +71,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         }
 
         if mm == .Fundamental {
-            draw_text(font_editor, screen_buffer, p.cursors[:], cursor_settings)
+            draw_text(font_editor, screen_buffer, screen_cursors[:], cursor_settings)
         } else {
             code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
 
@@ -78,7 +84,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
                 code_lines[index] = code_line
             }
 
-            draw_code(font_editor, code_lines[:], p.cursors[:], cursor_settings)
+            draw_code(font_editor, code_lines[:], screen_cursors[:], cursor_settings)
         }
     } // End Buffer
 
@@ -306,16 +312,39 @@ draw_code :: proc(
     }
 
     for cursor in selections {
+        ch := cursor.head
+        ct := cursor.tail
+
         // Cursor tail
-        if cursor.tail != cursor.head {
-            // TODO: add Cursor tail
+        if ch != ct {
+            set_bg(colors[.region])
+            cl := code_lines[ch.y]
+            str := cl.line[ct.x:ch.x]
+            tok := cl.tokens[ct.x:ch.x]
+            w := get_width_based_on_text_size(font, str, ch.x - ct.x)
+            sx := i32(ct.x)
+            sy := i32(ct.y) * font.line_height
+
+            draw_rect(sx, sy, w, font.line_height, true)
+
+            for r in str {
+                g := font.glyphs[r]
+                src := make_rect(g.x, g.y, g.w, g.h)
+                dest := make_rect(
+                    f32(sx + g.xoffset),
+                    f32(sy + g.yoffset) - font.y_offset_for_centering,
+                    f32(g.w), f32(g.h),
+                )
+                set_fg(font.texture, colors[.background])
+                draw_copy(font.texture, &src, &dest)
+                sx += g.xadvance
+            }
         }
 
         // NOTE: We skip the cursor head rendering if it's not showing
         if !cursor_settings.showing { continue }
 
         // Cursor head
-        ch := cursor.head
         cursor_rect := make_rect(
             0, i32(ch.y) * font.line_height,
             font.em_width, font.line_height,

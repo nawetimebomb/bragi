@@ -125,7 +125,10 @@ widgets_update_draw :: proc() {
         if !item.invalid {
             cursor_pos := item.value.(Result_Cursor_Pos)
             clear(&widgets_pane.target.cursors)
-            append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+            length_of_query := len(strings.to_string(widgets_pane.query))
+            new_cursor := Cursor{ cursor_pos, cursor_pos }
+            new_cursor.tail.x -= length_of_query
+            append(&widgets_pane.target.cursors, new_cursor)
         }
     }
 

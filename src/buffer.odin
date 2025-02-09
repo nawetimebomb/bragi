@@ -198,25 +198,25 @@ recalculate_lines :: proc(b: ^Buffer) {
     clear(&b.lines)
     append(&b.lines, Line{0, 0})
 
-	for index := 0; index < len(left); index += 1 {
-		if left[index] == '\n' {
+    for index := 0; index < len(left); index += 1 {
+        if left[index] == '\n' {
             eocl := index
             bonl := eocl + 1
             last_line_index := len(b.lines) - 1
             b.lines[last_line_index][1] = eocl
             append(&b.lines, Line{bonl, bonl})
         }
-	}
+    }
 
-	for index := 0; index < len(right); index += 1 {
-		if right[index] == '\n' {
+    for index := 0; index < len(right); index += 1 {
+        if right[index] == '\n' {
             eocl := len(left) + index
             bonl := eocl + 1
             last_line_index := len(b.lines) - 1
             b.lines[last_line_index][1] = eocl
             append(&b.lines, Line{bonl, bonl})
         }
-	}
+    }
 
     b.lines[len(b.lines) - 1][1] = buffer_len(b)
     profiling_end()

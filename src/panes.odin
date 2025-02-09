@@ -225,6 +225,29 @@ create_basic_cursor :: #force_inline proc(p: ^Pane) {
     append(&p.cursors, Cursor{})
 }
 
+sorted_cursor :: #force_inline proc(c: Cursor) -> (lo, hi: [2]int) {
+    ch := c.head
+    ct := c.tail
+
+    if ch.y == ct.y {
+        if ch.x > ct.x {
+            hi = ch
+            lo = ct
+        } else {
+            hi = ct
+            lo = ch
+        }
+    } else if ch.y > ct.y {
+        hi = ch
+        lo = ct
+    } else {
+        hi = ct
+        lo = ch
+    }
+
+    return
+}
+
 get_last_cursor :: #force_inline proc(p: ^Pane) -> (head, tail: [2]int) {
     // If there are no cursors alive, create one
     if len(p.cursors) == 0 { create_basic_cursor(p) }

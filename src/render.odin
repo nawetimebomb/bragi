@@ -319,15 +319,15 @@ draw_code :: proc(
         if ch != ct {
             set_bg(colors[.region])
             cl := code_lines[ch.y]
-            str := cl.line[ct.x:ch.x]
-            tok := cl.tokens[ct.x:ch.x]
-            w := get_width_based_on_text_size(font, str, ch.x - ct.x)
-            sx := i32(ct.x)
+            str_under_region := cl.line[ct.x:ch.x]
+            tokens_in_region := cl.tokens[ct.x:ch.x]
+            w := get_text_size(font, str_under_region)
+            sx := get_text_size(font, cl.line[:ct.x])
             sy := i32(ct.y) * font.line_height
 
             draw_rect(sx, sy, w, font.line_height, true)
 
-            for r in str {
+            for r, index in str_under_region {
                 g := font.glyphs[r]
                 src := make_rect(g.x, g.y, g.w, g.h)
                 dest := make_rect(
@@ -335,7 +335,18 @@ draw_code :: proc(
                     f32(sy + g.yoffset) - font.y_offset_for_centering,
                     f32(g.w), f32(g.h),
                 )
-                set_fg(font.texture, colors[.background])
+
+                switch tokens_in_region[index] {
+                case .generic:      set_fg(font.texture, colors[.default])
+                case .builtin:      set_fg(font.texture, colors[.builtin])
+                case .comment:      set_fg(font.texture, colors[.comment])
+                case .constant:     set_fg(font.texture, colors[.constant])
+                case .keyword:      set_fg(font.texture, colors[.keyword])
+                case .preprocessor: set_fg(font.texture, colors[.preprocessor])
+                case .string:       set_fg(font.texture, colors[.string])
+                case .type:         set_fg(font.texture, colors[.type])
+                }
+
                 draw_copy(font.texture, &src, &dest)
                 sx += g.xadvance
             }
@@ -355,7 +366,7 @@ draw_code :: proc(
             str := code_lines[ch.y].line
             cut := clamp(ch.x, 0, len(str))
             cursor_rect.x = get_width_based_on_text_size(font, str[:cut], ch.x)
-            if ch.x < len(str) - 1 {
+            if ch.x < len(str) {
                 char_behind_cursor = code_lines[ch.y].line[ch.x]
             }
         }

@@ -482,6 +482,11 @@ ui_select :: proc() {
             cursor_pos := widgets_pane.prev_state.cursor_pos
             clear(&widgets_pane.target.cursors)
             append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+        } else {
+            cursor := widgets_pane.target.cursors[0]
+            cursor_pos := cursor.head
+            clear(&widgets_pane.target.cursors)
+            append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
         }
     }
 

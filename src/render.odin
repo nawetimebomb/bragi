@@ -63,28 +63,42 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     }
 
     { // Start Buffer
+        first_line := int(p.viewport.y)
+        last_line :=
+            min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines))
+        gutter_text_test := fmt.tprintf("{0}", last_line)
+        size_of_gutter := get_width_based_on_text_size(font_editor, gutter_text_test, len(gutter_text_test) + 2)
+
+        set_bg(colors[.gutter])
+        draw_rect(0, 0, size_of_gutter, p.rect.h)
+        set_bg(colors[.ui_border])
+        draw_line(size_of_gutter, 0, size_of_gutter, p.rect.h)
+
+        for li in first_line..<last_line {
+            index := li - first_line
+            line_number := strings.right_justify(
+                fmt.tprintf("{0}", li + 1),
+                len(gutter_text_test) + 1,
+                " ",
+                context.temp_allocator,
+            )
+            draw_text(font_editor, line_number, .default, 0, i32(index) * font_editor.line_height)
+        }
+
         mm := buffer.major_mode
-        screen_buffer := buffer.str
         cursor_settings := Cursor_Settings{
             fill = focused,
             showing = p.cursor_showing,
         }
-        first_line := int(p.viewport.y)
-        last_line :=
-            min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines))
         screen_cursors : []Cursor = slice.clone(p.cursors[:], context.temp_allocator)
         colored := mm != .Fundamental
         code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
+        pen: [2]i32
+        pen.x = size_of_gutter + 2
 
         for &c in screen_cursors {
             c.head = { c.head.x - int(p.viewport.x), c.head.y - int(p.viewport.y) }
             c.tail = { c.tail.x - int(p.viewport.x), c.tail.y - int(p.viewport.y) }
-        }
-
-        if len(buffer.lines) > int(p.relative_size.y) {
-            start := buffer.lines[first_line][0]
-            end := buffer.lines[last_line][1]
-            screen_buffer = buffer.str[start:end]
         }
 
         for li in first_line..<last_line {
@@ -96,7 +110,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             code_lines[index] = code_line
         }
 
-        draw_code(font_editor, code_lines[:], screen_cursors[:], cursor_settings, colored)
+        draw_code(font_editor, pen, code_lines[:], screen_cursors[:], cursor_settings, colored)
     } // End Buffer
 
     { // Start Modeline
@@ -244,43 +258,29 @@ clear_background :: #force_inline proc(color: Color) {
     sdl.RenderClear(renderer)
 }
 
-draw_text :: proc(
-    font: Font,
-    string_buffer: string,
-    selections: []Cursor,
-    cursor_settings: Cursor_Settings,
-) {
+draw_text :: proc(f: Font, s: string, color: Face, x, y: i32) {
     colors := bragi.settings.colorscheme_table
-    sx, sy: i32
+    sx := x
+    sy := y
 
-    set_fg(font.texture, colors[.default])
-
-    for r in string_buffer {
-        if r == '\n' {
-            sx = 0
-            sy += font.line_height
-            continue
-        }
-
-        g := font.glyphs[r]
-
-        if !is_valid_glyph(r) {
-            g = font.glyphs['?']
-        }
-
-        src := sdl.Rect{ g.x, g.y, g.w, g.h }
-        dest := sdl.FRect{
+    for r in s {
+        g := f.glyphs[r]
+        src := make_rect(g.x, g.y, g.w, g.h)
+        dest := make_rect(
             f32(sx + g.xoffset),
-            f32(sy + g.yoffset) - y_offset_for_centering,
+            f32(sy + g.yoffset) - f.y_offset_for_centering,
             f32(g.w), f32(g.h),
-        }
-        draw_copy(font.texture, &src, &dest)
+        )
+
+        set_fg(f.texture, colors[color])
+        draw_copy(f.texture, &src, &dest)
         sx += g.xadvance
     }
 }
 
 draw_code :: proc(
     font: Font,
+    pen: [2]i32,
     code_lines: []Code_Line,
     selections: []Cursor,
     cursor_settings: Cursor_Settings,
@@ -291,6 +291,7 @@ draw_code :: proc(
 
     for code, y_offset in code_lines {
         sx, sy: i32
+        sx = pen.x
         sy = auto_cast y_offset * line_height
 
         for r, x_offset in code.line {
@@ -329,7 +330,7 @@ draw_code :: proc(
             str_under_region := cl.line[ct.x:ch.x]
             tokens_in_region := cl.tokens[ct.x:ch.x]
             w := get_text_size(font, str_under_region)
-            sx := get_text_size(font, cl.line[:ct.x])
+            sx := pen.x + get_text_size(font, cl.line[:ct.x])
             sy := i32(ct.y) * font.line_height
 
             draw_rect(sx, sy, w, font.line_height, true)
@@ -359,7 +360,7 @@ draw_code :: proc(
 
         // Cursor head
         cursor_rect := make_rect(
-            0, i32(ch.y) * font.line_height,
+            pen.x, i32(ch.y) * font.line_height,
             font.em_width, font.line_height,
         )
         char_behind_cursor: byte
@@ -367,7 +368,7 @@ draw_code :: proc(
         if ch.y < len(code_lines) {
             str := code_lines[ch.y].line
             cut := clamp(ch.x, 0, len(str))
-            cursor_rect.x = get_width_based_on_text_size(font, str[:cut], ch.x)
+            cursor_rect.x = pen.x + get_width_based_on_text_size(font, str[:cut], ch.x)
             if ch.x < len(str) {
                 char_behind_cursor = code_lines[ch.y].line[ch.x]
             }

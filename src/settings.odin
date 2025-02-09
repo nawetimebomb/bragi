@@ -58,6 +58,7 @@ Face :: enum {
     modeline_shadow,
 
     ui_border,
+    gutter,
 }
 
 Settings :: struct {

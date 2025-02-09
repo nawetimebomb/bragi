@@ -71,8 +71,10 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         }
         first_line := int(p.viewport.y)
         last_line :=
-            min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines) - 1)
+            min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines))
         screen_cursors : []Cursor = slice.clone(p.cursors[:], context.temp_allocator)
+        colored := mm != .Fundamental
+        code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
 
         for &c in screen_cursors {
             c.head = { c.head.x - int(p.viewport.x), c.head.y - int(p.viewport.y) }
@@ -85,22 +87,16 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             screen_buffer = buffer.str[start:end]
         }
 
-        if mm == .Fundamental {
-            draw_text(font_editor, screen_buffer, screen_cursors[:], cursor_settings)
-        } else {
-            code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
-
-            for li in first_line..<last_line {
-                index := li - first_line
-                code_line := Code_Line{}
-                start, end := get_line_boundaries(buffer, li)
-                code_line.line = buffer.str[start:end]
-                code_line.tokens = buffer.tokens[start:end]
-                code_lines[index] = code_line
-            }
-
-            draw_code(font_editor, code_lines[:], screen_cursors[:], cursor_settings)
+        for li in first_line..<last_line {
+            index := li - first_line
+            code_line := Code_Line{}
+            start, end := get_line_boundaries(buffer, li)
+            code_line.line = buffer.str[start:end]
+            if colored { code_line.tokens = buffer.tokens[start:end] }
+            code_lines[index] = code_line
         }
+
+        draw_code(font_editor, code_lines[:], screen_cursors[:], cursor_settings, colored)
     } // End Buffer
 
     { // Start Modeline
@@ -288,6 +284,7 @@ draw_code :: proc(
     code_lines: []Code_Line,
     selections: []Cursor,
     cursor_settings: Cursor_Settings,
+    is_colored: bool,
 ) {
     colors := bragi.settings.colorscheme_table
     line_height := font.line_height
@@ -310,7 +307,12 @@ draw_code :: proc(
                 f32(g.w), f32(g.h),
             )
 
-            set_fg_for_token(font.texture, code.tokens[x_offset])
+            if is_colored {
+                set_fg_for_token(font.texture, code.tokens[x_offset])
+            } else {
+                set_fg(font.texture, colors[.default])
+            }
+
             draw_copy(font.texture, &src, &dest)
             sx += g.xadvance
         }
@@ -341,7 +343,12 @@ draw_code :: proc(
                     f32(g.w), f32(g.h),
                 )
 
-                set_fg_for_token(font.texture, tokens_in_region[index])
+                if is_colored {
+                    set_fg_for_token(font.texture, tokens_in_region[index])
+                } else {
+                    set_fg(font.texture, colors[.default])
+                }
+
                 draw_copy(font.texture, &src, &dest)
                 sx += g.xadvance
             }

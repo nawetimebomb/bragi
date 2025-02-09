@@ -148,6 +148,13 @@ is_continuation_byte :: proc(b: byte) -> bool {
 	return b >= 0x80 && b < 0xc0
 }
 
+buffer_cursor_to_view_cursor :: proc(b: ^Buffer, p: Buffer_Cursor) -> (result: [2]int) {
+    result.y = get_line_index(b, p)
+    bol, _ := get_line_boundaries(b, result.y)
+    result.x = p - bol
+    return
+}
+
 buffer_cursor_to_caret :: proc(b: ^Buffer, pos: Buffer_Cursor) -> (result: Caret_Pos) {
     result.y = get_line_index(b, pos)
     bol, _ := get_line_boundaries(b, result.y)

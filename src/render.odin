@@ -50,7 +50,6 @@ set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: tokenizer.Token_Kind)
 render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     profiling_start("render.odin:render_pane")
     colors := &bragi.settings.colorscheme_table
-    viewport := p.viewport
     buffer := p.buffer
 
     set_renderer_target(p.texture)
@@ -63,9 +62,9 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     }
 
     { // Start Buffer
-        first_line := int(p.viewport.y)
+        first_line := int(p.yoffset)
         last_line :=
-            min(int(p.viewport.y + p.relative_size.y + 2), len(buffer.lines))
+            min(int(p.yoffset + p.visible_lines), len(buffer.lines))
         gutter_text_test := fmt.tprintf("{0}", last_line)
         size_of_gutter := get_width_based_on_text_size(font_editor, gutter_text_test, len(gutter_text_test) + 2)
 
@@ -97,8 +96,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
         pen.x = size_of_gutter + 2
 
         for &c in screen_cursors {
-            c.head = { c.head.x - int(p.viewport.x), c.head.y - int(p.viewport.y) }
-            c.tail = { c.tail.x - int(p.viewport.x), c.tail.y - int(p.viewport.y) }
+            c.head = { c.head.x - int(p.xoffset), c.head.y - int(p.yoffset) }
+            c.tail = { c.tail.x - int(p.xoffset), c.tail.y - int(p.yoffset) }
         }
 
         for li in first_line..<last_line {

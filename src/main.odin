@@ -231,14 +231,7 @@ main :: proc() {
 
         process_inputs()
         widgets_update_draw()
-
-        for &p, index in open_panes {
-            focused := p.id == current_pane.id
-            pane_begin(&p)
-            render_pane(&p, index, focused)
-            pane_end(&p)
-        }
-
+        panes_update_draw()
         sdl.RenderPresent(renderer)
 
         free_all(context.temp_allocator)

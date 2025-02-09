@@ -18,6 +18,7 @@ import sdl "vendor:sdl2"
 // so they can navigate up and down the results, but also being able to change the query.
 // These "search" panes will also have a targeting pane, where the search will be executed,
 // and the results will be pulled from.
+SCROLLING_THRESHOLD :: 2
 
 Caret_Pos :: [2]int
 Caret :: struct {
@@ -62,6 +63,10 @@ Pane :: struct {
     relative_size:  [2]i32,
     // The amount of scrolling the pane has done so far, depending of the caret.
     viewport:       [2]i32,
+    visible_lines:  i32,
+    visible_columns: i32,
+    yoffset:        i32,
+    xoffset:        i32,
 }
 
 pane_create :: proc(b: ^Buffer = nil, c: [2]int = {}) -> Pane {
@@ -80,50 +85,69 @@ pane_init :: proc() -> Pane {
     return p
 }
 
-pane_begin :: proc(p: ^Pane) {
-    assert(p.buffer != nil)
+panes_update_draw :: proc() {
+    for &p, index in open_panes {
+        assert(p.buffer != nil)
+        focused := current_pane.id == p.id
 
-    buffer_update(p.buffer)
+        if p.mark_for_deletion {
+            if focused {
+                editor_other_pane(&p)
+            }
 
-    p.relative_size.x = (p.rect.w / char_width) - 2
-    p.relative_size.y = (p.rect.h / line_height) - 2
+            pane_destroy(&p)
+            ordered_remove(&open_panes, index)
+            resize_panes()
+            continue
+        }
 
-    if p.should_resync_cursor {
-        p.should_resync_cursor = false
-        sync_caret_coords(p)
-    }
+        buffer_update(p.buffer)
 
-    if current_pane.id == p.id {
-        if should_cursor_reset_blink_timers(p) {
+        p.visible_lines = p.rect.h / line_height
+        p.visible_columns = p.rect.w / char_width
+
+        if p.should_resync_cursor {
+            p.should_resync_cursor = false
+            new_pos := buffer_cursor_to_view_cursor(p.buffer, p.buffer.cursor)
+            update_cursor(&p, new_pos, new_pos)
+        }
+
+        if focused {
+            if should_cursor_reset_blink_timers(&p) {
+                p.cursor_showing = true
+                p.cursor_blink_count = 0
+                p.cursor_last_update = time.tick_now()
+            }
+
+            if should_cursor_blink(&p) {
+                p.cursor_showing = !p.cursor_showing
+                p.cursor_blink_count += 1
+                p.cursor_last_update = time.tick_now()
+            }
+        } else {
             p.cursor_showing = true
             p.cursor_blink_count = 0
-            p.cursor_last_update = time.tick_now()
         }
 
-        if should_cursor_blink(p) {
-            p.cursor_showing = !p.cursor_showing
-            p.cursor_blink_count += 1
-            p.cursor_last_update = time.tick_now()
+        { // Make sure the cursor is into view
+            cursor_head, _ := get_last_cursor(&p)
+            cursor_x := i32(cursor_head.x)
+            cursor_y := i32(cursor_head.y)
+
+            if cursor_x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
+                p.xoffset = cursor_x - p.visible_columns + SCROLLING_THRESHOLD
+            } else if cursor_x < p.xoffset {
+                p.xoffset = cursor_x
+            }
+
+            if cursor_y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
+                p.yoffset = cursor_y - p.visible_lines + SCROLLING_THRESHOLD
+            } else if cursor_y < p.yoffset {
+                p.yoffset = cursor_y
+            }
         }
-    } else {
-        p.cursor_showing = true
-        p.cursor_blink_count = 0
-    }
 
-    cursor_head, _ := get_last_cursor(p)
-    cursor_x := i32(cursor_head.x)
-    cursor_y := i32(cursor_head.y)
-
-    if cursor_x > p.viewport.x + p.relative_size.x {
-        p.viewport.x = cursor_x - p.relative_size.x
-    } else if cursor_x < p.viewport.x {
-        p.viewport.x = cursor_x
-    }
-
-    if cursor_y > p.viewport.y + p.relative_size.y {
-        p.viewport.y = cursor_y - p.relative_size.y
-    } else if cursor_y < p.viewport.y {
-        p.viewport.y = cursor_y
+        render_pane(&p, index, focused)
     }
 }
 
@@ -138,25 +162,6 @@ find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
     }
 
     return
-}
-
-pane_end :: proc(p: ^Pane) {
-    if p.mark_for_deletion {
-        index_for_this_pane := find_index_for_pane(p)
-
-        if index_for_this_pane == -1 {
-            log.errorf("Failed to find the pane: {0}", p)
-            return
-        }
-
-        if current_pane.id == p.id {
-            editor_other_pane(p)
-        }
-
-        pane_destroy(p)
-        ordered_remove(&open_panes, index_for_this_pane)
-        resize_panes()
-    }
 }
 
 pane_destroy :: proc(p: ^Pane) {

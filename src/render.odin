@@ -32,6 +32,21 @@ set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
     }
 }
 
+set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: tokenizer.Token_Kind) {
+    colors := bragi.settings.colorscheme_table
+
+    switch k {
+    case .generic:      set_fg(t, colors[.default])
+    case .builtin:      set_fg(t, colors[.builtin])
+    case .comment:      set_fg(t, colors[.comment])
+    case .constant:     set_fg(t, colors[.constant])
+    case .keyword:      set_fg(t, colors[.keyword])
+    case .preprocessor: set_fg(t, colors[.preprocessor])
+    case .string:       set_fg(t, colors[.string])
+    case .type:         set_fg(t, colors[.type])
+    }
+}
+
 render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     profiling_start("render.odin:render_pane")
     colors := &bragi.settings.colorscheme_table
@@ -295,17 +310,7 @@ draw_code :: proc(
                 f32(g.w), f32(g.h),
             )
 
-            switch code.tokens[x_offset] {
-            case .generic:      set_fg(font.texture, colors[.default])
-            case .builtin:      set_fg(font.texture, colors[.builtin])
-            case .comment:      set_fg(font.texture, colors[.comment])
-            case .constant:     set_fg(font.texture, colors[.constant])
-            case .keyword:      set_fg(font.texture, colors[.keyword])
-            case .preprocessor: set_fg(font.texture, colors[.preprocessor])
-            case .string:       set_fg(font.texture, colors[.string])
-            case .type:         set_fg(font.texture, colors[.type])
-            }
-
+            set_fg_for_token(font.texture, code.tokens[x_offset])
             draw_copy(font.texture, &src, &dest)
             sx += g.xadvance
         }
@@ -336,17 +341,7 @@ draw_code :: proc(
                     f32(g.w), f32(g.h),
                 )
 
-                switch tokens_in_region[index] {
-                case .generic:      set_fg(font.texture, colors[.default])
-                case .builtin:      set_fg(font.texture, colors[.builtin])
-                case .comment:      set_fg(font.texture, colors[.comment])
-                case .constant:     set_fg(font.texture, colors[.constant])
-                case .keyword:      set_fg(font.texture, colors[.keyword])
-                case .preprocessor: set_fg(font.texture, colors[.preprocessor])
-                case .string:       set_fg(font.texture, colors[.string])
-                case .type:         set_fg(font.texture, colors[.type])
-                }
-
+                set_fg_for_token(font.texture, tokens_in_region[index])
                 draw_copy(font.texture, &src, &dest)
                 sx += g.xadvance
             }

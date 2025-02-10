@@ -162,11 +162,6 @@ buffer_cursor_to_caret :: proc(b: ^Buffer, pos: Buffer_Cursor) -> (result: Caret
     return
 }
 
-caret_to_buffer_cursor :: proc(b: ^Buffer, pos: Caret_Pos) -> Buffer_Cursor {
-    bol, _ := get_line_boundaries(b, pos.y)
-    return bol + pos.x
-}
-
 get_parsed_length_to_kb :: proc(value_in_bytes: f64) -> string {
     if value_in_bytes == 0 {
         return ""

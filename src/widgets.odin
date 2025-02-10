@@ -23,10 +23,10 @@ Widget_Action :: enum {
 
 Pane_State :: struct {
     buffer: ^Buffer,
-    cursor_pos: [2]int,
+    cursor_pos: int,
 }
 
-Result_Cursor_Pos :: [2]int
+Result_Cursor_Pos :: int
 Result_Buffer_Pointer :: ^Buffer
 
 Result_File_Info :: struct {
@@ -86,18 +86,6 @@ widgets_update_draw :: proc() {
 
     if !widgets_pane.enabled { return }
 
-    // if should_caret_reset_blink_timers(caret) {
-    //     caret.blinking = false
-    //     caret.blinking_count = 0
-    //     caret.last_update = time.tick_now()
-    // }
-
-    // if should_caret_blink(caret) {
-    //     caret.blinking = !caret.blinking
-    //     caret.blinking_count += 1
-    //     caret.last_update = time.tick_now()
-    // }
-
     caret_y := i32(widgets_pane.caret.coords.y)
 
     if caret_y > widgets_pane.viewport.y + VIEWPORT_MAX_ITEMS {
@@ -116,19 +104,17 @@ widgets_update_draw :: proc() {
         if !item.invalid {
             widgets_pane.target.buffer = item.value.(Result_Buffer_Pointer)
         }
-
-        sync_caret_coords(widgets_pane.target)
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         item := widgets_pane.results[widgets_pane.caret.coords.y]
 
         if !item.invalid {
             cursor_pos := item.value.(Result_Cursor_Pos)
-            clear(&widgets_pane.target.cursors)
+            buffer := widgets_pane.target.buffer
             length_of_query := len(strings.to_string(widgets_pane.query))
-            new_cursor := Cursor{ cursor_pos, cursor_pos }
-            new_cursor.tail.x -= length_of_query
-            append(&widgets_pane.target.cursors, new_cursor)
+            new_cursor := make_cursor(cursor_pos)
+            new_cursor.sel -= length_of_query
+            delete_all_cursors(buffer, new_cursor)
         }
     }
 
@@ -142,9 +128,9 @@ rollback_to_prev_value :: proc() {
         widgets_pane.target.buffer = widgets_pane.prev_state.buffer
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+        buffer := widgets_pane.target.buffer
         cursor_pos := widgets_pane.prev_state.cursor_pos
-        clear(&widgets_pane.target.cursors)
-        append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+        delete_all_cursors(buffer, make_cursor(cursor_pos))
     }
 }
 
@@ -170,8 +156,7 @@ maybe_create_new_texture_for_widgets :: proc() {
 }
 
 widgets_show :: proc(target: ^Pane, action: Widget_Action) {
-    editor_set_buffer_cursor(target)
-    cursor_pos, _ := get_last_cursor(target)
+    cursor_pos := get_last_cursor_pos(target.buffer)
 
     widgets_pane.action = action
     widgets_pane.caret.coords = {}
@@ -318,11 +303,10 @@ filter_results :: proc() {
             for strings.contains(s, query) {
                 found_index := strings.index(s, query)
                 cursor_pos := len(b.str) - len(s) + found_index + len(query)
-                pos := buffer_cursor_to_caret(b, cursor_pos)
                 result := Result{
-                    format    = widgets_get_search_row_format(b, pos),
+                    format    = widgets_get_search_row_format(b, cursor_pos),
                     highlight = { 0, len(query) },
-                    value     = pos,
+                    value     = cursor_pos,
                 }
 
                 if widgets_pane.action == .SEARCH_REVERSE_IN_BUFFER {
@@ -382,7 +366,7 @@ ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     }
 }
 
-ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
+ui_translate :: proc(t: Cursor_Translation) -> (pos: Caret_Pos) {
     pos = widgets_pane.caret.coords
     query := strings.to_string(widgets_pane.query)
     results := widgets_pane.results
@@ -425,7 +409,7 @@ ui_translate :: proc(t: Caret_Translation) -> (pos: Caret_Pos) {
     return
 }
 
-ui_delete_to :: proc(t: Caret_Translation) {
+ui_delete_to :: proc(t: Cursor_Translation) {
     new_pos := ui_translate(t)
     start := min(widgets_pane.caret.coords.x, new_pos.x)
     end := max(widgets_pane.caret.coords.x, new_pos.x)
@@ -434,7 +418,7 @@ ui_delete_to :: proc(t: Caret_Translation) {
     filter_results()
 }
 
-ui_move_to :: proc(t: Caret_Translation) {
+ui_move_to :: proc(t: Cursor_Translation) {
     widgets_pane.caret.coords = ui_translate(t)
 }
 
@@ -476,17 +460,15 @@ ui_select :: proc() {
             }
         }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+        buffer := widgets_pane.target.buffer
         item := widgets_pane.results[widgets_pane.caret.coords.y]
 
         if item.invalid {
-            cursor_pos := widgets_pane.prev_state.cursor_pos
-            clear(&widgets_pane.target.cursors)
-            append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+            last_pos := widgets_pane.prev_state.cursor_pos
+            delete_all_cursors(buffer, make_cursor(last_pos))
         } else {
-            cursor := widgets_pane.target.cursors[0]
-            cursor_pos := cursor.head
-            clear(&widgets_pane.target.cursors)
-            append(&widgets_pane.target.cursors, Cursor{ cursor_pos, cursor_pos })
+            pos := get_last_cursor_pos(buffer)
+            delete_all_cursors(buffer, make_cursor(pos))
         }
     }
 
@@ -603,22 +585,28 @@ widgets_get_file_row_format :: #force_inline proc(f: ^Result_File_Info) -> strin
     return fmt.aprintf("{0}\n{1}\n{2}\n{3}", c0, c1, c2, c3)
 }
 
-widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: Caret_Pos) -> string {
+widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: int) -> string {
+    coords := get_coords(b, pos)
     c0 := ""
-    c1 := fmt.tprintf("{0}:{1}", pos.y + 1, pos.x)
+    c1 := fmt.tprintf("{0}:{1}", coords.y + 1, coords.x)
     c2 := ""
     c3 := ""
 
     { // c0
-        start_pos := caret_to_buffer_cursor(b, pos) - len(strings.to_string(widgets_pane.query))
+        start_pos := pos - len(strings.to_string(widgets_pane.query))
         end_pos := start_pos + 1
         for end_pos < len(b.str) && is_whitespace(b.str[end_pos])  { end_pos += 1 }
         for end_pos < len(b.str) && !is_whitespace(b.str[end_pos]) { end_pos += 1 }
         c0 = b.str[start_pos:end_pos]
     }
 
+    { // c1
+
+
+    }
+
     { // c2
-        line_start := get_line_start_after_indent(b, pos.y)
+        line_start := get_line_start_after_indent(b, coords.y)
         line_end := line_start
         for line_end < len(b.str) && b.str[line_end] != '\n' { line_end += 1 }
         c2 = b.str[line_start:line_end]

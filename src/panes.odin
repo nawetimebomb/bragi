@@ -30,13 +30,7 @@ Caret :: struct {
     last_update:    time.Tick,
 }
 
-Cursor :: struct {
-    head, tail: [2]int,
-}
-
 Pane :: struct {
-    cursors: [dynamic]Cursor,
-    cursor_max_offset: int,
     cursor_showing: bool,
     cursor_blink_count: int,
     cursor_last_update: time.Tick,
@@ -52,9 +46,6 @@ Pane :: struct {
     // If this pane is marked for deletion, it will be deleted at the end of the frame.
     mark_for_deletion: bool,
 
-    // If the pane should align the caret to the buffer cursor
-    should_resync_cursor: bool,
-
     rect: Rect,
     texture: Texture,
     // Values that define the UI.
@@ -69,14 +60,9 @@ Pane :: struct {
     xoffset:        i32,
 }
 
-pane_create :: proc(b: ^Buffer = nil, c: [2]int = {}) -> Pane {
-    result: Pane
+pane_create :: proc(b: ^Buffer = nil) -> (result: Pane) {
     result.id = uuid.generate_v7()
-    result.cursors = make([dynamic]Cursor, 0, 1)
     result.buffer = b
-    // NOTE: Panes can have many cursors on the screen, but only one is
-    // inherited when the user creates a new pane.
-    append(&result.cursors, Cursor{ c, c })
     return result
 }
 
@@ -95,7 +81,6 @@ panes_update_draw :: proc() {
                 editor_other_pane(&p)
             }
 
-            pane_destroy(&p)
             ordered_remove(&open_panes, index)
             resize_panes()
             continue
@@ -105,12 +90,6 @@ panes_update_draw :: proc() {
 
         p.visible_lines = p.rect.h / line_height
         p.visible_columns = p.rect.w / char_width
-
-        if p.should_resync_cursor {
-            p.should_resync_cursor = false
-            new_pos := buffer_cursor_to_view_cursor(p.buffer, p.buffer.cursor)
-            update_cursor(&p, new_pos, new_pos)
-        }
 
         if focused {
             if should_cursor_reset_blink_timers(&p) {
@@ -129,23 +108,23 @@ panes_update_draw :: proc() {
             p.cursor_blink_count = 0
         }
 
-        { // Make sure the cursor is into view
-            cursor_head, _ := get_last_cursor(&p)
-            cursor_x := i32(cursor_head.x)
-            cursor_y := i32(cursor_head.y)
+        // { // Make sure the cursor is into view
+        //     cursor_head, _ := get_last_cursor(&p)
+        //     cursor_x := i32(cursor_head.x)
+        //     cursor_y := i32(cursor_head.y)
 
-            if cursor_x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
-                p.xoffset = cursor_x - p.visible_columns + SCROLLING_THRESHOLD
-            } else if cursor_x < p.xoffset {
-                p.xoffset = cursor_x
-            }
+        //     if cursor_x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
+        //         p.xoffset = cursor_x - p.visible_columns + SCROLLING_THRESHOLD
+        //     } else if cursor_x < p.xoffset {
+        //         p.xoffset = cursor_x
+        //     }
 
-            if cursor_y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
-                p.yoffset = cursor_y - p.visible_lines + SCROLLING_THRESHOLD
-            } else if cursor_y < p.yoffset {
-                p.yoffset = cursor_y
-            }
-        }
+        //     if cursor_y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
+        //         p.yoffset = cursor_y - p.visible_lines + SCROLLING_THRESHOLD
+        //     } else if cursor_y < p.yoffset {
+        //         p.yoffset = cursor_y
+        //     }
+        // }
 
         render_pane(&p, index, focused)
     }
@@ -164,11 +143,6 @@ find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
     return
 }
 
-pane_destroy :: proc(p: ^Pane) {
-    p.buffer = nil
-    delete(p.cursors)
-}
-
 resize_panes :: proc() {
     for &p, index in open_panes {
         w := window_width / i32(len(open_panes))
@@ -182,11 +156,6 @@ resize_panes :: proc() {
         p.rect = make_rect(x, 0, w, h)
         p.texture = make_texture(p.texture, .RGBA32, .TARGET, p.rect)
     }
-}
-
-sync_caret_coords :: proc(p: ^Pane) {
-    new_pos := buffer_cursor_to_caret(p.buffer, p.buffer.cursor)
-    update_cursor(p, new_pos, new_pos)
 }
 
 reset_viewport :: proc(p: ^Pane) {
@@ -224,128 +193,4 @@ find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
 
     log.errorf("Couldn't find a valid pane in coords [{0}, {1}]", x, y)
     return nil, 0
-}
-
-create_basic_cursor :: #force_inline proc(p: ^Pane) {
-    append(&p.cursors, Cursor{})
-}
-
-sorted_cursor :: #force_inline proc(c: Cursor) -> (lo, hi: [2]int) {
-    ch := c.head
-    ct := c.tail
-
-    if ch.y == ct.y {
-        if ch.x > ct.x {
-            hi = ch
-            lo = ct
-        } else {
-            hi = ct
-            lo = ch
-        }
-    } else if ch.y > ct.y {
-        hi = ch
-        lo = ct
-    } else {
-        hi = ct
-        lo = ch
-    }
-
-    return
-}
-
-get_last_cursor :: #force_inline proc(p: ^Pane) -> (head, tail: [2]int) {
-    // If there are no cursors alive, create one
-    if len(p.cursors) == 0 { create_basic_cursor(p) }
-    cursor := p.cursors[len(p.cursors) - 1]
-    return cursor.head, cursor.tail
-}
-
-update_cursor :: #force_inline proc(p: ^Pane, head, tail: [2]int) {
-    cursor := &p.cursors[len(p.cursors) - 1]
-    cursor.head = head
-    cursor.tail = tail
-}
-
-translate_cursor :: proc(p: ^Pane, t: Caret_Translation) -> (pos: [2]int) {
-    pos, _ = get_last_cursor(p)
-    b := p.buffer
-    lines_count := len(b.lines)
-
-    switch t {
-    case .DOWN:
-        if pos.y < lines_count - 1 {
-            pos.y += 1
-
-            if pos.x > get_line_length(b, pos.y) {
-                pos.x = get_line_length(b, pos.y)
-            }
-        }
-
-        return
-    case .UP:
-        if pos.y > 0 {
-            pos.y -= 1
-
-            if pos.x > get_line_length(b, pos.y) {
-                pos.x = get_line_length(b, pos.y)
-            }
-        }
-
-        return
-    case .LEFT:
-        pos.x -= 1
-
-        if pos.x < 0 {
-            if pos.y > 0 {
-                pos.y -= 1
-                pos.x = get_line_length(b, pos.y)
-            } else {
-                pos.x = 0
-            }
-        }
-
-        return
-    case .RIGHT:
-        pos.x += 1
-
-        if pos.x > get_line_length(b, pos.y) {
-            if pos.y < lines_count - 1 {
-                pos.y += 1
-                pos.x = 0
-            } else {
-                pos.x = get_line_length(b, pos.y)
-            }
-        }
-
-        return
-    case .BUFFER_START:
-        pos = { 0, 0 }
-        return
-    case .BUFFER_END:
-        pos.y = lines_count - 1
-        pos.x = get_line_length(b, pos.y)
-        return
-    case .LINE_START:
-        bol, _ := get_line_boundaries(b, pos.y)
-        bol_indent := get_line_start_after_indent(b, pos.y)
-        pos.x = pos.x == 0 ? bol_indent - bol : 0
-        return
-    case .LINE_END:
-        pos.x = get_line_length(b, pos.y)
-        return
-    case .WORD_START:
-        x := caret_to_buffer_cursor(b, pos)
-        for x > 0 && is_whitespace(rune_at(b, x - 1)) { x -= 1 }
-        for x > 0 && !is_whitespace(rune_at(b, x - 1)) { x -= 1 }
-        pos = buffer_cursor_to_caret(b, x)
-        return
-    case .WORD_END:
-        x := caret_to_buffer_cursor(b, pos)
-        for x < buffer_len(b) && is_whitespace(rune_at(b, x))  { x += 1 }
-        for x < buffer_len(b) && !is_whitespace(rune_at(b, x)) { x += 1}
-        pos = buffer_cursor_to_caret(b, x)
-        return
-    }
-
-    return
 }

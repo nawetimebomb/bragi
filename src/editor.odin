@@ -6,16 +6,6 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 
-Caret_Translation :: enum {
-    DOWN, RIGHT, LEFT, UP,
-    BUFFER_START,
-    BUFFER_END,
-    LINE_START,
-    LINE_END,
-    WORD_START,
-    WORD_END,
-}
-
 editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     p.last_keystroke = time.tick_now()
 
@@ -86,14 +76,12 @@ editor_open_file :: proc(p: ^Pane, filepath: string) {
         if b.filepath == filepath {
             p.buffer = &b
             buffer_found = true
-            sync_caret_coords(p)
             break
         }
     }
 
     if !buffer_found {
         p.buffer = create_buffer_from_file(filepath)
-        clear(&p.cursors)
     }
 }
 
@@ -112,8 +100,7 @@ editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
 }
 
 editor_new_pane :: proc(p: ^Pane) {
-    cursor_pos, _ := get_last_cursor(p)
-    new_pane := pane_create(p.buffer, cursor_pos)
+    new_pane := pane_create(p.buffer)
     current_pane = add(new_pane)
 }
 
@@ -149,11 +136,6 @@ editor_search_forward :: proc(target: ^Pane) {
     widgets_show(target, .SEARCH_IN_BUFFER)
 }
 
-editor_set_buffer_cursor :: proc(p: ^Pane) {
-    pane_cursor, _ := get_last_cursor(p)
-    p.buffer.cursor = caret_to_buffer_cursor(p.buffer, pane_cursor)
-}
-
 toggle_mark_on :: proc(p: ^Pane) {
     log.error("IMPLEMENT")
 }
@@ -179,7 +161,6 @@ kill_current_buffer :: proc(p: ^Pane) {
     }
 
     p.buffer = &open_buffers[len(open_buffers) - 1]
-    sync_caret_coords(p)
     reset_viewport(p)
 }
 
@@ -212,11 +193,11 @@ get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32
 }
 
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
-    pos: Caret_Pos
-    pos.x = int(x / char_width + p.viewport.x)
-    pos.y = int(y / line_height + p.viewport.y)
-
-    editor_set_buffer_cursor(p)
+    b := p.buffer
+    coords: Coords
+    coords.x = int(x / char_width + p.viewport.x)
+    coords.y = int(y / line_height + p.viewport.y)
+    delete_all_cursors(b, make_cursor(get_offset_from_coords(b, coords)))
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
@@ -231,18 +212,7 @@ scroll :: proc(p: ^Pane, offset: i32) {
     lines_count := i32(len(p.buffer.lines))
 
     if p.relative_size.y < lines_count {
-        p.viewport.y = clamp(p.viewport.y + offset, 0, lines_count - 10)
-        view_y := int(p.viewport.y)
-        rel_y := int(p.relative_size.y)
-        cursor_pos, _ := get_last_cursor(p)
-
-        if cursor_pos.y < view_y {
-            cursor_pos.y = view_y
-        } else if cursor_pos.y > view_y + rel_y {
-            cursor_pos.y = view_y + rel_y
-        }
-
-        update_cursor(p, cursor_pos, cursor_pos)
+        p.yoffset = clamp(p.viewport.y + offset, 0, lines_count - 10)
     }
 }
 
@@ -258,45 +228,36 @@ editor_undo_redo :: proc(p: ^Pane, a: enum { REDO, UNDO }) {
     } else {
         success = undo_redo(p.buffer, &p.buffer.undo, &p.buffer.redo)
     }
-
-    p.should_resync_cursor = success
 }
 
 yank :: proc(p: ^Pane, callback: Paste_Proc) {
     editor_self_insert(p, callback())
-    p.should_resync_cursor = true
 }
 
 editor_self_insert :: proc(p: ^Pane, s: string) {
-    cursor, _ := get_last_cursor(p)
-    buffer_pos := caret_to_buffer_cursor(p.buffer, cursor)
-    cursor.x += insert(p.buffer, buffer_pos, s)
-    update_cursor(p, cursor, cursor)
+    insert_string(p.buffer, s)
 }
 
 newline :: proc(p: ^Pane) {
-    cursor, _ := get_last_cursor(p)
-    buffer_pos := caret_to_buffer_cursor(p.buffer, cursor)
-    insert(p.buffer, buffer_pos, byte('\n'))
-    cursor = { 0, cursor.y + 1 }
-    update_cursor(p, cursor, cursor)
+    insert_char(p.buffer, '\n')
 }
 
-delete_to :: proc(p: ^Pane, t: Caret_Translation) {
-    cursor_at_start, _ := get_last_cursor(p)
-    cursor_after_deletion := translate_cursor(p, t)
-    end_pos := caret_to_buffer_cursor(p.buffer, cursor_after_deletion)
-    start_pos := caret_to_buffer_cursor(p.buffer, cursor_at_start)
-    count := end_pos - start_pos
+delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
+    b := p.buffer
+    cursor_at_start := get_last_cursor_pos(b)
+    cursor_after_deletion := translate_cursor(b, t)
+    count := cursor_after_deletion - cursor_at_start
 
-    remove(p.buffer, start_pos, count)
+    remove(b, cursor_at_start, count)
+}
 
-    if count < 0 {
-        update_cursor(p, cursor_after_deletion, cursor_after_deletion)
+editor_move_to :: proc(p: ^Pane, t: Cursor_Translation) {
+    b := p.buffer
+
+    for &cursor in b.cursors {
+        new_pos := translate_cursor(b, t)
+        // TODO: handle selection
+        cursor.pos = new_pos
+        cursor.sel = new_pos
     }
-}
-
-editor_move_to :: proc(p: ^Pane, t: Caret_Translation) {
-    new_pos := translate_cursor(p, t)
-    update_cursor(p, new_pos, new_pos)
 }

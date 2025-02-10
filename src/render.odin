@@ -89,16 +89,25 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             fill = focused,
             showing = p.cursor_showing,
         }
-        screen_cursors : []Cursor = slice.clone(p.cursors[:], context.temp_allocator)
+        screen_cursors := make(
+            [dynamic]Cursor_Coords, 0, len(buffer.cursors), context.temp_allocator,
+        )
+
+        for cursor in buffer.cursors {
+            result := Cursor_Coords{}
+            result.pos = get_coords(buffer, cursor.pos)
+            result.sel = get_coords(buffer, cursor.sel)
+
+            // Only add the cursors seen on screen
+            if result.pos.y >= int(p.yoffset) && result.pos.y < int(p.yoffset + p.visible_lines) {
+                append(&screen_cursors, result)
+            }
+        }
+
         colored := mm != .Fundamental
         code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
         pen: [2]i32
         pen.x = size_of_gutter + 2
-
-        for &c in screen_cursors {
-            c.head = { c.head.x - int(p.xoffset), c.head.y - int(p.yoffset) }
-            c.tail = { c.tail.x - int(p.xoffset), c.tail.y - int(p.yoffset) }
-        }
 
         for li in first_line..<last_line {
             index := li - first_line
@@ -115,8 +124,8 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
     { // Start Modeline
         HORIZONTAL_PADDING :: 10
         VERTICAL_PADDING   :: 3
-        cursor_head, _ := get_last_cursor(p)
-        line_number := cursor_head.y + 1
+        coords := get_coords(buffer, get_last_cursor_pos(buffer))
+        line_number := coords.y + 1
         buffer_status := get_buffer_status(buffer)
         buffer_name_indices := [2]int{
             len(buffer_status), len(buffer_status) + len(buffer.name),
@@ -127,7 +136,7 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             get_buffer_status(buffer),
             buffer.name,
             line_number,
-            cursor_head.x,
+            coords.x,
         )
         rml_fmt := fmt.tprintf(
             "{0}", settings_get_major_mode_name(buffer.major_mode),
@@ -281,7 +290,7 @@ draw_code :: proc(
     font: Font,
     pen: [2]i32,
     code_lines: []Code_Line,
-    selections: []Cursor,
+    selections: []Cursor_Coords,
     cursor_settings: Cursor_Settings,
     is_colored: bool,
 ) {
@@ -319,15 +328,17 @@ draw_code :: proc(
     }
 
     for cursor in selections {
-        ch := cursor.head
-        ct := cursor.tail
+        ch := cursor.pos
+        ct := cursor.sel
 
         // Cursor tail
         if ch != ct {
+            tokens_in_region: []tokenizer.Token_Kind
+
             set_bg(colors[.region])
             cl := code_lines[ch.y]
             str_under_region := cl.line[ct.x:ch.x]
-            tokens_in_region := cl.tokens[ct.x:ch.x]
+            if is_colored { tokens_in_region = cl.tokens[ct.x:ch.x] }
             w := get_text_size(font, str_under_region)
             sx := pen.x + get_text_size(font, cl.line[:ct.x])
             sy := i32(ct.y) * font.line_height

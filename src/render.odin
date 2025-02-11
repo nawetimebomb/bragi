@@ -11,12 +11,13 @@ Rect :: sdl.Rect
 Texture :: ^sdl.Texture
 
 Code_Line :: struct {
-    line: string,
-    tokens: []tokenizer.Token_Kind,
+    line:         string,
+    start_offset: int,
+    tokens:       []tokenizer.Token_Kind,
 }
 
 Cursor_Settings :: struct {
-    fill: bool,
+    fill:    bool,
     showing: bool,
 }
 
@@ -47,184 +48,57 @@ set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: tokenizer.Token_Kind)
     }
 }
 
-render_pane :: proc(p: ^Pane, index: int, focused: bool) {
-    profiling_start("render.odin:render_pane")
-    colors := &bragi.settings.colorscheme_table
-    buffer := p.buffer
+draw_modeline :: proc(p: ^Pane, focused: bool) {
+    SMALL_PADDING :: 4
+    MODELINE_H_PADDING :: 10
+    MODELINE_V_PADDING :: 3
+    colors := bragi.settings.colorscheme_table
 
-    set_renderer_target(p.texture)
+    modeline_y := p.rect.h - font_ui.line_height - MODELINE_V_PADDING
+    background_y := modeline_y - MODELINE_V_PADDING
+    borderline_y := background_y - 1
+    background_h := font_ui.line_height + MODELINE_V_PADDING * 2
 
-    clear_background(colors[.background])
+    set_bg(colors[.ui_border])
+    draw_line(0, borderline_y, p.rect.w, borderline_y)
 
-    if index > 0 {
-        set_bg(colors[.ui_border])
-        draw_line(0, 0, 0, p.rect.h)
+    set_bg(focused ? colors[.modeline_on_bg] : colors[.modeline_off_bg])
+    draw_rect(0, background_y, p.rect.w, background_h, true)
+
+    // Left side
+    {
+        coords := get_last_cursor_pos_as_coords(p.buffer)
+        left_start_column  :: MODELINE_H_PADDING
+
+        sx := draw_text(
+            font_ui, get_buffer_status(p.buffer),
+            p.buffer.modified ? .highlight : .default,
+            left_start_column, modeline_y,
+        )
+        sx = draw_text(
+            font_ui_bold, p.buffer.name,
+            p.buffer.modified ? .highlight : .default,
+            sx + font_ui.em_width, modeline_y,
+        )
+
+        line_number_column := fmt.tprintf("({0}, {1})", coords.y + 1, coords.x)
+        draw_text(
+            font_ui, line_number_column, .default,
+            sx + font_ui.em_width * SMALL_PADDING, modeline_y,
+        )
     }
 
-    { // Start Buffer
-        first_line := int(p.yoffset)
-        last_line :=
-            min(int(p.yoffset + p.visible_lines), len(buffer.lines))
-        gutter_text_test := fmt.tprintf("{0}", last_line)
-        size_of_gutter := get_width_based_on_text_size(font_editor, gutter_text_test, len(gutter_text_test) + 2)
+    // Right side
+    {
+        major_mode_string := settings_get_major_mode_name(p.buffer.major_mode)
+        content_size := get_text_size(font_ui, fmt.tprintf("{0}", major_mode_string))
+        right_start_column := p.rect.w - MODELINE_H_PADDING - content_size
 
-        set_bg(colors[.gutter])
-        draw_rect(0, 0, size_of_gutter, p.rect.h)
-        set_bg(colors[.ui_border])
-        draw_line(size_of_gutter, 0, size_of_gutter, p.rect.h)
-
-        for li in first_line..<last_line {
-            index := li - first_line
-            line_number := strings.right_justify(
-                fmt.tprintf("{0}", li + 1),
-                len(gutter_text_test) + 1,
-                " ",
-                context.temp_allocator,
-            )
-            draw_text(font_editor, line_number, .default, 0, i32(index) * font_editor.line_height)
-        }
-
-        mm := buffer.major_mode
-        cursor_settings := Cursor_Settings{
-            fill = focused,
-            showing = p.cursor_showing,
-        }
-        screen_cursors := make(
-            [dynamic]Cursor_Coords, 0, len(buffer.cursors), context.temp_allocator,
+        draw_text(
+            font_ui_bold, major_mode_string, .default,
+            right_start_column, modeline_y,
         )
-
-        for cursor in buffer.cursors {
-            result := Cursor_Coords{}
-            result.pos = get_coords(buffer, cursor.pos)
-            result.sel = get_coords(buffer, cursor.sel)
-
-            // Only add the cursors are visible
-            if is_in_screen_space(p, result.pos) || is_in_screen_space(p, result.sel) {
-                // Make sure they are in screen position
-                result.pos = { result.pos.x - p.xoffset, result.pos.y - p.yoffset }
-                result.sel = { result.sel.x - p.xoffset, result.sel.y - p.yoffset }
-                append(&screen_cursors, result)
-            }
-        }
-
-        colored := mm != .Fundamental
-        code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
-        pen: [2]i32
-        pen.x = size_of_gutter + 2
-
-        for li in first_line..<last_line {
-            index := li - first_line
-            code_line := Code_Line{}
-            start, end := get_line_boundaries(buffer, li)
-            code_line.line = buffer.str[start:end]
-            if colored { code_line.tokens = buffer.tokens[start:end] }
-            code_lines[index] = code_line
-        }
-
-        draw_code(font_editor, pen, code_lines[:], screen_cursors[:], cursor_settings, colored)
-    } // End Buffer
-
-    { // Start Modeline
-        HORIZONTAL_PADDING :: 10
-        VERTICAL_PADDING   :: 3
-        coords := get_coords(buffer, get_last_cursor_pos(buffer))
-        line_number := coords.y + 1
-        buffer_status := get_buffer_status(buffer)
-        buffer_name_indices := [2]int{
-            len(buffer_status), len(buffer_status) + len(buffer.name),
-        }
-
-        lml_fmt := fmt.tprintf(
-            "{0} {1} ({2}, {3})",
-            get_buffer_status(buffer),
-            buffer.name,
-            line_number,
-            coords.x,
-        )
-        rml_fmt := fmt.tprintf(
-            "{0}", settings_get_major_mode_name(buffer.major_mode),
-        )
-        rml_fmt_size := i32(len(rml_fmt)) * font_ui.em_width
-        row := p.rect.h - font_ui.line_height - VERTICAL_PADDING
-        background_y := row - VERTICAL_PADDING
-        borderline_y := background_y - 1
-        background_h := font_ui.line_height + VERTICAL_PADDING * 2
-
-        left_start_column  :: HORIZONTAL_PADDING
-        right_start_column := p.rect.w - HORIZONTAL_PADDING - rml_fmt_size
-
-        set_bg(colors[.ui_border])
-        draw_line(0, borderline_y, p.rect.w, borderline_y)
-
-        // TODO: This is adding a shadow to limit the modeline, it looks great, but I
-        // rather create a texture with this and use it instead of doing it manually.
-        // sdl.SetRenderDrawBlendMode(renderer, .BLEND)
-        // for i : i32 = 0; i < 5; i += 1 {
-        //     shadow := colors[.modeline_shadow]
-        //     sdl.SetRenderDrawColor(renderer, shadow.r, shadow.g, shadow.b, shadow.a - 51 * u8(i))
-        //     sdl.RenderDrawLine(
-        //         renderer,
-        //         0, background_y - i,
-        //         p.rect.w, background_y - i,
-        //     )
-        // }
-        // sdl.SetRenderDrawBlendMode(renderer, .NONE)
-
-        background_rect := make_rect(0, background_y, p.rect.w, background_h)
-        set_bg(focused ? colors[.modeline_on_bg] : colors[.modeline_off_bg])
-        sdl.RenderFillRect(renderer, &background_rect)
-
-        { // Left side
-            x := i32(left_start_column)
-
-            for r, index in lml_fmt {
-                used_font := font_ui
-
-                if buffer_name_indices[0] <= index && buffer_name_indices[1] >= index {
-                    used_font = font_ui_bold
-                }
-
-                glyph := used_font.glyphs[r]
-                src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
-                dest := make_rect(
-                    f32(x + glyph.xoffset),
-                    f32(row + glyph.yoffset) - used_font.y_offset_for_centering,
-                    f32(glyph.w), f32(glyph.h),
-                )
-                set_fg(
-                    used_font.texture,
-                    focused ? colors[.modeline_on_fg] : colors[.modeline_off_fg],
-                )
-                draw_copy(used_font.texture, &src, &dest)
-                x += glyph.xadvance
-            }
-        }
-
-        { // Right side
-            x := i32(right_start_column)
-
-            for r, index in rml_fmt {
-                glyph := font_ui.glyphs[r]
-                src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
-                dest := make_rect(
-                    f32(x + glyph.xoffset),
-                    f32(row + glyph.yoffset) - font_ui.y_offset_for_centering,
-                    f32(glyph.w), f32(glyph.h),
-                )
-                set_fg(
-                    font_ui.texture,
-                    focused ? colors[.modeline_on_fg] : colors[.modeline_off_fg],
-                )
-                draw_copy(font_ui.texture, &src, &dest)
-                x += font_ui.em_width
-            }
-        }
-    } // End Modeline
-
-    set_renderer_target()
-
-    sdl.RenderCopy(renderer, p.texture, nil, &p.rect)
-    profiling_end()
+    }
 }
 
 make_rect :: proc{
@@ -269,9 +143,47 @@ clear_background :: #force_inline proc(color: Color) {
     sdl.RenderClear(renderer)
 }
 
-draw_text :: proc(f: Font, s: string, color: Face, x, y: i32) {
+draw_gutter_line_numbers :: proc(
+    prect: Rect,
+    start, end, current: int,
+) -> (gutter_size: i32) {
+    GUTTER_PADDING :: 2
+    LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
     colors := bragi.settings.colorscheme_table
-    sx := x
+
+    // Testing the size of the string by using the largest number, hopefully
+    size_test_str := fmt.tprintf("{0}", end)
+    gutter_size = get_width_based_on_text_size(
+        font_ui, size_test_str, len(size_test_str) + GUTTER_PADDING,
+    )
+
+    set_bg(colors[.ui_gutter])
+    draw_rect(0, 0, gutter_size, prect.h)
+    set_bg(colors[.ui_border])
+    draw_line(gutter_size, 0, gutter_size, prect.h)
+
+    for line_number in start..<end {
+        index := line_number - start
+        sy := i32(line_number - start) * line_height
+        line_number_str := strings.right_justify(
+            fmt.tprintf("{0}", line_number + 1),
+            len(size_test_str) + LINE_NUMBER_JUSTIFY,
+            " ",
+            context.temp_allocator,
+        )
+        draw_text(
+            font_ui, line_number_str,
+            current == index ? .ui_line_number_current : .ui_line_number,
+            0, sy,
+        )
+    }
+
+    return
+}
+
+draw_text :: proc(f: Font, s: string, color: Face, x, y: i32) -> (sx: i32) {
+    colors := bragi.settings.colorscheme_table
+    sx = x
     sy := y
 
     for r in s {
@@ -287,23 +199,32 @@ draw_text :: proc(f: Font, s: string, color: Face, x, y: i32) {
         draw_copy(f.texture, &src, &dest)
         sx += g.xadvance
     }
+
+    return sx
 }
 
 draw_code :: proc(
     font: Font,
     pen: [2]i32,
     code_lines: []Code_Line,
-    selections: []Cursor_Coords,
-    cursor_settings: Cursor_Settings,
+    selections: []Range = {},
     is_colored: bool,
 ) {
     colors := bragi.settings.colorscheme_table
     line_height := font.line_height
 
+    is_selected :: proc(selections: []Range, offset: int) -> bool {
+        for sel in selections {
+            if offset >= sel.start && offset < sel.end { return true }
+        }
+
+        return false
+    }
+
     for code, y_offset in code_lines {
         sx, sy: i32
         sx = pen.x
-        sy = auto_cast y_offset * line_height
+        sy = i32(y_offset) * line_height
 
         for r, x_offset in code.line {
             g := font.glyphs[r]
@@ -325,85 +246,34 @@ draw_code :: proc(
                 set_fg(font.texture, colors[.default])
             }
 
+            if is_selected(selections, code.start_offset + x_offset) {
+                set_bg(colors[.region])
+                draw_rect(sx, sy, char_width, line_height, true)
+            }
+
             draw_copy(font.texture, &src, &dest)
             sx += g.xadvance
         }
     }
-
-    for cursor in selections {
-        pos := cursor.pos
-        sel := cursor.sel
-
-        // Cursor tail
-        if pos != sel {
-            tokens_in_region: []tokenizer.Token_Kind
-
-            set_bg(colors[.region])
-            cl := code_lines[pos.y]
-            str_under_region := cl.line[sel.x:pos.x]
-            if is_colored { tokens_in_region = cl.tokens[sel.x:pos.x] }
-            w := get_text_size(font, str_under_region)
-            sx := pen.x + get_text_size(font, cl.line[:sel.x])
-            sy := i32(sel.y) * font.line_height
-
-            draw_rect(sx, sy, w, font.line_height, true)
-
-            for r, index in str_under_region {
-                g := font.glyphs[r]
-                src := make_rect(g.x, g.y, g.w, g.h)
-                dest := make_rect(
-                    f32(sx + g.xoffset),
-                    f32(sy + g.yoffset) - font.y_offset_for_centering,
-                    f32(g.w), f32(g.h),
-                )
-
-                if is_colored {
-                    set_fg_for_token(font.texture, tokens_in_region[index])
-                } else {
-                    set_fg(font.texture, colors[.default])
-                }
-
-                draw_copy(font.texture, &src, &dest)
-                sx += g.xadvance
-            }
-        }
-
-        // NOTE: We skip the cursor head rendering if it's not showing
-        if !cursor_settings.showing { continue }
-
-        // Cursor head
-        cursor_rect := make_rect(
-            pen.x, i32(pos.y) * font.line_height,
-            font.em_width, font.line_height,
-        )
-        char_behind_cursor: byte
-
-        if pos.y < len(code_lines) {
-            str := code_lines[pos.y].line
-            cut := clamp(pos.x, 0, len(str))
-            cursor_rect.x = pen.x + get_width_based_on_text_size(font, str[:cut], pos.x)
-            if pos.x < len(str) {
-                char_behind_cursor = code_lines[pos.y].line[pos.x]
-            }
-        }
-
-        draw_cursor(
-            font, cursor_rect, cursor_settings.fill, char_behind_cursor,
-        )
-    }
 }
 
-draw_cursor :: #force_inline proc(f: Font, r: Rect, fill: bool, behind_cursor: byte) {
+draw_cursor :: #force_inline proc(
+    f: Font,
+    pen: [2]i32,
+    r: Rect,
+    fill: bool,
+    behind_cursor: byte,
+) {
     colors := bragi.settings.colorscheme_table
     set_bg(colors[.cursor])
-    draw_rect(r.x, r.y, r.w, r.h, fill)
+    draw_rect(pen.x + r.x, pen.y + r.y, r.w, r.h, fill)
 
     if is_valid_glyph(rune(behind_cursor)) {
         g := f.glyphs[behind_cursor]
         src := make_rect(g.x, g.y, g.w, g.h)
         dest := make_rect(
-            f32(r.x + g.xoffset),
-            f32(r.y + g.yoffset) - f.y_offset_for_centering,
+            f32(pen.x + r.x + g.xoffset),
+            f32(pen.y + r.y + g.yoffset) - f.y_offset_for_centering,
             f32(g.w), f32(g.h),
         )
         set_fg(f.texture, colors[.background])

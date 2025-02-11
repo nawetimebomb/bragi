@@ -301,6 +301,12 @@ get_line_boundaries :: #force_inline proc(b: ^Buffer, line: int, loc := #caller_
     return result.start, result.end
 }
 
+get_line_text :: #force_inline proc(b: ^Buffer, line: int) -> (result: string) {
+    assert(line < len(b.lines))
+    start, end := get_line_boundaries(b, line)
+    return b.str[start:end]
+}
+
 get_line_length :: #force_inline proc(b: ^Buffer, line: int) -> (length: int) {
     assert(line < len(b.lines))
     start, end := get_line_boundaries(b, line)
@@ -446,13 +452,13 @@ refresh_string_buffer :: proc(b: ^Buffer) {
     profiling_end()
 }
 
-rune_at :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> rune {
+get_byte_at :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> byte {
 	left, right := buffer_get_strings(b)
 
 	if pos < len(left) {
-		return rune(left[pos])
+		return left[pos]
 	} else {
-		return rune(right[pos - len(left)])
+		return right[pos - len(left)]
 	}
 }
 
@@ -550,12 +556,12 @@ translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
         pos = eol
         return
     case .WORD_START:
-        for pos > 0 && is_whitespace(rune_at(b, pos - 1)) { pos -= 1 }
-        for pos > 0 && !is_whitespace(rune_at(b, pos - 1)) { pos -= 1 }
+        for pos > 0 && is_whitespace(get_byte_at(b, pos - 1)) { pos -= 1 }
+        for pos > 0 && !is_whitespace(get_byte_at(b, pos - 1)) { pos -= 1 }
         return
     case .WORD_END:
-        for pos < buffer_len(b) && is_whitespace(rune_at(b, pos))  { pos += 1 }
-        for pos < buffer_len(b) && !is_whitespace(rune_at(b, pos)) { pos += 1}
+        for pos < buffer_len(b) && is_whitespace(get_byte_at(b, pos))  { pos += 1 }
+        for pos < buffer_len(b) && !is_whitespace(get_byte_at(b, pos)) { pos += 1}
         return
     }
 

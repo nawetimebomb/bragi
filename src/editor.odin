@@ -88,11 +88,19 @@ editor_open_file :: proc(p: ^Pane, filepath: string) {
 editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
     if len(open_panes) > 1 {
         if w == .CURRENT {
-            p.mark_for_deletion = true
+            for p1, index in open_panes {
+                if p1.id == current_pane.id {
+                    editor_other_pane(p)
+                    ordered_remove(&open_panes, index)
+                    resize_panes()
+                    return
+                }
+            }
         } else {
-            for &p1, index in open_panes {
-                if current_pane != &p1 {
-                    p1.mark_for_deletion = true
+            for p1, index in open_panes {
+                if p1.id != current_pane.id {
+                    ordered_remove(&open_panes, index)
+                    resize_panes()
                 }
             }
         }

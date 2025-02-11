@@ -18,6 +18,11 @@ import sdl "vendor:sdl2"
 // so they can navigate up and down the results, but also being able to change the query.
 // These "search" panes will also have a targeting pane, where the search will be executed,
 // and the results will be pulled from.
+
+CURSOR_BLINK_COUNT   :: 10
+CURSOR_BLINK_TIMEOUT :: 500 * time.Millisecond
+CURSOR_RESET_TIMEOUT :: 50 * time.Millisecond
+
 SCROLLING_THRESHOLD :: 2
 
 Caret_Pos :: [2]int
@@ -43,13 +48,13 @@ Pane :: struct {
     // users can navigate and edit the same buffer in two different panes.
     buffer: ^Buffer,
 
-    // If this pane is marked for deletion, it will be deleted at the end of the frame.
-    mark_for_deletion: bool,
+    // Values that define the UI.
+    show_scrollbar: bool,
 
     rect: Rect,
     texture: Texture,
-    // Values that define the UI.
-    show_scrollbar: bool,
+
+    last_cursor_pos: int,
 
     yoffset:         int,
     visible_lines:   int,
@@ -69,61 +74,134 @@ pane_init :: proc() -> Pane {
     return p
 }
 
-panes_update_draw :: proc() {
-    for &p, index in open_panes {
-        assert(p.buffer != nil)
-        focused := current_pane.id == p.id
-
-        if p.mark_for_deletion {
-            if focused {
-                editor_other_pane(&p)
-            }
-
-            ordered_remove(&open_panes, index)
-            resize_panes()
-            continue
-        }
-
-        buffer_update(p.buffer)
-
-        p.visible_lines = int(p.rect.h / line_height)
-        p.visible_columns = int(p.rect.w / char_width)
-
-        if focused {
-            if should_cursor_reset_blink_timers(&p) {
-                p.cursor_showing = true
-                p.cursor_blink_count = 0
-                p.cursor_last_update = time.tick_now()
-            }
-
-            if should_cursor_blink(&p) {
-                p.cursor_showing = !p.cursor_showing
-                p.cursor_blink_count += 1
-                p.cursor_last_update = time.tick_now()
-            }
-        } else {
-            p.cursor_showing = true
-            p.cursor_blink_count = 0
-        }
-
-        { // Make sure the cursor is into view
-            coords := get_last_cursor_pos_as_coords(p.buffer)
-
-            if coords.x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
-                p.xoffset = coords.x - p.visible_columns + SCROLLING_THRESHOLD
-            } else if coords.x < p.xoffset {
-                p.xoffset = coords.x
-            }
-
-            if coords.y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
-                p.yoffset = coords.y - p.visible_lines + SCROLLING_THRESHOLD
-            } else if coords.y < p.yoffset {
-                p.yoffset = coords.y
-            }
-        }
-
-        render_pane(&p, index, focused)
+update_and_draw_active_pane :: proc() {
+    should_cursor_blink :: proc(p: ^Pane) -> bool {
+        return p.cursor_blink_count < CURSOR_BLINK_COUNT &&
+            time.tick_diff(p.cursor_last_update, time.tick_now()) > CURSOR_BLINK_TIMEOUT
     }
+
+    p := current_pane
+
+    buffer_update(p.buffer)
+
+    p.last_cursor_pos = get_last_cursor_pos(p.buffer)
+
+    if time.tick_diff(p.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
+        p.cursor_showing = true
+        p.cursor_blink_count = 0
+    }
+
+    if should_cursor_blink(p) {
+        p.cursor_showing = !p.cursor_showing
+        p.cursor_blink_count += 1
+        p.cursor_last_update = time.tick_now()
+    }
+
+    coords := get_last_cursor_pos_as_coords(p.buffer)
+
+    if coords.x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
+        p.xoffset = coords.x - p.visible_columns + SCROLLING_THRESHOLD
+    } else if coords.x < p.xoffset {
+        p.xoffset = coords.x
+    }
+
+    if coords.y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
+        p.yoffset = coords.y - p.visible_lines + SCROLLING_THRESHOLD
+    } else if coords.y < p.yoffset {
+        p.yoffset = coords.y
+    }
+
+    colors := bragi.settings.colorscheme_table
+
+    set_renderer_target(p.texture)
+    clear_background(colors[.background])
+
+    if p.rect.x != 0 {
+        set_bg(colors[.ui_border])
+        draw_line(0, 0, 0, p.rect.h)
+    }
+
+    first_line := p.yoffset
+    last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
+    start_offset, _ := get_line_boundaries(p.buffer, first_line)
+    _, end_offset := get_line_boundaries(p.buffer, last_line)
+    size_of_gutter : i32 = 0
+
+    if bragi.settings.show_line_numbers {
+        size_of_gutter += draw_gutter_line_numbers(
+            p.rect, first_line, last_line, coords.y,
+        )
+    }
+
+    selections := make(
+        [dynamic]Range, 0, len(p.buffer.cursors), context.temp_allocator,
+    )
+    for cursor in p.buffer.cursors {
+        // If there's currently no selection, or if the cursor offset,
+        // either position or selection, are outside of the offsets
+        // available to be shown on the screen at this moment, skip them.
+        if cursor.pos == cursor.sel ||
+            (cursor.pos < start_offset || cursor.pos > end_offset) &&
+            (cursor.sel < start_offset || cursor.sel > end_offset) {
+                continue
+            }
+
+        append(&selections, Range{
+            min(cursor.pos, cursor.sel),
+            max(cursor.pos, cursor.sel),
+        })
+    }
+
+    is_colored := p.buffer.major_mode != .Fundamental
+    code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
+    PADDING_FOR_TEXT_CONTENT :: 2
+    pen: [2]i32
+    pen.x = size_of_gutter + PADDING_FOR_TEXT_CONTENT
+
+    for line_number in first_line..<last_line {
+        index := line_number - first_line
+        code_line := Code_Line{}
+        start, end := get_line_boundaries(p.buffer, line_number)
+        code_line.start_offset = start
+        code_line.line = p.buffer.str[start:end]
+        if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
+        code_lines[index] = code_line
+    }
+
+    draw_code(font_editor, pen, code_lines[:], selections[:], is_colored)
+
+    if p.cursor_showing {
+        for cursor in p.buffer.cursors {
+            coords := get_coords(p.buffer, cursor.pos)
+            line := get_line_text(p.buffer, coords.y)
+            test_str := line[:coords.x]
+            cursor_rect := make_rect(0, 0, char_width, line_height)
+            cursor_rect.y = i32(coords.y - p.yoffset) * line_height
+            cursor_rect.x = get_width_based_on_text_size(
+                font_editor, test_str, coords.x - p.yoffset,
+            )
+            byte_behind_cursor : byte = ' '
+
+            if cursor.pos < buffer_len(p.buffer) {
+                byte_behind_cursor = get_byte_at(p.buffer, cursor.pos)
+                if byte_behind_cursor == '\n' { byte_behind_cursor = ' ' }
+            }
+
+            draw_cursor(font_editor, pen, cursor_rect, true, byte_behind_cursor)
+        }
+    }
+
+    draw_modeline(p, true)
+    set_renderer_target()
+    draw_copy(p.texture, nil, &p.rect)
+}
+
+is_within_screen_space :: #force_inline proc(p: ^Pane, coords: Coords) -> bool {
+    return coords.y >= p.yoffset && coords.y < p.yoffset + p.visible_lines
+}
+
+update_and_draw_inactive_panes :: proc(p: ^Pane) {
+
 }
 
 find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
@@ -151,34 +229,16 @@ resize_panes :: proc() {
 
         p.rect = make_rect(x, 0, w, h)
         p.texture = make_texture(p.texture, .RGBA32, .TARGET, p.rect)
+        p.visible_columns = int(p.rect.w / char_width)
+        p.visible_lines = int(p.rect.h / line_height)
     }
 }
 
 reset_viewport :: proc(p: ^Pane) {
-    lines_count := len(p.buffer.lines)
-
-    if p.visible_lines > lines_count {
+    if p.visible_lines > len(p.buffer.lines) {
         p.yoffset = 0
     }
 }
-
-should_cursor_reset_blink_timers :: #force_inline proc(p: ^Pane) -> bool {
-    CARET_RESET_TIMEOUT :: 50 * time.Millisecond
-    time_diff := time.tick_diff(p.last_keystroke, time.tick_now())
-    return time_diff < CARET_RESET_TIMEOUT
-}
-
-should_cursor_blink :: #force_inline proc(p: ^Pane) -> bool {
-    CARET_BLINK_COUNT   :: 20
-    CARET_BLINK_TIMEOUT :: 500 * time.Millisecond
-    time_diff := time.tick_diff(p.cursor_last_update, time.tick_now())
-    return p.cursor_blink_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
-}
-
-is_in_screen_space :: #force_inline proc(p: ^Pane, coords: Coords) -> bool {
-    return coords.y >= int(p.yoffset) && coords.y < int(p.yoffset + p.visible_lines)
-}
-
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
     for &p, index in open_panes {

@@ -219,6 +219,8 @@ main :: proc() {
     initialize_editor()
     load_keybinds()
 
+    bragi.settings.show_line_numbers = true
+
     last_update_time := time.tick_now()
     previous_frame_time := time.tick_now()
 
@@ -230,7 +232,14 @@ main :: proc() {
 
         process_inputs()
         widgets_update_draw()
-        panes_update_draw()
+        update_and_draw_active_pane()
+
+        for &p in open_panes {
+            if p.id != current_pane.id {
+                update_and_draw_inactive_panes(&p)
+            }
+        }
+
         sdl.RenderPresent(renderer)
 
         free_all(context.temp_allocator)

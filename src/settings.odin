@@ -58,7 +58,9 @@ Face :: enum {
     modeline_shadow,
 
     ui_border,
-    gutter,
+    ui_gutter,
+    ui_line_number,
+    ui_line_number_current,
 }
 
 Settings :: struct {

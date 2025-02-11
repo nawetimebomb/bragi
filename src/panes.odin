@@ -168,23 +168,43 @@ update_and_draw_active_pane :: proc() {
     draw_code(font_editor, pen, code_lines[:], selections[:], is_colored)
 
     if p.cursor_showing {
-        for cursor in p.buffer.cursors {
-            local_coords := get_coords(p.buffer, cursor.pos)
+        if p.buffer.interactive_cursors {
+            for cursor in p.buffer.cursors {
+                local_coords := get_coords(p.buffer, cursor.pos)
 
-            // Skip rendering cursors that are outside of our view
-            if !is_within_the_screen(local_coords, p.yoffset, p.visible_lines) {
-                continue
+                // Skip rendering cursors that are outside of our view
+                if !is_within_the_screen(local_coords, p.yoffset, p.visible_lines) {
+                    continue
+                }
+
+                line := get_line_text(p.buffer, local_coords.line)
+                test_str := line[:local_coords.column]
+                cursor_rect := make_rect(0, 0, char_width, line_height)
+                cursor_rect.y = i32(local_coords.line - p.yoffset) * line_height
+                cursor_rect.x = get_width_based_on_text_size(font_editor, test_str, local_coords.column)
+                byte_behind_cursor : byte = ' '
+
+                if cursor.pos < buffer_len(p.buffer) {
+                    byte_behind_cursor = get_byte_at(p.buffer, cursor.pos)
+                    if byte_behind_cursor == '\n' { byte_behind_cursor = ' ' }
+                }
+
+                draw_cursor(font_editor, pen, cursor_rect, true, byte_behind_cursor)
             }
-
-            line := get_line_text(p.buffer, local_coords.line)
-            test_str := line[:local_coords.column]
+        } else {
+            // coords is the last cursor on the array
+            cursor_pos := get_last_cursor_pos(p.buffer)
+            line := get_line_text(p.buffer, coords.line)
+            test_str := line[:coords.column]
             cursor_rect := make_rect(0, 0, char_width, line_height)
-            cursor_rect.y = i32(local_coords.line - p.yoffset) * line_height
-            cursor_rect.x = get_width_based_on_text_size(font_editor, test_str, screen_x)
+            cursor_rect.y = i32(screen_y) * line_height
+            cursor_rect.x = get_width_based_on_text_size(
+                font_editor, test_str, coords.column,
+            )
             byte_behind_cursor : byte = ' '
 
-            if cursor.pos < buffer_len(p.buffer) {
-                byte_behind_cursor = get_byte_at(p.buffer, cursor.pos)
+            if cursor_pos < buffer_len(p.buffer) {
+                byte_behind_cursor = get_byte_at(p.buffer, cursor_pos)
                 if byte_behind_cursor == '\n' { byte_behind_cursor = ' ' }
             }
 

@@ -59,6 +59,7 @@ Buffer :: struct {
     allocator:            runtime.Allocator,
 
     cursors:              [dynamic]Cursor,
+    interactive_cursors:  bool,
     data:                 []byte,
     dirty:                bool,
     gap_end:              Buffer_Cursor,
@@ -476,6 +477,12 @@ make_cursor :: proc(pos: int = 0) -> (result: Cursor) {
     return
 }
 
+promote_cursor_index :: #force_inline proc(b: ^Buffer, cursor_index: int) {
+    new_cursor := b.cursors[cursor_index]
+    ordered_remove(&b.cursors, cursor_index)
+    append(&b.cursors, new_cursor)
+}
+
 get_coords :: #force_inline proc(b: ^Buffer, pos: int) -> (result: Coords) {
     result.line = get_line_index(b, pos)
     bol, _ := get_line_boundaries(b, result.line)
@@ -489,6 +496,10 @@ get_last_cursor_pos_as_coords :: #force_inline proc(b: ^Buffer) -> (pos: Coords)
 
 get_last_cursor_pos :: #force_inline proc(b: ^Buffer) -> (pos: int) {
     return b.cursors[len(b.cursors) - 1].pos
+}
+
+set_last_cursor_pos :: #force_inline proc(b: ^Buffer, pos: int) {
+    b.cursors[len(b.cursors) - 1].pos = pos
 }
 
 get_offset_from_coords :: proc(b: ^Buffer, coords: Coords) -> (pos: int) {

@@ -111,10 +111,21 @@ widgets_update_draw :: proc() {
         if !item.invalid {
             cursor_pos := item.value.(Result_Cursor_Pos)
             buffer := widgets_pane.target.buffer
-            length_of_query := len(strings.to_string(widgets_pane.query))
-            new_cursor := make_cursor(cursor_pos)
-            new_cursor.sel -= length_of_query
-            delete_all_cursors(buffer, new_cursor)
+
+            // Find the index of the cursor in the current selection
+            found := -1
+            for cursor, index in buffer.cursors {
+                if cursor.pos == cursor_pos {
+                    found = index
+                    break
+                }
+            }
+
+            if found != -1 {
+                promote_cursor_index(buffer, found)
+            } else {
+                log.errorf("Failed to find buffer cursor in {0}", buffer.name)
+            }
         }
     }
 
@@ -293,6 +304,7 @@ filter_results :: proc() {
         if query_has_value {
             b := widgets_pane.target.buffer
             s := ""
+            clear(&b.cursors)
 
             if case_sensitive {
                 s = strings.clone(b.str, context.temp_allocator)
@@ -309,10 +321,15 @@ filter_results :: proc() {
                     value     = cursor_pos,
                 }
 
+                new_cursor := make_cursor(cursor_pos)
+                new_cursor.sel -= len(query)
+
                 if widgets_pane.action == .SEARCH_REVERSE_IN_BUFFER {
                     inject_at(&widgets_pane.results, 0, result)
+                    inject_at(&b.cursors, 0, new_cursor)
                 } else {
                     append(&widgets_pane.results, result)
+                    append(&b.cursors, new_cursor)
                 }
 
                 s = s[found_index + len(query):]
@@ -467,8 +484,8 @@ ui_select :: proc() {
             last_pos := widgets_pane.prev_state.cursor_pos
             delete_all_cursors(buffer, make_cursor(last_pos))
         } else {
-            pos := get_last_cursor_pos(buffer)
-            delete_all_cursors(buffer, make_cursor(pos))
+            cursor_pos := item.value.(Result_Cursor_Pos)
+            delete_all_cursors(buffer, make_cursor(cursor_pos))
         }
     }
 

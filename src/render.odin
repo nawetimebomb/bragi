@@ -81,7 +81,9 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
             sx + font_ui.em_width, modeline_y,
         )
 
-        line_number_column := fmt.tprintf("({0}, {1})", coords.y + 1, coords.x)
+        line_number_column := fmt.tprintf(
+            "({0}, {1})", coords.line + 1, coords.column,
+        )
         draw_text(
             font_ui, line_number_column, .default,
             sx + font_ui.em_width * SMALL_PADDING, modeline_y,
@@ -141,6 +143,12 @@ is_valid_glyph :: proc(r: rune) -> bool {
 clear_background :: #force_inline proc(color: Color) {
     set_bg(color)
     sdl.RenderClear(renderer)
+}
+
+draw_pane_divider :: proc() {
+    colors := bragi.settings.colorscheme_table
+    set_bg(colors[.ui_border])
+    draw_line(0, 0, 0, window_height)
 }
 
 draw_gutter_line_numbers :: proc(

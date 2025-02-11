@@ -203,8 +203,8 @@ get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     b := p.buffer
     coords: Coords
-    coords.x = int(x / char_width + i32(p.xoffset))
-    coords.y = int(y / line_height + i32(p.yoffset))
+    coords.column = int(x / char_width + i32(p.xoffset))
+    coords.line = int(y / line_height + i32(p.yoffset))
     delete_all_cursors(b, make_cursor(get_offset_from_coords(b, coords)))
 }
 

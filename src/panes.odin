@@ -82,6 +82,7 @@ update_and_draw_active_pane :: proc() {
 
     p := current_pane
 
+    assert(p.buffer != nil)
     buffer_update(p.buffer)
 
     p.last_cursor_pos = get_last_cursor_pos(p.buffer)
@@ -99,16 +100,16 @@ update_and_draw_active_pane :: proc() {
 
     coords := get_last_cursor_pos_as_coords(p.buffer)
 
-    if coords.x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
-        p.xoffset = coords.x - p.visible_columns + SCROLLING_THRESHOLD
-    } else if coords.x < p.xoffset {
-        p.xoffset = coords.x
+    if coords.column > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
+        p.xoffset = coords.column - p.visible_columns + SCROLLING_THRESHOLD
+    } else if coords.column < p.xoffset {
+        p.xoffset = coords.column
     }
 
-    if coords.y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
-        p.yoffset = coords.y - p.visible_lines + SCROLLING_THRESHOLD
-    } else if coords.y < p.yoffset {
-        p.yoffset = coords.y
+    if coords.line > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
+        p.yoffset = coords.line - p.visible_lines + SCROLLING_THRESHOLD
+    } else if coords.line < p.yoffset {
+        p.yoffset = coords.line
     }
 
     colors := bragi.settings.colorscheme_table
@@ -116,21 +117,20 @@ update_and_draw_active_pane :: proc() {
     set_renderer_target(p.texture)
     clear_background(colors[.background])
 
-    if p.rect.x != 0 {
-        set_bg(colors[.ui_border])
-        draw_line(0, 0, 0, p.rect.h)
-    }
-
     first_line := p.yoffset
     last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
     start_offset, _ := get_line_boundaries(p.buffer, first_line)
     _, end_offset := get_line_boundaries(p.buffer, last_line)
     size_of_gutter : i32 = 0
+    screen_y := coords.line - p.yoffset
+    screen_x := coords.column - p.xoffset
 
     if bragi.settings.show_line_numbers {
         size_of_gutter += draw_gutter_line_numbers(
-            p.rect, first_line, last_line, coords.y,
+            p.rect, first_line, last_line, screen_y,
         )
+    } else {
+        draw_pane_divider()
     }
 
     selections := make(
@@ -142,9 +142,7 @@ update_and_draw_active_pane :: proc() {
         // available to be shown on the screen at this moment, skip them.
         if cursor.pos == cursor.sel ||
             (cursor.pos < start_offset || cursor.pos > end_offset) &&
-            (cursor.sel < start_offset || cursor.sel > end_offset) {
-                continue
-            }
+            (cursor.sel < start_offset || cursor.sel > end_offset) { continue }
 
         append(&selections, Range{
             min(cursor.pos, cursor.sel),
@@ -154,9 +152,8 @@ update_and_draw_active_pane :: proc() {
 
     is_colored := p.buffer.major_mode != .Fundamental
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
-    PADDING_FOR_TEXT_CONTENT :: 2
-    pen: [2]i32
-    pen.x = size_of_gutter + PADDING_FOR_TEXT_CONTENT
+    pen := get_pen_for_panes()
+    pen.x += size_of_gutter
 
     for line_number in first_line..<last_line {
         index := line_number - first_line
@@ -172,14 +169,18 @@ update_and_draw_active_pane :: proc() {
 
     if p.cursor_showing {
         for cursor in p.buffer.cursors {
-            coords := get_coords(p.buffer, cursor.pos)
-            line := get_line_text(p.buffer, coords.y)
-            test_str := line[:coords.x]
+            local_coords := get_coords(p.buffer, cursor.pos)
+
+            // Skip rendering cursors that are outside of our view
+            if !is_within_the_screen(local_coords, p.yoffset, p.visible_lines) {
+                continue
+            }
+
+            line := get_line_text(p.buffer, local_coords.line)
+            test_str := line[:local_coords.column]
             cursor_rect := make_rect(0, 0, char_width, line_height)
-            cursor_rect.y = i32(coords.y - p.yoffset) * line_height
-            cursor_rect.x = get_width_based_on_text_size(
-                font_editor, test_str, coords.x - p.yoffset,
-            )
+            cursor_rect.y = i32(local_coords.line - p.yoffset) * line_height
+            cursor_rect.x = get_width_based_on_text_size(font_editor, test_str, screen_x)
             byte_behind_cursor : byte = ' '
 
             if cursor.pos < buffer_len(p.buffer) {
@@ -196,12 +197,67 @@ update_and_draw_active_pane :: proc() {
     draw_copy(p.texture, nil, &p.rect)
 }
 
-is_within_screen_space :: #force_inline proc(p: ^Pane, coords: Coords) -> bool {
-    return coords.y >= p.yoffset && coords.y < p.yoffset + p.visible_lines
+update_and_draw_inactive_panes :: proc(p: ^Pane) {
+    assert(p.buffer != nil)
+    buffer_update(p.buffer)
+
+    coords := get_coords(p.buffer, p.last_cursor_pos)
+    colors := bragi.settings.colorscheme_table
+
+    set_renderer_target(p.texture)
+    clear_background(colors[.background])
+
+    first_line := p.yoffset
+    last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
+    start_offset, _ := get_line_boundaries(p.buffer, first_line)
+    _, end_offset := get_line_boundaries(p.buffer, last_line)
+    size_of_gutter : i32 = 0
+    screen_y := coords.line - p.yoffset
+
+    if bragi.settings.show_line_numbers {
+        size_of_gutter += draw_gutter_line_numbers(
+            p.rect, first_line, last_line, screen_y,
+        )
+    } else {
+        draw_pane_divider()
+    }
+
+    is_colored := p.buffer.major_mode != .Fundamental
+    code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
+    pen := get_pen_for_panes()
+    pen.x += size_of_gutter
+
+    for line_number in first_line..<last_line {
+        index := line_number - first_line
+        code_line := Code_Line{}
+        start, end := get_line_boundaries(p.buffer, line_number)
+        code_line.start_offset = start
+        code_line.line = p.buffer.str[start:end]
+        if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
+        code_lines[index] = code_line
+    }
+
+    draw_code(font_editor, pen, code_lines[:], {}, is_colored)
+
+    line := get_line_text(p.buffer, coords.line)
+    test_str := line[:coords.column]
+    cursor_rect := make_rect(0, 0, char_width, line_height)
+    cursor_rect.y = i32(screen_y) * line_height
+    cursor_rect.x = get_width_based_on_text_size(
+        font_editor, test_str, coords.column,
+    )
+
+    draw_cursor(font_editor, pen, cursor_rect, false, ' ')
+    draw_modeline(p, false)
+    set_renderer_target()
+    draw_copy(p.texture, nil, &p.rect)
 }
 
-update_and_draw_inactive_panes :: proc(p: ^Pane) {
-
+is_within_the_screen :: #force_inline proc(
+    coords: Coords, first_visible_line, offset: int,
+) -> bool {
+    return coords.line >= first_visible_line ||
+        coords.line < first_visible_line + offset
 }
 
 find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
@@ -254,4 +310,10 @@ find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
 
     log.errorf("Couldn't find a valid pane in coords [{0}, {1}]", x, y)
     return nil, 0
+}
+
+get_pen_for_panes :: #force_inline proc() -> (result: [2]i32) {
+    PADDING_FOR_TEXT_CONTENT :: 2
+    result.x = PADDING_FOR_TEXT_CONTENT
+    return
 }

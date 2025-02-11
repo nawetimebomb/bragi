@@ -44,7 +44,9 @@ Range :: struct {
     start, end: int,
 }
 
-Coords :: distinct [2]int
+Coords :: struct {
+    line, column: int,
+}
 
 History_State :: struct {
     cursors:   []Cursor,
@@ -475,9 +477,9 @@ make_cursor :: proc(pos: int = 0) -> (result: Cursor) {
 }
 
 get_coords :: #force_inline proc(b: ^Buffer, pos: int) -> (result: Coords) {
-    result.y = get_line_index(b, pos)
-    bol, _ := get_line_boundaries(b, result.y)
-    result.x = pos - bol
+    result.line = get_line_index(b, pos)
+    bol, _ := get_line_boundaries(b, result.line)
+    result.column = pos - bol
     return
 }
 
@@ -490,8 +492,8 @@ get_last_cursor_pos :: #force_inline proc(b: ^Buffer) -> (pos: int) {
 }
 
 get_offset_from_coords :: proc(b: ^Buffer, coords: Coords) -> (pos: int) {
-    bol, _ := get_line_boundaries(b, coords.y)
-    return bol + coords.x
+    bol, _ := get_line_boundaries(b, coords.line)
+    return bol + coords.column
 }
 
 dwim_last_cursor_col_offset :: proc(b: ^Buffer, new_offset: int) -> (max_offset: int) {
@@ -513,21 +515,21 @@ translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
 
     switch t {
     case .DOWN:
-        if coords.y < lines_count - 1 {
-            coords.y += 1
-            coords.x = min(
-                dwim_last_cursor_col_offset(b, coords.x),
-                get_line_length(b, coords.y),
+        if coords.line < lines_count - 1 {
+            coords.line += 1
+            coords.column = min(
+                dwim_last_cursor_col_offset(b, coords.column),
+                get_line_length(b, coords.line),
             )
             pos = get_offset_from_coords(b, coords)
             return
         }
     case .UP:
-        if coords.y > 0 {
-            coords.y -= 1
-            coords.x = min(
-                dwim_last_cursor_col_offset(b, coords.x),
-                get_line_length(b, coords.y),
+        if coords.line > 0 {
+            coords.line -= 1
+            coords.column = min(
+                dwim_last_cursor_col_offset(b, coords.column),
+                get_line_length(b, coords.line),
             )
             pos = get_offset_from_coords(b, coords)
             return
@@ -547,12 +549,12 @@ translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
         pos = buffer_len(b)
         return
     case .LINE_START:
-        bol, _ := get_line_boundaries(b, coords.y)
-        bol_after_indent := get_line_start_after_indent(b, coords.y)
+        bol, _ := get_line_boundaries(b, coords.line)
+        bol_after_indent := get_line_start_after_indent(b, coords.line)
         pos = pos == bol ? bol_after_indent : bol
         return
     case .LINE_END:
-        _, eol := get_line_boundaries(b, coords.y)
+        _, eol := get_line_boundaries(b, coords.line)
         pos = eol
         return
     case .WORD_START:

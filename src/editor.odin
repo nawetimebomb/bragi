@@ -195,8 +195,8 @@ get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     b := p.buffer
     coords: Coords
-    coords.x = int(x / char_width + p.viewport.x)
-    coords.y = int(y / line_height + p.viewport.y)
+    coords.x = int(x / char_width + i32(p.xoffset))
+    coords.y = int(y / line_height + i32(p.yoffset))
     delete_all_cursors(b, make_cursor(get_offset_from_coords(b, coords)))
 }
 
@@ -208,11 +208,11 @@ mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
     log.error("IMPLEMENT")
 }
 
-scroll :: proc(p: ^Pane, offset: i32) {
-    lines_count := i32(len(p.buffer.lines))
+scroll :: proc(p: ^Pane, offset: int) {
+    lines_count := len(p.buffer.lines)
 
-    if p.relative_size.y < lines_count {
-        p.yoffset = clamp(p.viewport.y + offset, 0, lines_count - 10)
+    if p.visible_lines < lines_count {
+        p.yoffset = clamp(p.yoffset + offset, 0, lines_count - 5)
     }
 }
 

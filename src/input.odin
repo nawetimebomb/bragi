@@ -210,7 +210,7 @@ process_inputs :: proc() {
             case .MOUSEWHEEL: {
                 wheel := e.wheel
                 // TODO: Figure out which pane is being scrolled
-                scroll(current_pane, wheel.y * -1 * 5)
+                scroll(current_pane, auto_cast wheel.y * -1 * 5)
                 return
             }
             case .KEYDOWN: {

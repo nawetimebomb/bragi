@@ -50,14 +50,12 @@ Pane :: struct {
     texture: Texture,
     // Values that define the UI.
     show_scrollbar: bool,
-    // The size of the pane, in relative positions (dimensions / size of character).
-    relative_size:  [2]i32,
-    // The amount of scrolling the pane has done so far, depending of the caret.
-    viewport:       [2]i32,
-    visible_lines:  i32,
-    visible_columns: i32,
-    yoffset:        i32,
-    xoffset:        i32,
+
+    yoffset:         int,
+    visible_lines:   int,
+
+    xoffset:         int,
+    visible_columns: int,
 }
 
 pane_create :: proc(b: ^Buffer = nil) -> (result: Pane) {
@@ -88,8 +86,8 @@ panes_update_draw :: proc() {
 
         buffer_update(p.buffer)
 
-        p.visible_lines = p.rect.h / line_height
-        p.visible_columns = p.rect.w / char_width
+        p.visible_lines = int(p.rect.h / line_height)
+        p.visible_columns = int(p.rect.w / char_width)
 
         if focused {
             if should_cursor_reset_blink_timers(&p) {
@@ -108,23 +106,21 @@ panes_update_draw :: proc() {
             p.cursor_blink_count = 0
         }
 
-        // { // Make sure the cursor is into view
-        //     cursor_head, _ := get_last_cursor(&p)
-        //     cursor_x := i32(cursor_head.x)
-        //     cursor_y := i32(cursor_head.y)
+        { // Make sure the cursor is into view
+            coords := get_last_cursor_pos_as_coords(p.buffer)
 
-        //     if cursor_x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
-        //         p.xoffset = cursor_x - p.visible_columns + SCROLLING_THRESHOLD
-        //     } else if cursor_x < p.xoffset {
-        //         p.xoffset = cursor_x
-        //     }
+            if coords.x > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
+                p.xoffset = coords.x - p.visible_columns + SCROLLING_THRESHOLD
+            } else if coords.x < p.xoffset {
+                p.xoffset = coords.x
+            }
 
-        //     if cursor_y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
-        //         p.yoffset = cursor_y - p.visible_lines + SCROLLING_THRESHOLD
-        //     } else if cursor_y < p.yoffset {
-        //         p.yoffset = cursor_y
-        //     }
-        // }
+            if coords.y > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
+                p.yoffset = coords.y - p.visible_lines + SCROLLING_THRESHOLD
+            } else if coords.y < p.yoffset {
+                p.yoffset = coords.y
+            }
+        }
 
         render_pane(&p, index, focused)
     }
@@ -159,10 +155,10 @@ resize_panes :: proc() {
 }
 
 reset_viewport :: proc(p: ^Pane) {
-    lines_count := i32(len(p.buffer.lines))
+    lines_count := len(p.buffer.lines)
 
-    if p.relative_size.y > lines_count {
-        p.viewport = { 0, 0 }
+    if p.visible_lines > lines_count {
+        p.yoffset = 0
     }
 }
 
@@ -178,6 +174,11 @@ should_cursor_blink :: #force_inline proc(p: ^Pane) -> bool {
     time_diff := time.tick_diff(p.cursor_last_update, time.tick_now())
     return p.cursor_blink_count < CARET_BLINK_COUNT && time_diff > CARET_BLINK_TIMEOUT
 }
+
+is_in_screen_space :: #force_inline proc(p: ^Pane, coords: Coords) -> bool {
+    return coords.y >= int(p.yoffset) && coords.y < int(p.yoffset + p.visible_lines)
+}
+
 
 find_pane_in_window_coords :: proc(x, y: i32) -> (^Pane, int) {
     for &p, index in open_panes {

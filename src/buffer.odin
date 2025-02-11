@@ -475,6 +475,10 @@ get_coords :: #force_inline proc(b: ^Buffer, pos: int) -> (result: Coords) {
     return
 }
 
+get_last_cursor_pos_as_coords :: #force_inline proc(b: ^Buffer) -> (pos: Coords) {
+    return get_coords(b, get_last_cursor_pos(b))
+}
+
 get_last_cursor_pos :: #force_inline proc(b: ^Buffer) -> (pos: int) {
     return b.cursors[len(b.cursors) - 1].pos
 }

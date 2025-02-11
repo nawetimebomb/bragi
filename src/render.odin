@@ -98,8 +98,11 @@ render_pane :: proc(p: ^Pane, index: int, focused: bool) {
             result.pos = get_coords(buffer, cursor.pos)
             result.sel = get_coords(buffer, cursor.sel)
 
-            // Only add the cursors seen on screen
-            if result.pos.y >= int(p.yoffset) && result.pos.y < int(p.yoffset + p.visible_lines) {
+            // Only add the cursors are visible
+            if is_in_screen_space(p, result.pos) || is_in_screen_space(p, result.sel) {
+                // Make sure they are in screen position
+                result.pos = { result.pos.x - p.xoffset, result.pos.y - p.yoffset }
+                result.sel = { result.sel.x - p.xoffset, result.sel.y - p.yoffset }
                 append(&screen_cursors, result)
             }
         }
@@ -328,20 +331,20 @@ draw_code :: proc(
     }
 
     for cursor in selections {
-        ch := cursor.pos
-        ct := cursor.sel
+        pos := cursor.pos
+        sel := cursor.sel
 
         // Cursor tail
-        if ch != ct {
+        if pos != sel {
             tokens_in_region: []tokenizer.Token_Kind
 
             set_bg(colors[.region])
-            cl := code_lines[ch.y]
-            str_under_region := cl.line[ct.x:ch.x]
-            if is_colored { tokens_in_region = cl.tokens[ct.x:ch.x] }
+            cl := code_lines[pos.y]
+            str_under_region := cl.line[sel.x:pos.x]
+            if is_colored { tokens_in_region = cl.tokens[sel.x:pos.x] }
             w := get_text_size(font, str_under_region)
-            sx := pen.x + get_text_size(font, cl.line[:ct.x])
-            sy := i32(ct.y) * font.line_height
+            sx := pen.x + get_text_size(font, cl.line[:sel.x])
+            sy := i32(sel.y) * font.line_height
 
             draw_rect(sx, sy, w, font.line_height, true)
 
@@ -370,17 +373,17 @@ draw_code :: proc(
 
         // Cursor head
         cursor_rect := make_rect(
-            pen.x, i32(ch.y) * font.line_height,
+            pen.x, i32(pos.y) * font.line_height,
             font.em_width, font.line_height,
         )
         char_behind_cursor: byte
 
-        if ch.y < len(code_lines) {
-            str := code_lines[ch.y].line
-            cut := clamp(ch.x, 0, len(str))
-            cursor_rect.x = pen.x + get_width_based_on_text_size(font, str[:cut], ch.x)
-            if ch.x < len(str) {
-                char_behind_cursor = code_lines[ch.y].line[ch.x]
+        if pos.y < len(code_lines) {
+            str := code_lines[pos.y].line
+            cut := clamp(pos.x, 0, len(str))
+            cursor_rect.x = pen.x + get_width_based_on_text_size(font, str[:cut], pos.x)
+            if pos.x < len(str) {
+                char_behind_cursor = code_lines[pos.y].line[pos.x]
             }
         }
 

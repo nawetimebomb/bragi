@@ -349,7 +349,7 @@ clear_history :: proc(history: ^[dynamic]History_State) {
     clear(history)
 }
 
-undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) -> bool {
+undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
     if len(undo) > 0 {
         push_history_state(b, redo)
         item := pop(undo)
@@ -367,10 +367,7 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) -> bool {
 
         b.dirty = true
         b.modified = true
-        return true
     }
-
-    return false
 }
 
 push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.Allocator_Error {
@@ -466,6 +463,7 @@ delete_all_cursors :: proc(b: ^Buffer, new_cursor: Cursor = {}) {
     clear(&b.cursors)
     append(&b.cursors, new_cursor)
     b.selection_mode = false
+    b.interactive_cursors = false
 }
 
 make_cursor :: proc(pos: int = 0) -> (result: Cursor) {
@@ -488,12 +486,26 @@ get_coords :: #force_inline proc(b: ^Buffer, pos: int) -> (result: Coords) {
     return
 }
 
+use_last_cursor :: #force_inline proc(b: ^Buffer) -> (cursor: ^Cursor) {
+    return &b.cursors[len(b.cursors) - 1]
+}
+
 get_last_cursor_pos_as_coords :: #force_inline proc(b: ^Buffer) -> (pos: Coords) {
     return get_coords(b, get_last_cursor_pos(b))
 }
 
 get_last_cursor_pos :: #force_inline proc(b: ^Buffer) -> (pos: int) {
     return b.cursors[len(b.cursors) - 1].pos
+}
+
+get_last_cursor_decomp :: #force_inline proc(b: ^Buffer) -> (pos, sel, col_offset: int) {
+    c := b.cursors[len(b.cursors) - 1]
+    return c.pos, c.sel, c.col_offset
+}
+
+has_selection :: #force_inline proc(b: ^Buffer) -> (result: bool) {
+    pos, sel, _ := get_last_cursor_decomp(b)
+    return pos != sel
 }
 
 set_last_cursor_pos :: #force_inline proc(b: ^Buffer, pos: int) {
@@ -583,9 +595,51 @@ translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
     return
 }
 
-// Deletes X characters. If positive, deletes forward
-// TODO: Support UTF8
-remove :: proc(b: ^Buffer, pos: Buffer_Cursor, count: int) {
+update_future_cursor_offsets :: proc(b: ^Buffer, threshold_to_update, offset: int) {
+    for &cursor in b.cursors {
+        if cursor.pos >= threshold_to_update {
+            cursor.pos = clamp(cursor.pos + offset, 0, buffer_len(b))
+            cursor.sel = cursor.pos
+            cursor.col_offset = -1
+        }
+    }
+}
+
+remove :: proc(b: ^Buffer, count: int) {
+    for &cursor in b.cursors {
+        if cursor.pos == 0 && count < 0 {
+            continue
+        }
+
+        remove_raw(b, cursor.pos, count)
+
+        if count < 0 {
+            update_future_cursor_offsets(b, cursor.pos, count)
+        }
+    }
+}
+
+insert_char :: proc(b: ^Buffer, char: byte) {
+    for &cursor in b.cursors {
+        insert_raw(b, cursor.pos, char)
+        update_future_cursor_offsets(b, cursor.pos, 1)
+    }
+}
+
+insert_string :: proc(b: ^Buffer, str: string) {
+    for &cursor in b.cursors {
+        insert_raw(b, cursor.pos, str)
+        update_future_cursor_offsets(b, cursor.pos, len(str))
+    }
+}
+
+buffer_len :: proc(b: ^Buffer) -> int {
+    gap := b.gap_end - b.gap_start
+    return len(b.data) - gap
+}
+
+@(private="file")
+remove_raw :: proc(b: ^Buffer, pos: Buffer_Cursor, count: int) {
     check_buffer_history_state(b)
     chars_to_remove := abs(count)
     effective_pos := pos
@@ -598,24 +652,6 @@ remove :: proc(b: ^Buffer, pos: Buffer_Cursor, count: int) {
     b.gap_end = min(b.gap_end + chars_to_remove, len(b.data))
     b.dirty = true
     b.modified = true
-}
-
-insert_char :: proc(b: ^Buffer, char: byte) {
-    for &cursor in b.cursors {
-        insert_raw(b, cursor.pos, char)
-        cursor.pos += 1
-        cursor.sel = cursor.pos
-        cursor.col_offset = -1
-    }
-}
-
-insert_string :: proc(b: ^Buffer, str: string) {
-    for &cursor in b.cursors {
-        insert_raw(b, cursor.pos, str)
-        cursor.pos += len(str)
-        cursor.sel = cursor.pos
-        cursor.col_offset = -1
-    }
 }
 
 @(private="file")
@@ -639,7 +675,7 @@ insert_raw_char :: proc(b: ^Buffer, pos: Buffer_Cursor, char: byte) {
 }
 
 @(private="file")
-insert_raw_array :: proc(b: ^Buffer, pos: Buffer_Cursor, array: []byte) -> int {
+insert_raw_array :: proc(b: ^Buffer, pos: Buffer_Cursor, array: []byte) {
     assert(pos >= 0 && pos <= buffer_len(b))
     check_buffer_history_state(b)
     conditionally_grow_buffer(b, len(array))
@@ -648,23 +684,17 @@ insert_raw_array :: proc(b: ^Buffer, pos: Buffer_Cursor, array: []byte) -> int {
     b.gap_start += len(array)
     b.dirty = true
     b.modified = true
-    return len(array)
 }
 
 @(private="file")
-insert_raw_rune :: proc(b: ^Buffer, pos: Buffer_Cursor, r: rune) -> int {
+insert_raw_rune :: proc(b: ^Buffer, pos: Buffer_Cursor, r: rune) {
     bytes, _ := utf8.encode_rune(r)
-    return insert_raw_array(b, pos, bytes[:])
+    insert_raw_array(b, pos, bytes[:])
 }
 
 @(private="file")
-insert_raw_string :: proc(b: ^Buffer, pos: Buffer_Cursor, str: string) -> int {
-    return insert_raw_array(b, pos, transmute([]byte)str)
-}
-
-buffer_len :: proc(b: ^Buffer) -> int {
-    gap := b.gap_end - b.gap_start
-    return len(b.data) - gap
+insert_raw_string :: proc(b: ^Buffer, pos: Buffer_Cursor, str: string) {
+    insert_raw_array(b, pos, transmute([]byte)str)
 }
 
 @(private="file")

@@ -99,6 +99,8 @@ update_and_draw_active_pane :: proc() {
     if time.tick_diff(p.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
         p.cursor_showing = true
         p.cursor_blink_count = 0
+        // Update the cursor timing so it's start counting from now
+        p.cursor_last_update = time.tick_now()
     }
 
     if should_cursor_blink(p) {

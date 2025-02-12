@@ -61,6 +61,14 @@ beginning_of_line               <C-a>
 end_of_buffer                   <M-S-.>
 end_of_line                     <C-e>
 
+dupe_backward_char              <C-x-S-b>
+dupe_backward_word              <C-x-M-S-b>
+dupe_forward_char               <C-x-S-f>
+dupe_forward_word               <C-x-M-S-f>
+dupe_next_line                  <C-x-S-n>
+dupe_previous_line              <C-x-S-p>
+switch_cursor                   <C-x-TAB>
+
 # Comments
 [colors]
 # based on night-owl: https://github.com/aaronjensen/night-owl-emacs

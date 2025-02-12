@@ -53,17 +53,23 @@ Command :: enum {
     backward_char,
     backward_word,
     backward_paragraph,
-    forward_char,
-    forward_word,
-    forward_paragraph,
-
-    next_line,
-    previous_line,
-
     beginning_of_buffer,
     beginning_of_line,
     end_of_buffer,
     end_of_line,
+    forward_char,
+    forward_word,
+    forward_paragraph,
+    next_line,
+    previous_line,
+
+    dupe_backward_char,
+    dupe_backward_word,
+    dupe_forward_char,
+    dupe_forward_word,
+    dupe_next_line,
+    dupe_previous_line,
+    switch_cursor,
 
     self_insert,
 }

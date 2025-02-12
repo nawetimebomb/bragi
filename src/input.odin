@@ -38,6 +38,7 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
         case .ESCAPE:           return "ESC"
         case .RETURN:           return "RET"
         case .SPACE:            return "SPACE"
+        case .TAB:              return "TAB"
 
         case .COMMA:            return ","
         case .EQUALS:           return "="

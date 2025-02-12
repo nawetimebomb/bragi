@@ -91,10 +91,19 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
         line_number_column := fmt.tprintf(
             "({0}, {1})", coords.line + 1, coords.column,
         )
-        draw_text(
+        sx = draw_text(
             font_ui, line_number_column, .default,
             sx + font_ui.em_width * SMALL_PADDING, modeline_y,
         )
+
+        if p.buffer.interactive_cursors {
+            number_of_cursors := fmt.tprintf("[{0}]", len(p.buffer.cursors))
+
+            draw_text(
+                font_ui, number_of_cursors, .default,
+                sx + font_ui.em_width, modeline_y,
+            )
+        }
     }
 
     // Right side
@@ -278,9 +287,10 @@ draw_cursor :: #force_inline proc(
     r: Rect,
     fill: bool,
     behind_cursor: byte,
+    cursor_face: Face,
 ) {
     colors := bragi.settings.colorscheme_table
-    set_bg(colors[.cursor])
+    set_bg(colors[cursor_face])
     draw_rect(pen.x + r.x, pen.y + r.y, r.w, r.h, fill)
 
     if is_valid_glyph(rune(behind_cursor)) {

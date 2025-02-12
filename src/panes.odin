@@ -181,13 +181,15 @@ update_and_draw_active_pane :: proc() {
 
     if p.cursor_showing {
         if p.buffer.interactive_cursors {
-            for cursor in p.buffer.cursors {
+            for cursor, cursor_index in p.buffer.cursors {
                 out_of_screen_coords, rect, byte_behind_cursor :=
                     prepare_cursor_for_drawing(p, font_editor, cursor.pos)
 
                 // Skip rendering cursors that are outside of our view
                 if out_of_screen_coords { continue }
-                draw_cursor(font_editor, pen, rect, true, byte_behind_cursor)
+                cursor_face : Face =
+                    cursor_index == len(p.buffer.cursors) - 1 ? .cursor_active : .cursor
+                draw_cursor(font_editor, pen, rect, true, byte_behind_cursor, cursor_face)
             }
         } else {
             // NOTE: coords is the last cursor on the array
@@ -196,7 +198,7 @@ update_and_draw_active_pane :: proc() {
             cursor_pos := get_last_cursor_pos(p.buffer)
             _, rect, byte_behind_cursor :=
                 prepare_cursor_for_drawing(p, font_editor, cursor_pos)
-            draw_cursor(font_editor, pen, rect, true, byte_behind_cursor)
+            draw_cursor(font_editor, pen, rect, true, byte_behind_cursor, .cursor)
         }
     }
 
@@ -247,7 +249,7 @@ update_and_draw_inactive_panes :: proc(p: ^Pane) {
     draw_code(font_editor, pen, code_lines[:], {}, is_colored)
 
     _, rect, _ := prepare_cursor_for_drawing(p, font_editor, p.last_cursor_pos)
-    draw_cursor(font_editor, pen, rect, false, ' ')
+    draw_cursor(font_editor, pen, rect, false, ' ', .cursor)
     draw_modeline(p, false)
     set_renderer_target()
     draw_copy(p.texture, nil, &p.rect)

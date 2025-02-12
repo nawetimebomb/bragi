@@ -22,6 +22,10 @@ UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
 Buffer_Cursor :: int
 
+Cursor_Operation :: enum {
+    DELETE, SWITCH,
+}
+
 Cursor_Translation :: enum {
     DOWN, RIGHT, LEFT, UP,
     BUFFER_START,

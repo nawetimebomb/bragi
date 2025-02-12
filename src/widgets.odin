@@ -167,6 +167,7 @@ maybe_create_new_texture_for_widgets :: proc() {
 }
 
 widgets_show :: proc(target: ^Pane, action: Widget_Action) {
+    editor_keyboard_quit(target)
     cursor_pos := get_last_cursor_pos(target.buffer)
 
     widgets_pane.action = action

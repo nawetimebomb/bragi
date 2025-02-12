@@ -61,13 +61,10 @@ beginning_of_line               <C-a>
 end_of_buffer                   <M-S-.>
 end_of_line                     <C-e>
 
-dupe_backward_char              <C-x-S-b>
-dupe_backward_word              <C-x-M-S-b>
-dupe_forward_char               <C-x-S-f>
-dupe_forward_word               <C-x-M-S-f>
-dupe_next_line                  <C-x-S-n>
-dupe_previous_line              <C-x-S-p>
-switch_cursor                   <C-x-TAB>
+dupe_next_line                  <C-S-n>
+dupe_previous_line              <C-S-p>
+switch_cursor                   <C-S-TAB>
+delete_cursor                   <C-S-d>
 
 # Comments
 [colors]
@@ -76,7 +73,8 @@ background                      011627
 builtin                         c792ea
 comment                         637777
 constant                        f78c6c
-cursor                          80A4C2
+cursor                          80a4c2
+cursor_active                   f78c6c
 default                         d6deeb
 highlight                       ffeb95
 highlight_line                  1d3b53
@@ -94,5 +92,5 @@ modeline_shadow                 5f7e97
 
 ui_border                       5f7e97
 ui_gutter                       00080e
-ui_line_number                  848484
+ui_line_number                  4B6479
 ui_line_number_current          d6deeb

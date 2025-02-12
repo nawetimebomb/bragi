@@ -62,13 +62,10 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .previous_line:           editor_move_cursor_to(p, .UP)
 
         // Multi-cursor
-        case .dupe_backward_char:      editor_move_cursor_to(p, .LEFT)
-        case .dupe_backward_word:      editor_move_cursor_to(p, .WORD_START)
-        case .dupe_forward_char:       editor_move_cursor_to(p, .RIGHT)
-        case .dupe_forward_word:       editor_move_cursor_to(p, .WORD_END)
         case .dupe_next_line:          editor_dupe_cursor_to(p, .DOWN)
         case .dupe_previous_line:      editor_dupe_cursor_to(p, .UP)
-        case .switch_cursor:           editor_switch_cursor(p)
+        case .switch_cursor:           editor_manage_cursors(p, .SWITCH)
+        case .delete_cursor:           editor_manage_cursors(p, .DELETE)
 
         case .self_insert:             editor_self_insert(p, data.(string))
     }
@@ -115,8 +112,8 @@ editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
 }
 
 editor_new_pane :: proc(p: ^Pane) {
-    new_pane := pane_create(p.buffer)
-    current_pane = add(new_pane)
+    editor_keyboard_quit(p)
+    current_pane = add(pane_create(p.buffer))
 }
 
 editor_other_pane :: proc(p: ^Pane) {
@@ -337,9 +334,12 @@ editor_dupe_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
     editor_move_cursor_to(p, t)
 }
 
-editor_switch_cursor :: proc(p: ^Pane) {
+editor_manage_cursors :: proc(p: ^Pane, o: Cursor_Operation) {
     if p.buffer.interactive_cursors && len(p.buffer.cursors) > 1 {
-        promote_cursor_index(p.buffer, 0)
+        switch o {
+        case .SWITCH: promote_cursor_index(p.buffer, 0)
+        case .DELETE: pop(&p.buffer.cursors)
+        }
     }
 }
 

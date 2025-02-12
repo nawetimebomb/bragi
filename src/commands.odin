@@ -63,13 +63,10 @@ Command :: enum {
     next_line,
     previous_line,
 
-    dupe_backward_char,
-    dupe_backward_word,
-    dupe_forward_char,
-    dupe_forward_word,
     dupe_next_line,
     dupe_previous_line,
     switch_cursor,
+    delete_cursor,
 
     self_insert,
 }

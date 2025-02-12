@@ -39,6 +39,7 @@ Auto_Indentation_Type  :: enum { Off, Relaxed, Electric, }
 Face :: enum {
     background,
     cursor,
+    cursor_active,
     builtin,
     comment,
     constant,

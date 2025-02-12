@@ -64,6 +64,7 @@ end_of_line                     <C-e>
 dupe_next_line                  <C-S-n>
 dupe_previous_line              <C-S-p>
 switch_cursor                   <C-S-TAB>
+toggle_cursor_group             <C-S-a>
 delete_cursor                   <C-S-d>
 
 # Comments

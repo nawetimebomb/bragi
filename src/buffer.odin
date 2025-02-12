@@ -23,7 +23,7 @@ UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 Buffer_Cursor :: int
 
 Cursor_Operation :: enum {
-    DELETE, SWITCH,
+    DELETE, SWITCH, TOGGLE_GROUP,
 }
 
 Cursor_Translation :: enum {
@@ -61,37 +61,38 @@ History_State :: struct {
 }
 
 Buffer :: struct {
-    allocator:            runtime.Allocator,
-    id:                   uuid.Identifier,
+    allocator:             runtime.Allocator,
+    id:                    uuid.Identifier,
 
-    cursors:              [dynamic]Cursor,
-    interactive_cursors:  bool,
-    selection_mode:       bool,
+    cursors:               [dynamic]Cursor,
+    interactive_cursors:   bool,
+    cursor_group_mode:     bool,
+    cursor_selection_mode: bool,
 
-    data:                 []byte,
-    dirty:                bool,
-    gap_end:              Buffer_Cursor,
-    gap_start:            Buffer_Cursor,
-    lines:                [dynamic]Range,
+    data:                  []byte,
+    dirty:                 bool,
+    gap_end:               Buffer_Cursor,
+    gap_start:             Buffer_Cursor,
+    lines:                 [dynamic]Range,
 
-    str:                  string,
-    tokens:               []tokenizer.Token_Kind,
+    str:                   string,
+    tokens:                []tokenizer.Token_Kind,
 
-    enable_history:       bool,
-    redo:                 [dynamic]History_State,
-    undo:                 [dynamic]History_State,
-    history_limit:        int,
-    current_time:         time.Tick,
-    last_edit_time:       time.Tick,
-    undo_timeout:         time.Duration,
+    enable_history:        bool,
+    redo:                  [dynamic]History_State,
+    undo:                  [dynamic]History_State,
+    history_limit:         int,
+    current_time:          time.Tick,
+    last_edit_time:        time.Tick,
+    undo_timeout:          time.Duration,
 
-    status:               string,
-    filepath:             string,
-    major_mode:           Major_Mode,
-    name:                 string,
-    readonly:             bool,
-    modified:             bool,
-    crlf:                 bool,
+    status:                string,
+    filepath:              string,
+    major_mode:            Major_Mode,
+    name:                  string,
+    readonly:              bool,
+    modified:              bool,
+    crlf:                  bool,
 }
 
 buffer_init :: proc(
@@ -466,7 +467,8 @@ get_byte_at :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> byte {
 delete_all_cursors :: proc(b: ^Buffer, new_cursor: Cursor = {}) {
     clear(&b.cursors)
     append(&b.cursors, new_cursor)
-    b.selection_mode = false
+    b.cursor_selection_mode = false
+    b.cursor_group_mode = false
     b.interactive_cursors = false
 }
 
@@ -611,14 +613,14 @@ update_future_cursor_offsets :: proc(b: ^Buffer, threshold_to_update, offset: in
 
 remove :: proc(b: ^Buffer, count: int) {
     for &cursor in b.cursors {
-        if cursor.pos == 0 && count < 0 {
-            continue
-        }
+        if cursor.pos == 0 && count < 0 { continue }
 
         remove_raw(b, cursor.pos, count)
 
         if count < 0 {
             update_future_cursor_offsets(b, cursor.pos, count)
+        } else {
+            update_future_cursor_offsets(b, cursor.pos + count, count * -1)
         }
     }
 }

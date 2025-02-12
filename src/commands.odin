@@ -65,8 +65,9 @@ Command :: enum {
 
     dupe_next_line,
     dupe_previous_line,
-    switch_cursor,
     delete_cursor,
+    switch_cursor,
+    toggle_cursor_group,
 
     self_insert,
 }

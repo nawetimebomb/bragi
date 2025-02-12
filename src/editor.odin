@@ -64,8 +64,9 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         // Multi-cursor
         case .dupe_next_line:          editor_dupe_cursor_to(p, .DOWN)
         case .dupe_previous_line:      editor_dupe_cursor_to(p, .UP)
-        case .switch_cursor:           editor_manage_cursors(p, .SWITCH)
         case .delete_cursor:           editor_manage_cursors(p, .DELETE)
+        case .switch_cursor:           editor_manage_cursors(p, .SWITCH)
+        case .toggle_cursor_group:     editor_manage_cursors(p, .TOGGLE_GROUP)
 
         case .self_insert:             editor_self_insert(p, data.(string))
     }
@@ -151,10 +152,10 @@ editor_search_forward :: proc(target: ^Pane) {
 }
 
 editor_set_mark :: proc(p: ^Pane) {
-    if p.buffer.selection_mode {
-        p.buffer.selection_mode = false
+    if p.buffer.cursor_selection_mode {
+        p.buffer.cursor_selection_mode = false
     } else {
-        p.buffer.selection_mode = true
+        p.buffer.cursor_selection_mode = true
         pos := get_last_cursor_pos(p.buffer)
 
         append(&p.markers, Marker{
@@ -303,7 +304,7 @@ editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
     new_pos := translate_cursor(p.buffer, t)
     offset := new_pos - last_cursor.pos
 
-    if p.buffer.selection_mode {
+    if p.buffer.cursor_selection_mode {
         // If selection mode is enabled, we update all the cursors,
         // as selection has to be done this way.
         // Note, though, that selection will be cleared out if the
@@ -312,6 +313,13 @@ editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
         // all the required cursors in place.
         for &cursor in p.buffer.cursors {
             cursor.pos += offset
+        }
+    } else if p.buffer.cursor_group_mode {
+        // If group mode is enabled, then we move all cursors accordingly
+        // but make sure we're not selecting.
+        for &cursor in p.buffer.cursors {
+            cursor.pos += offset
+            cursor.sel = cursor.pos
         }
     } else {
         // Otherwise, if the user is in cursor mode, the user manipulates
@@ -322,8 +330,8 @@ editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
 }
 
 editor_dupe_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
-    if p.buffer.selection_mode {
-        p.buffer.selection_mode = false
+    if p.buffer.cursor_selection_mode {
+        p.buffer.cursor_selection_mode = false
         pos := get_last_cursor_pos(p.buffer)
         delete_all_cursors(p.buffer, make_cursor(pos))
     }
@@ -337,8 +345,12 @@ editor_dupe_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
 editor_manage_cursors :: proc(p: ^Pane, o: Cursor_Operation) {
     if p.buffer.interactive_cursors && len(p.buffer.cursors) > 1 {
         switch o {
-        case .SWITCH: promote_cursor_index(p.buffer, 0)
-        case .DELETE: pop(&p.buffer.cursors)
+        case .DELETE:
+            pop(&p.buffer.cursors)
+        case .SWITCH:
+            promote_cursor_index(p.buffer, 0)
+        case .TOGGLE_GROUP:
+            p.buffer.cursor_group_mode = !p.buffer.cursor_group_mode
         }
     }
 }

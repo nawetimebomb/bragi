@@ -187,8 +187,15 @@ update_and_draw_active_pane :: proc() {
 
                 // Skip rendering cursors that are outside of our view
                 if out_of_screen_coords { continue }
-                cursor_face : Face =
-                    cursor_index == len(p.buffer.cursors) - 1 ? .cursor_active : .cursor
+
+                cursor_face : Face = .cursor
+
+                if p.buffer.cursor_group_mode {
+                    cursor_face = .cursor_active
+                } else if cursor_index == len(p.buffer.cursors) - 1 {
+                    cursor_face = .cursor_active
+                }
+
                 draw_cursor(font_editor, pen, rect, true, byte_behind_cursor, cursor_face)
             }
         } else {

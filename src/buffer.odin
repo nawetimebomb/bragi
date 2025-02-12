@@ -62,6 +62,8 @@ Buffer :: struct {
 
     cursors:              [dynamic]Cursor,
     interactive_cursors:  bool,
+    selection_mode:       bool,
+
     data:                 []byte,
     dirty:                bool,
     gap_end:              Buffer_Cursor,
@@ -463,6 +465,7 @@ get_byte_at :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> byte {
 delete_all_cursors :: proc(b: ^Buffer, new_cursor: Cursor = {}) {
     clear(&b.cursors)
     append(&b.cursors, new_cursor)
+    b.selection_mode = false
 }
 
 make_cursor :: proc(pos: int = 0) -> (result: Cursor) {

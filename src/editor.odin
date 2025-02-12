@@ -42,7 +42,7 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .mark_forward_word:       log.error("NOT IMPLEMENTED")
         case .mark_forward_paragraph:  log.error("NOT IMPLEMENTED")
         case .mark_rectangle:          log.error("NOT IMPLEMENTED")
-        case .mark_set:                log.error("NOT IMPLEMENTED")
+        case .mark_set:                editor_set_mark(p)
         case .mark_whole_buffer:       log.error("NOT IMPLEMENTED")
 
         case .delete_backward_char:    delete_to(p, .LEFT)
@@ -91,20 +91,21 @@ editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
             for p1, index in open_panes {
                 if p1.id == current_pane.id {
                     editor_other_pane(p)
+                    pane_destroy(p)
                     ordered_remove(&open_panes, index)
-                    resize_panes()
-                    return
+                    break
                 }
             }
         } else {
-            for p1, index in open_panes {
+            for &p1, index in open_panes {
                 if p1.id != current_pane.id {
+                    pane_destroy(&p1)
                     ordered_remove(&open_panes, index)
                 }
             }
-
-            resize_panes()
         }
+
+        resize_panes()
     }
 }
 
@@ -127,6 +128,8 @@ editor_other_pane :: proc(p: ^Pane) {
     }
 
     current_pane = &open_panes[focus_index]
+    new_cursor := make_cursor(current_pane.last_cursor_pos)
+    delete_all_cursors(current_pane.buffer, new_cursor)
 }
 
 editor_find_file :: proc(target: ^Pane) {
@@ -145,16 +148,14 @@ editor_search_forward :: proc(target: ^Pane) {
     widgets_show(target, .SEARCH_IN_BUFFER)
 }
 
-toggle_mark_on :: proc(p: ^Pane) {
-    log.error("IMPLEMENT")
-}
+editor_set_mark :: proc(p: ^Pane) {
+    p.buffer.selection_mode = true
+    pos := get_last_cursor_pos(p.buffer)
 
-set_mark :: proc(pane: ^Pane) {
-    log.error("IMPLEMENT")
-}
-
-mark_buffer :: proc(pane: ^Pane) {
-    log.error("IMPLEMENT")
+    append(&p.markers, Marker{
+        buffer = p.buffer,
+        pos = pos,
+    })
 }
 
 kill_current_buffer :: proc(p: ^Pane) {
@@ -184,10 +185,6 @@ kill_current_buffer :: proc(p: ^Pane) {
 }
 
 kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
-    log.error("IMPLEMENT")
-}
-
-search :: proc(p: ^Pane) {
     log.error("IMPLEMENT")
 }
 
@@ -288,12 +285,19 @@ delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
 }
 
 editor_move_to :: proc(p: ^Pane, t: Cursor_Translation) {
-    b := p.buffer
+    for &cursor in p.buffer.cursors {
+        new_pos := translate_cursor(p.buffer, t)
 
-    for &cursor in b.cursors {
-        new_pos := translate_cursor(b, t)
-        // TODO: handle selection
-        cursor.pos = new_pos
-        cursor.sel = new_pos
+        if p.buffer.selection_mode {
+            cursor.pos = new_pos
+        } else {
+            cursor.pos = new_pos
+            cursor.sel = new_pos
+        }
     }
+}
+
+editor_keyboard_quit :: proc(p: ^Pane) {
+    last_cursor_pos := get_last_cursor_pos(p.buffer)
+    delete_all_cursors(p.buffer, make_cursor(last_cursor_pos))
 }

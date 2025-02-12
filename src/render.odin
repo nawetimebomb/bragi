@@ -67,7 +67,14 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
 
     // Left side
     {
-        coords := get_last_cursor_pos_as_coords(p.buffer)
+        coords: Coords
+
+        if focused {
+            coords = get_last_cursor_pos_as_coords(p.buffer)
+        } else {
+            coords = get_coords(p.buffer, p.last_cursor_pos)
+        }
+
         left_start_column  :: MODELINE_H_PADDING
 
         sx := draw_text(

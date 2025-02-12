@@ -35,10 +35,17 @@ Caret :: struct {
     last_update:    time.Tick,
 }
 
+Marker :: struct {
+    buffer: ^Buffer,
+    pos: int,
+}
+
 Pane :: struct {
     cursor_showing: bool,
     cursor_blink_count: int,
     cursor_last_update: time.Tick,
+
+    markers: [dynamic]Marker,
 
     last_keystroke: time.Tick,
 
@@ -47,9 +54,6 @@ Pane :: struct {
     // The pane contents, buffer and its cursor goes here. Cursor lives in the pane so,
     // users can navigate and edit the same buffer in two different panes.
     buffer: ^Buffer,
-
-    // Values that define the UI.
-    show_scrollbar: bool,
 
     rect: Rect,
     texture: Texture,
@@ -70,7 +74,12 @@ pane_create :: proc(b: ^Buffer = nil) -> (result: Pane) {
     result.id = uuid.generate_v7()
     result.buffer = b
     result.last_time_active = time.tick_now()
+    result.markers = make([dynamic]Marker, 0, 0)
     return result
+}
+
+pane_destroy :: proc(p: ^Pane) {
+    delete(p.markers)
 }
 
 update_and_draw_active_pane :: proc() {

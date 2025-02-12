@@ -94,6 +94,7 @@ destroy_editor :: proc() {
     widgets_destroy()
 
     for &b in open_buffers { buffer_destroy(&b) }
+    for &p in open_panes   { pane_destroy(&p) }
     delete(open_buffers)
     delete(open_panes)
     delete(bragi.keybinds.modifiers)

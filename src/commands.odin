@@ -74,6 +74,7 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         command_add_modifier(data.(string))
     case cmd == .quit_mode:
         command_reset_modes(p)
+        editor_keyboard_quit(p)
     case !widgets_pane.enabled && cmd == .ui_select:
         // TODO: I don't like that I have to do this... but this is how inputs are
         // being handled at the moment

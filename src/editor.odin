@@ -100,9 +100,10 @@ editor_close_panes :: proc(p: ^Pane, w: enum { CURRENT, OTHER }) {
             for p1, index in open_panes {
                 if p1.id != current_pane.id {
                     ordered_remove(&open_panes, index)
-                    resize_panes()
                 }
             }
+
+            resize_panes()
         }
     }
 }
@@ -157,19 +158,29 @@ mark_buffer :: proc(pane: ^Pane) {
 }
 
 kill_current_buffer :: proc(p: ^Pane) {
-    for &b, index in open_buffers {
-        if &b == p.buffer {
-            buffer_destroy(&b)
-            ordered_remove(&open_buffers, index)
+    if len(open_buffers) > 1 {
+        index_of_buffer := -1
+        id_of_buffer := p.buffer.id
+        replacement_buffer: ^Buffer
+
+        for &b, index in open_buffers {
+            if b.id == id_of_buffer {
+                index_of_buffer = index
+                break
+            }
         }
-    }
 
-    if len(open_buffers) == 0 {
-        get_or_create_buffer("*notes*", 0)
-    }
+        buffer_destroy(&open_buffers[index_of_buffer])
+        ordered_remove(&open_buffers, index_of_buffer)
 
-    p.buffer = &open_buffers[len(open_buffers) - 1]
-    reset_viewport(p)
+        for &other_pane in open_panes {
+            if other_pane.buffer.id == id_of_buffer {
+                other_pane.buffer = &open_buffers[len(open_buffers) - 1]
+            }
+        }
+
+        reset_viewport(p)
+    }
 }
 
 kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
@@ -201,11 +212,21 @@ get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32
 }
 
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
-    b := p.buffer
     coords: Coords
-    coords.column = int(x / char_width + i32(p.xoffset))
-    coords.line = int(y / line_height + i32(p.yoffset))
-    delete_all_cursors(b, make_cursor(get_offset_from_coords(b, coords)))
+    coords.line = clamp(int(y / line_height) + p.yoffset, 0, len(p.buffer.lines) - 1)
+
+    // Calculate column of the cursor
+    line := get_line_text(p.buffer, coords.line)
+    size_of_line := get_text_size(font_editor, line)
+
+    if x >= size_of_line + p.size_of_gutter {
+        coords.column = len(line)
+    } else {
+        coords.column = int((x - p.size_of_gutter) / char_width)
+    }
+
+    coords_as_buffer_cursor := get_offset_from_coords(p.buffer, coords)
+    delete_all_cursors(p.buffer, make_cursor(coords_as_buffer_cursor))
 }
 
 mouse_drag_word :: proc(pane: ^Pane, x, y: i32) {
@@ -217,10 +238,17 @@ mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
 }
 
 scroll :: proc(p: ^Pane, offset: int) {
+    MAX_SCROLL_OFFSET :: 7
     lines_count := len(p.buffer.lines)
 
     if p.visible_lines < lines_count {
-        p.yoffset = clamp(p.yoffset + offset, 0, lines_count - 5)
+        coords := get_last_cursor_pos_as_coords(p.buffer)
+        p.yoffset = clamp(p.yoffset + offset, 0, lines_count - MAX_SCROLL_OFFSET)
+
+        if coords.line < p.yoffset || coords.line > p.yoffset + p.visible_lines {
+            bol, _ := get_line_boundaries(p.buffer, p.yoffset)
+            set_last_cursor_pos(p.buffer, bol + coords.column)
+        }
     }
 }
 

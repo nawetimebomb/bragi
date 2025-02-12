@@ -1,6 +1,7 @@
 package main
 
 import "base:runtime"
+import "core:encoding/uuid"
 import "core:fmt"
 import "core:log"
 import "core:mem"
@@ -57,6 +58,7 @@ History_State :: struct {
 
 Buffer :: struct {
     allocator:            runtime.Allocator,
+    id:                   uuid.Identifier,
 
     cursors:              [dynamic]Cursor,
     interactive_cursors:  bool,
@@ -94,6 +96,7 @@ buffer_init :: proc(
 ) -> Buffer {
     b := Buffer{
         allocator      = allocator,
+        id             = uuid.generate_v7(),
 
         data           = make([]byte, bytes, allocator),
         str            = "",
@@ -122,6 +125,7 @@ create_buffer :: proc(
 ) -> ^Buffer {
     append(&open_buffers, Buffer{
         allocator      = allocator,
+        id             = uuid.generate_v7(),
         data           = make([]byte, bytes, allocator),
         dirty          = false,
         enable_history = true,
@@ -195,8 +199,8 @@ buffer_update :: proc(b: ^Buffer) {
         b.dirty = false
         b.status = get_buffer_status(b)
 
-        recalculate_lines(b)
         refresh_string_buffer(b)
+        recalculate_lines(b)
         maybe_tokenize_buffer(b)
     }
 }
@@ -231,8 +235,8 @@ recalculate_lines :: proc(b: ^Buffer) {
     clear(&b.lines)
     append(&b.lines, Range{0, 0})
 
-    for index := 0; index < len(left); index += 1 {
-        if left[index] == '\n' {
+    for index := 0; index < len(b.str); index += 1 {
+        if b.str[index] == '\n' {
             eocl := index
             bonl := eocl + 1
             last_line_index := len(b.lines) - 1
@@ -241,17 +245,8 @@ recalculate_lines :: proc(b: ^Buffer) {
         }
     }
 
-    for index := 0; index < len(right); index += 1 {
-        if right[index] == '\n' {
-            eocl := len(left) + index
-            bonl := eocl + 1
-            last_line_index := len(b.lines) - 1
-            b.lines[last_line_index].end = eocl
-            append(&b.lines, Range{bonl, bonl})
-        }
-    }
-
     b.lines[len(b.lines) - 1].end = buffer_len(b)
+    append(&b.lines, Range{buffer_len(b), buffer_len(b)})
     profiling_end()
 }
 
@@ -456,13 +451,13 @@ refresh_string_buffer :: proc(b: ^Buffer) {
 }
 
 get_byte_at :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> byte {
-	left, right := buffer_get_strings(b)
+    left, right := buffer_get_strings(b)
 
-	if pos < len(left) {
-		return left[pos]
-	} else {
-		return right[pos - len(left)]
-	}
+    if pos < len(left) {
+        return left[pos]
+    } else {
+        return right[pos - len(left)]
+    }
 }
 
 delete_all_cursors :: proc(b: ^Buffer, new_cursor: Cursor = {}) {
@@ -499,7 +494,11 @@ get_last_cursor_pos :: #force_inline proc(b: ^Buffer) -> (pos: int) {
 }
 
 set_last_cursor_pos :: #force_inline proc(b: ^Buffer, pos: int) {
-    b.cursors[len(b.cursors) - 1].pos = pos
+    b.cursors[len(b.cursors) - 1] = {
+        pos = pos,
+        sel = pos,
+        col_offset = -1,
+    }
 }
 
 get_offset_from_coords :: proc(b: ^Buffer, coords: Coords) -> (pos: int) {

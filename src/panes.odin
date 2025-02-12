@@ -54,7 +54,10 @@ Pane :: struct {
     rect: Rect,
     texture: Texture,
 
-    last_cursor_pos: int,
+    last_cursor_pos:  int,
+    last_time_active: time.Tick,
+
+    size_of_gutter:  i32,
 
     yoffset:         int,
     visible_lines:   int,
@@ -66,12 +69,8 @@ Pane :: struct {
 pane_create :: proc(b: ^Buffer = nil) -> (result: Pane) {
     result.id = uuid.generate_v7()
     result.buffer = b
+    result.last_time_active = time.tick_now()
     return result
-}
-
-pane_init :: proc() -> Pane {
-    p := pane_create()
-    return p
 }
 
 update_and_draw_active_pane :: proc() {
@@ -86,6 +85,7 @@ update_and_draw_active_pane :: proc() {
     buffer_update(p.buffer)
 
     p.last_cursor_pos = get_last_cursor_pos(p.buffer)
+    p.last_time_active = time.tick_now()
 
     if time.tick_diff(p.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
         p.cursor_showing = true
@@ -121,12 +121,12 @@ update_and_draw_active_pane :: proc() {
     last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
     start_offset, _ := get_line_boundaries(p.buffer, first_line)
     _, end_offset := get_line_boundaries(p.buffer, last_line)
-    size_of_gutter : i32 = 0
+
     screen_y := coords.line - p.yoffset
     screen_x := coords.column - p.xoffset
 
     if bragi.settings.show_line_numbers {
-        size_of_gutter += draw_gutter_line_numbers(
+        p.size_of_gutter = draw_gutter_line_numbers(
             p.rect, first_line, last_line, screen_y,
         )
     } else {
@@ -151,9 +151,10 @@ update_and_draw_active_pane :: proc() {
     }
 
     is_colored := p.buffer.major_mode != .Fundamental
+    if last_line == 0 { last_line = 1 }
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
     pen := get_pen_for_panes()
-    pen.x += size_of_gutter
+    pen.x += p.size_of_gutter
 
     for line_number in first_line..<last_line {
         index := line_number - first_line
@@ -170,45 +171,21 @@ update_and_draw_active_pane :: proc() {
     if p.cursor_showing {
         if p.buffer.interactive_cursors {
             for cursor in p.buffer.cursors {
-                local_coords := get_coords(p.buffer, cursor.pos)
+                out_of_screen_coords, rect, byte_behind_cursor :=
+                    prepare_cursor_for_drawing(p, font_editor, cursor.pos)
 
                 // Skip rendering cursors that are outside of our view
-                if !is_within_the_screen(local_coords, p.yoffset, p.visible_lines) {
-                    continue
-                }
-
-                line := get_line_text(p.buffer, local_coords.line)
-                test_str := line[:local_coords.column]
-                cursor_rect := make_rect(0, 0, char_width, line_height)
-                cursor_rect.y = i32(local_coords.line - p.yoffset) * line_height
-                cursor_rect.x = get_width_based_on_text_size(font_editor, test_str, local_coords.column)
-                byte_behind_cursor : byte = ' '
-
-                if cursor.pos < buffer_len(p.buffer) {
-                    byte_behind_cursor = get_byte_at(p.buffer, cursor.pos)
-                    if byte_behind_cursor == '\n' { byte_behind_cursor = ' ' }
-                }
-
-                draw_cursor(font_editor, pen, cursor_rect, true, byte_behind_cursor)
+                if out_of_screen_coords { continue }
+                draw_cursor(font_editor, pen, rect, true, byte_behind_cursor)
             }
         } else {
-            // coords is the last cursor on the array
+            // NOTE: coords is the last cursor on the array
+            // since the focus is always on the last active cursor,
+            // we don't need to make sure it is in the screen coords
             cursor_pos := get_last_cursor_pos(p.buffer)
-            line := get_line_text(p.buffer, coords.line)
-            test_str := line[:coords.column]
-            cursor_rect := make_rect(0, 0, char_width, line_height)
-            cursor_rect.y = i32(screen_y) * line_height
-            cursor_rect.x = get_width_based_on_text_size(
-                font_editor, test_str, coords.column,
-            )
-            byte_behind_cursor : byte = ' '
-
-            if cursor_pos < buffer_len(p.buffer) {
-                byte_behind_cursor = get_byte_at(p.buffer, cursor_pos)
-                if byte_behind_cursor == '\n' { byte_behind_cursor = ' ' }
-            }
-
-            draw_cursor(font_editor, pen, cursor_rect, true, byte_behind_cursor)
+            _, rect, byte_behind_cursor :=
+                prepare_cursor_for_drawing(p, font_editor, cursor_pos)
+            draw_cursor(font_editor, pen, rect, true, byte_behind_cursor)
         }
     }
 
@@ -231,11 +208,10 @@ update_and_draw_inactive_panes :: proc(p: ^Pane) {
     last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
     start_offset, _ := get_line_boundaries(p.buffer, first_line)
     _, end_offset := get_line_boundaries(p.buffer, last_line)
-    size_of_gutter : i32 = 0
     screen_y := coords.line - p.yoffset
 
     if bragi.settings.show_line_numbers {
-        size_of_gutter += draw_gutter_line_numbers(
+        p.size_of_gutter = draw_gutter_line_numbers(
             p.rect, first_line, last_line, screen_y,
         )
     } else {
@@ -245,7 +221,7 @@ update_and_draw_inactive_panes :: proc(p: ^Pane) {
     is_colored := p.buffer.major_mode != .Fundamental
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
     pen := get_pen_for_panes()
-    pen.x += size_of_gutter
+    pen.x += p.size_of_gutter
 
     for line_number in first_line..<last_line {
         index := line_number - first_line
@@ -259,18 +235,34 @@ update_and_draw_inactive_panes :: proc(p: ^Pane) {
 
     draw_code(font_editor, pen, code_lines[:], {}, is_colored)
 
-    line := get_line_text(p.buffer, coords.line)
-    test_str := line[:coords.column]
-    cursor_rect := make_rect(0, 0, char_width, line_height)
-    cursor_rect.y = i32(screen_y) * line_height
-    cursor_rect.x = get_width_based_on_text_size(
-        font_editor, test_str, coords.column,
-    )
-
-    draw_cursor(font_editor, pen, cursor_rect, false, ' ')
+    _, rect, _ := prepare_cursor_for_drawing(p, font_editor, p.last_cursor_pos)
+    draw_cursor(font_editor, pen, rect, false, ' ')
     draw_modeline(p, false)
     set_renderer_target()
     draw_copy(p.texture, nil, &p.rect)
+}
+
+prepare_cursor_for_drawing :: #force_inline proc(
+    p: ^Pane, font: Font, pos: int,
+) -> (out_of_screen_coords: bool, rect: Rect, byte_behind_cursor: byte) {
+    coords := get_coords(p.buffer, pos)
+
+    if !is_within_the_screen(coords, p.yoffset, p.visible_lines) {
+        return true, rect, byte_behind_cursor
+    }
+
+    line := get_line_text(p.buffer, coords.line)
+    rect.x = get_width_based_on_text_size(font, line[:coords.column], coords.column)
+    rect.y = i32(coords.line - p.yoffset) * font.line_height
+    rect.h = font.line_height
+    rect.w = font.em_width
+
+    if pos < buffer_len(p.buffer) {
+        byte_behind_cursor = get_byte_at(p.buffer, pos)
+        if byte_behind_cursor == '\n' { byte_behind_cursor = ' ' }
+    }
+
+    return
 }
 
 is_within_the_screen :: #force_inline proc(

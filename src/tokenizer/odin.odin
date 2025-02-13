@@ -112,3 +112,7 @@ tokenize_odin :: proc(s: ^string) -> []Token_Kind {
 
     return tokenizer_finish()
 }
+
+odin_punctuations :: proc() -> string {
+    return " \t\n:()[]."
+}

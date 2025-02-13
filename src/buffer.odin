@@ -527,29 +527,36 @@ get_offset_from_coords :: proc(b: ^Buffer, coords: Coords) -> (pos: int) {
     return bol + coords.column
 }
 
-dwim_last_cursor_col_offset :: proc(b: ^Buffer, new_offset: int) -> (max_offset: int) {
-    last_cursor := &b.cursors[len(b.cursors) - 1]
-
+dwim_last_cursor_col_offset :: proc(cursor: ^Cursor, new_offset: int) -> (offset: int) {
     if new_offset == - 1 {
-        last_cursor.col_offset = -1
+        cursor.col_offset = -1
     } else {
-        last_cursor.col_offset = max(last_cursor.col_offset, new_offset)
+        cursor.col_offset = max(cursor.col_offset, new_offset)
     }
 
-    return last_cursor.col_offset
+    return cursor.col_offset
 }
 
-translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
-    pos = get_last_cursor_pos(b)
+translate_cursor :: proc(
+    b: ^Buffer,
+    start_cursor: ^Cursor,
+    t: Cursor_Translation,
+) -> (pos: int) {
+    pos = start_cursor.pos
     lines_count := len(b.lines)
     coords := get_coords(b, pos)
+
+    is_punctuation :: proc(b: ^Buffer, c: byte) -> bool {
+        punctuations := get_punctuations(b.major_mode)
+        return strings.contains_rune(punctuations, rune(c))
+    }
 
     switch t {
     case .DOWN:
         if coords.line < lines_count - 1 {
             coords.line += 1
             coords.column = min(
-                dwim_last_cursor_col_offset(b, coords.column),
+                dwim_last_cursor_col_offset(start_cursor, coords.column),
                 get_line_length(b, coords.line),
             )
             pos = get_offset_from_coords(b, coords)
@@ -559,7 +566,7 @@ translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
         if coords.line > 0 {
             coords.line -= 1
             coords.column = min(
-                dwim_last_cursor_col_offset(b, coords.column),
+                dwim_last_cursor_col_offset(start_cursor, coords.column),
                 get_line_length(b, coords.line),
             )
             pos = get_offset_from_coords(b, coords)
@@ -567,11 +574,11 @@ translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
         }
     case .LEFT:
         pos = max(pos - 1, 0)
-        dwim_last_cursor_col_offset(b, -1)
+        dwim_last_cursor_col_offset(start_cursor, -1)
         return
     case .RIGHT:
         pos = min(pos + 1, buffer_len(b))
-        dwim_last_cursor_col_offset(b, -1)
+        dwim_last_cursor_col_offset(start_cursor, -1)
         return
     case .BUFFER_START:
         pos = 0
@@ -589,12 +596,12 @@ translate_cursor :: proc(b: ^Buffer, t: Cursor_Translation) -> (pos: int) {
         pos = eol
         return
     case .WORD_START:
-        for pos > 0 && is_whitespace(get_byte_at(b, pos - 1)) { pos -= 1 }
-        for pos > 0 && !is_whitespace(get_byte_at(b, pos - 1)) { pos -= 1 }
+        for pos > 0 && is_punctuation(b, get_byte_at(b, pos - 1)) { pos -= 1 }
+        for pos > 0 && !is_punctuation(b, get_byte_at(b, pos - 1)) { pos -= 1 }
         return
     case .WORD_END:
-        for pos < buffer_len(b) && is_whitespace(get_byte_at(b, pos))  { pos += 1 }
-        for pos < buffer_len(b) && !is_whitespace(get_byte_at(b, pos)) { pos += 1}
+        for pos < buffer_len(b) && is_punctuation(b, get_byte_at(b, pos))  { pos += 1 }
+        for pos < buffer_len(b) && !is_punctuation(b, get_byte_at(b, pos)) { pos += 1}
         return
     }
 

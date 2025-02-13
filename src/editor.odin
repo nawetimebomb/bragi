@@ -288,7 +288,7 @@ editor_delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
         count = sel - pos
     } else {
         cursor_at_start := get_last_cursor_pos(p.buffer)
-        cursor_after_deletion := translate_cursor(p.buffer, t)
+        cursor_after_deletion := translate_cursor(p.buffer, use_last_cursor(p.buffer), t)
         count = cursor_after_deletion - cursor_at_start
 
         if t == .LINE_END && count == 0 {
@@ -300,10 +300,6 @@ editor_delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
 }
 
 editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
-    last_cursor := use_last_cursor(p.buffer)
-    new_pos := translate_cursor(p.buffer, t)
-    offset := new_pos - last_cursor.pos
-
     if p.buffer.cursor_selection_mode {
         // If selection mode is enabled, we update all the cursors,
         // as selection has to be done this way.
@@ -312,20 +308,21 @@ editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
         // as to make a selection, it is best for the user to have
         // all the required cursors in place.
         for &cursor in p.buffer.cursors {
-            cursor.pos += offset
+            cursor.pos = translate_cursor(p.buffer, &cursor, t)
         }
     } else if p.buffer.cursor_group_mode {
         // If group mode is enabled, then we move all cursors accordingly
         // but make sure we're not selecting.
         for &cursor in p.buffer.cursors {
-            cursor.pos += offset
+            cursor.pos = translate_cursor(p.buffer, &cursor, t)
             cursor.sel = cursor.pos
         }
     } else {
         // Otherwise, if the user is in cursor mode, the user manipulates
         // the last active cursor.
-        last_cursor.pos = new_pos
-        last_cursor.sel = new_pos
+        last_cursor := use_last_cursor(p.buffer)
+        last_cursor.pos = translate_cursor(p.buffer, last_cursor, t)
+        last_cursor.sel = last_cursor.pos
     }
 }
 

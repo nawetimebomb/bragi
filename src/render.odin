@@ -87,22 +87,24 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
             p.buffer.modified ? .highlight : .default,
             sx + font_ui.em_width, modeline_y,
         )
-
-        line_number_column := fmt.tprintf(
-            "({0}, {1})", coords.line + 1, coords.column,
-        )
+        line_col_number := fmt.tprintf("({0}, {1})", coords.line + 1, coords.column)
         sx = draw_text(
-            font_ui, line_number_column, .default,
+            font_ui, fmt.tprintf("({0}, {1})", coords.line + 1, coords.column), .default,
             sx + font_ui.em_width * SMALL_PADDING, modeline_y,
         )
 
-        if p.buffer.interactive_cursors {
-            number_of_cursors := fmt.tprintf("[{0}]", len(p.buffer.cursors))
+        if focused {
+            if p.buffer.interactive_cursors {
+                number_of_cursors := fmt.tprintf(" [{0}]", len(p.buffer.cursors))
+                face : Face = p.buffer.cursor_group_mode ? .cursor_active : .default
+                sx = draw_text(font_ui, number_of_cursors, face, sx, modeline_y)
+            }
 
-            draw_text(
-                font_ui, number_of_cursors, .default,
-                sx + font_ui.em_width, modeline_y,
-            )
+            if p.buffer.cursor_selection_mode {
+                sx = draw_text(
+                    font_ui, " selection", .default, sx, modeline_y,
+                )
+            }
         }
     }
 

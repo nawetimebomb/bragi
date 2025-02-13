@@ -150,13 +150,7 @@ update_and_draw_active_pane :: proc() {
     screen_y := coords.line - p.yoffset
     screen_x := coords.column - p.xoffset
 
-    if bragi.settings.show_line_numbers {
-        p.size_of_gutter = draw_gutter_line_numbers(
-            p.rect, first_line, last_line, screen_y,
-        )
-    } else {
-        draw_pane_divider()
-    }
+    p.size_of_gutter = draw_gutter(p.rect, first_line, last_line, screen_y)
 
     selections := make(
         [dynamic]Range, 0, len(p.buffer.cursors), context.temp_allocator,
@@ -254,13 +248,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     _, end_offset := get_line_boundaries(p.buffer, last_line)
     screen_y := coords.line - p.yoffset
 
-    if bragi.settings.show_line_numbers {
-        p.size_of_gutter = draw_gutter_line_numbers(
-            p.rect, first_line, last_line, screen_y,
-        )
-    } else {
-        draw_pane_divider()
-    }
+    p.size_of_gutter = draw_gutter(p.rect, first_line, last_line, screen_y)
 
     is_colored := p.buffer.major_mode != .Fundamental
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)

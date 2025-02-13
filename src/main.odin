@@ -16,7 +16,7 @@ import     "core:unicode/utf8"
 import sdl "vendor:sdl2"
 
 TITLE   :: "Bragi"
-VERSION :: 0
+VERSION :: "0b"
 
 SETTINGS_DATA     :: #load("../res/config.bragi")
 SETTINGS_FILENAME :: "config.bragi"

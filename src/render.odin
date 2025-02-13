@@ -65,6 +65,8 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
     set_bg(focused ? colors[.modeline_on_bg] : colors[.modeline_off_bg])
     draw_rect(0, background_y, p.rect.w, background_h, true)
 
+    text_face : Face = focused ? .modeline_on_fg : .modeline_off_fg
+
     // Left side
     {
         coords: Coords
@@ -79,30 +81,30 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
 
         sx := draw_text(
             font_ui, get_buffer_status(p.buffer),
-            p.buffer.modified ? .highlight : .default,
+            p.buffer.modified ? .highlight : text_face,
             left_start_column, modeline_y,
         )
         sx = draw_text(
             font_ui_bold, p.buffer.name,
-            p.buffer.modified ? .highlight : .default,
+            p.buffer.modified ? .highlight : text_face,
             sx + font_ui.em_width, modeline_y,
         )
         line_col_number := fmt.tprintf("({0}, {1})", coords.line + 1, coords.column)
         sx = draw_text(
-            font_ui, fmt.tprintf("({0}, {1})", coords.line + 1, coords.column), .default,
+            font_ui, fmt.tprintf("({0}, {1})", coords.line + 1, coords.column), text_face,
             sx + font_ui.em_width * SMALL_PADDING, modeline_y,
         )
 
         if focused {
             if p.buffer.interactive_cursors {
                 number_of_cursors := fmt.tprintf(" [{0}]", len(p.buffer.cursors))
-                face : Face = p.buffer.cursor_group_mode ? .cursor_active : .default
+                face : Face = p.buffer.cursor_group_mode ? .cursor_active : text_face
                 sx = draw_text(font_ui, number_of_cursors, face, sx, modeline_y)
             }
 
             if p.buffer.cursor_selection_mode {
                 sx = draw_text(
-                    font_ui, " selection", .default, sx, modeline_y,
+                    font_ui, " selection", text_face, sx, modeline_y,
                 )
             }
         }
@@ -115,7 +117,7 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
         right_start_column := p.rect.w - MODELINE_H_PADDING - content_size
 
         draw_text(
-            font_ui_bold, major_mode_string, .default,
+            font_ui_bold, major_mode_string, text_face,
             right_start_column, modeline_y,
         )
     }
@@ -169,7 +171,7 @@ draw_pane_divider :: proc() {
     draw_line(0, 0, 0, window_height)
 }
 
-draw_gutter_line_numbers :: proc(
+draw_gutter :: proc(
     prect: Rect,
     start, end, current: int,
 ) -> (gutter_size: i32) {
@@ -177,31 +179,43 @@ draw_gutter_line_numbers :: proc(
     LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
     colors := bragi.settings.colorscheme_table
 
-    // Testing the size of the string by using the largest number, hopefully
-    size_test_str := fmt.tprintf("{0}", end)
-    gutter_size = get_width_based_on_text_size(
-        font_ui, size_test_str, len(size_test_str) + GUTTER_PADDING,
-    )
-
-    set_bg(colors[.ui_gutter])
-    draw_rect(0, 0, gutter_size, prect.h)
-    set_bg(colors[.ui_border])
-    draw_line(gutter_size, 0, gutter_size, prect.h)
-
-    for line_number in start..<end {
-        index := line_number - start
-        sy := i32(line_number - start) * line_height
-        line_number_str := strings.right_justify(
-            fmt.tprintf("{0}", line_number + 1),
-            len(size_test_str) + LINE_NUMBER_JUSTIFY,
-            " ",
-            context.temp_allocator,
+    if bragi.settings.show_line_numbers {
+        // Testing the size of the string by using the largest number, hopefully
+        size_test_str := fmt.tprintf("{0}", end)
+        gutter_size = get_width_based_on_text_size(
+            font_ui, size_test_str, len(size_test_str) + GUTTER_PADDING,
         )
-        draw_text(
-            font_ui, line_number_str,
-            current == index ? .ui_line_number_current : .ui_line_number,
-            0, sy,
-        )
+
+        set_bg(colors[.ui_gutter])
+        draw_rect(0, 0, gutter_size, prect.h)
+
+        set_bg(colors[.ui_border])
+        draw_line(0, 0, 0, prect.h)
+
+        for line_number in start..<end {
+            index := line_number - start
+            sy := i32(line_number - start) * line_height
+            line_number_str := strings.right_justify(
+                fmt.tprintf("{0}", line_number + 1),
+                len(size_test_str) + LINE_NUMBER_JUSTIFY,
+                " ",
+                context.temp_allocator,
+            )
+            draw_text(
+                font_ui, line_number_str,
+                current == index ? .ui_line_number_current : .ui_line_number,
+                0, sy,
+            )
+        }
+    } else {
+        gutter_size = GUTTER_PADDING
+        set_bg(colors[.ui_gutter])
+        draw_rect(0, 0, gutter_size, prect.h)
+
+        if prect.x > 0 {
+            set_bg(colors[.ui_border])
+            draw_line(0, 0, 0, prect.h)
+        }
     }
 
     return

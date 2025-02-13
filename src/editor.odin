@@ -136,6 +136,8 @@ editor_other_pane :: proc(p: ^Pane) {
     current_pane = &open_panes[focus_index]
     new_cursor := make_cursor(current_pane.last_cursor_pos)
     delete_all_cursors(current_pane.buffer, new_cursor)
+    current_pane.dirty = true
+    current_pane.last_keystroke = time.tick_now()
 }
 
 editor_find_file :: proc(target: ^Pane) {

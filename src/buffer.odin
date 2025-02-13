@@ -54,10 +54,10 @@ Coords :: struct {
 }
 
 History_State :: struct {
-    cursors:   []Cursor,
-    data:      []byte,
-    gap_end:   int,
-    gap_start: int,
+    cursors_pos: []int,
+    data:        []byte,
+    gap_end:     int,
+    gap_start:   int,
 }
 
 Buffer :: struct {
@@ -200,7 +200,15 @@ get_or_create_buffer :: proc(
 buffer_update :: proc(b: ^Buffer) {
     update_buffer_time(b)
 
-    if len(b.cursors) == 0 { append(&b.cursors, make_cursor()) }
+    if len(b.cursors) == 0 { delete_all_cursors(b, make_cursor()) }
+
+    if b.interactive_cursors {
+        if len(b.cursors) == 1 {
+            b.interactive_cursors = false
+        } else {
+            check_overlapping_cursors(b)
+        }
+    }
 
     if b.dirty {
         b.dirty = false
@@ -348,7 +356,7 @@ get_buffer_status :: proc(b: ^Buffer) -> (status: string) {
 clear_history :: proc(history: ^[dynamic]History_State) {
     for len(history) > 0 {
         item := pop(history)
-        delete(item.cursors)
+        delete(item.cursors_pos)
         delete(item.data)
     }
     clear(history)
@@ -362,9 +370,9 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
         b.gap_end   = item.gap_end
         b.gap_start = item.gap_start
 
-        delete(b.cursors)
-        b.cursors = slice.clone_to_dynamic(item.cursors)
-        delete(item.cursors)
+        clear(&b.cursors)
+        for pos in item.cursors_pos { append(&b.cursors, make_cursor(pos)) }
+        delete(item.cursors_pos)
 
         delete(b.data)
         b.data = slice.clone(item.data, b.allocator)
@@ -377,11 +385,13 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
 
 push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.Allocator_Error {
     item := History_State{
-        cursors   = slice.clone(b.cursors[:], b.allocator),
-        data      = slice.clone(b.data, b.allocator),
-        gap_end   = b.gap_end,
-        gap_start = b.gap_start,
+        cursors_pos = make([]int, len(b.cursors)),
+        data        = slice.clone(b.data, b.allocator),
+        gap_end     = b.gap_end,
+        gap_start   = b.gap_start,
     }
+
+    for cursor, index in b.cursors { item.cursors_pos[index] = cursor.pos }
 
     append(history, item) or_return
 
@@ -511,7 +521,50 @@ get_last_cursor_decomp :: #force_inline proc(b: ^Buffer) -> (pos, sel, col_offse
 
 has_selection :: #force_inline proc(b: ^Buffer) -> (result: bool) {
     pos, sel, _ := get_last_cursor_decomp(b)
-    return pos != sel
+    return b.cursor_selection_mode || pos != sel
+}
+
+check_overlapping_cursors :: proc(b: ^Buffer) {
+    for i in 0..<len(b.cursors) {
+        for j in 1..<len(b.cursors) {
+            if i == j { continue }
+            pos1 := b.cursors[i].pos
+            pos2 := b.cursors[j].pos
+
+            // merge cursors that are actually on the same position
+            if !has_selection(b) && pos1 == pos2 {
+                ordered_remove(&b.cursors, i)
+            }
+
+            // TODO: Add merging cursors when doing region selection,
+            // to do this we need to sort the cursors in correct order before checking
+        }
+    }
+}
+
+merge_cursors :: #force_inline proc(b: ^Buffer, i, j: int) {
+    c1 := &b.cursors[i]
+    c2 := &b.cursors[j]
+
+    if c1.pos > c1.sel {
+        c2.sel = c1.sel
+    } else {
+        c2.sel = c1.pos
+    }
+
+    ordered_remove(&b.cursors, i)
+}
+
+get_strings_in_selections :: proc(b: ^Buffer) -> (result: string) {
+    str_buffer := strings.builder_make(context.temp_allocator)
+
+    for cursor in b.cursors {
+        start := min(cursor.pos, cursor.sel)
+        end := max(cursor.pos, cursor.sel)
+        strings.write_string(&str_buffer, b.str[start:end])
+    }
+
+    return strings.to_string(str_buffer)
 }
 
 set_last_cursor_pos :: #force_inline proc(b: ^Buffer, pos: int) {
@@ -608,41 +661,74 @@ translate_cursor :: proc(
     return
 }
 
-update_future_cursor_offsets :: proc(b: ^Buffer, threshold_to_update, offset: int) {
-    for &cursor in b.cursors {
-        if cursor.pos >= threshold_to_update {
-            cursor.pos = clamp(cursor.pos + offset, 0, buffer_len(b))
-            cursor.sel = cursor.pos
-            cursor.col_offset = -1
-        }
+update_future_cursor_offsets :: proc(b: ^Buffer, starting_cursor, offset: int) {
+    for i in starting_cursor..<len(b.cursors) {
+        cursor := &b.cursors[i]
+        cursor.pos = clamp(cursor.pos + offset, 0, buffer_len(b))
+        cursor.sel = cursor.pos
+        cursor.col_offset = -1
     }
 }
 
 remove :: proc(b: ^Buffer, count: int) {
-    for &cursor in b.cursors {
-        if cursor.pos == 0 && count < 0 { continue }
+    check_buffer_history_state(b)
 
-        remove_raw(b, cursor.pos, count)
+    // Make a cheap safety check early to see if the user actually wanted to
+    // delete the whole buffer but they did it with multiple cursors
+    total_of_deleted_chars := abs(count * len(b.cursors))
+
+    if total_of_deleted_chars >= buffer_len(b) {
+        remove_raw(b, 0, buffer_len(b))
+        delete_all_cursors(b, make_cursor())
+        return
+    }
+
+    for &cursor, index in b.cursors {
+        chars_to_delete := count
+
+        // Because we don't block the user to select the whole buffer with multiple
+        // cursors, we need to add some safety to the deletion process to make sure
+        // we can't fall out of bounds.
+        if cursor.pos == 0 && count < 0 {
+            continue
+        } else if count < 0 {
+            chars_to_delete = max(count, -cursor.pos)
+        } else {
+            chars_to_delete = min(count, buffer_len(b))
+        }
+
+        if chars_to_delete == 0 {
+            continue
+        }
+
+        remove_raw(b, cursor.pos, chars_to_delete)
 
         if count < 0 {
-            update_future_cursor_offsets(b, cursor.pos, count)
+            update_future_cursor_offsets(b, index, chars_to_delete)
         } else {
-            update_future_cursor_offsets(b, cursor.pos + count, count * -1)
+            // Since we're deleting forward from the position, we don't want to update
+            // our current cursor, but update all future ones because we need to find
+            // their new offsets on the buffer. We also make sure we update them by
+            // substracting the amount of characters that have been deleted from the
+            // current cursor.
+            update_future_cursor_offsets(b, index + 1, chars_to_delete * -1)
         }
     }
 }
 
 insert_char :: proc(b: ^Buffer, char: byte) {
-    for &cursor in b.cursors {
+    check_buffer_history_state(b)
+    for &cursor, index in b.cursors {
         insert_raw(b, cursor.pos, char)
-        update_future_cursor_offsets(b, cursor.pos, 1)
+        update_future_cursor_offsets(b, index, 1)
     }
 }
 
 insert_string :: proc(b: ^Buffer, str: string) {
-    for &cursor in b.cursors {
+    check_buffer_history_state(b)
+    for &cursor, index in b.cursors {
         insert_raw(b, cursor.pos, str)
-        update_future_cursor_offsets(b, cursor.pos, len(str))
+        update_future_cursor_offsets(b, index, len(str))
     }
 }
 
@@ -653,7 +739,6 @@ buffer_len :: proc(b: ^Buffer) -> int {
 
 @(private="file")
 remove_raw :: proc(b: ^Buffer, pos: Buffer_Cursor, count: int) {
-    check_buffer_history_state(b)
     chars_to_remove := abs(count)
     effective_pos := pos
 
@@ -678,7 +763,6 @@ insert_raw :: proc{
 @(private="file")
 insert_raw_char :: proc(b: ^Buffer, pos: Buffer_Cursor, char: byte) {
     assert(pos >= 0 && pos <= buffer_len(b))
-    check_buffer_history_state(b)
     conditionally_grow_buffer(b, 1)
     move_gap(b, pos)
     b.data[b.gap_start] = char
@@ -690,7 +774,6 @@ insert_raw_char :: proc(b: ^Buffer, pos: Buffer_Cursor, char: byte) {
 @(private="file")
 insert_raw_array :: proc(b: ^Buffer, pos: Buffer_Cursor, array: []byte) {
     assert(pos >= 0 && pos <= buffer_len(b))
-    check_buffer_history_state(b)
     conditionally_grow_buffer(b, len(array))
     move_gap(b, pos)
     copy_slice(b.data[b.gap_start:], array)

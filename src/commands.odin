@@ -4,6 +4,7 @@ import "core:log"
 import "core:strings"
 
 Command :: enum {
+    noop,
     modifier,
 
     increase_font_size,
@@ -69,25 +70,29 @@ Command :: enum {
     switch_cursor,
     toggle_cursor_group,
 
+    newline,
     self_insert,
 }
 
-do_command :: proc(cmd: Command, p: ^Pane, data: any) {
+do_command :: proc(cmd: Command, p: ^Pane, data: any) -> (handled: bool) {
     switch {
     case cmd == .modifier:
         command_add_modifier(data.(string))
+        return true
     case cmd == .quit_mode:
         command_reset_modes(p)
         editor_keyboard_quit(p)
-    case !widgets_pane.enabled && cmd == .ui_select:
-        // TODO: I don't like that I have to do this... but this is how inputs are
-        // being handled at the moment
-        newline(p)
+        return true
     case widgets_pane.enabled:
         ui_do_command(cmd, p, data)
+        return true
     case :
-        editor_do_command(cmd, p, data)
+        processed_cmd : Command = cmd == .ui_select ? .newline : cmd
+        editor_do_command(processed_cmd, p, data)
+        return true
     }
+
+    return false
 }
 
 command_add_modifier :: proc(input: string) {

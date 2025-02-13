@@ -95,14 +95,14 @@ get_key_representation :: proc(k: sdl.Keycode) -> string {
     return ""
 }
 
-handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
+handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> (handled: bool) {
     // NOTE: Disallow mod keys as keystrokes
     disallowed_keystrokes := [?]sdl.Keycode{
             .LCTRL, .RCTRL, .LSHIFT, .RSHIFT, .LALT, .RALT, .LGUI, .RGUI,
     }
 
     if slice.contains(disallowed_keystrokes[:], key.sym) {
-        return false
+        return
     }
 
     if key.sym == .F3 {
@@ -138,11 +138,11 @@ handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> bool {
 
     command, exists := bragi.settings.keybindings_table[match]
 
-    if exists {
-        do_command(command, p, match)
+    if exists && command != .noop {
+        handled = do_command(command, p, match)
     }
 
-    return exists
+    return
 }
 
 process_inputs :: proc() {

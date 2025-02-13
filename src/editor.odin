@@ -29,10 +29,10 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .undo:                    editor_undo_redo(p, .UNDO)
         case .redo:                    editor_undo_redo(p, .REDO)
 
-        case .kill_region:             log.error("NOT IMPLEMENTED")
-        case .kill_line:               editor_delete_to(p, .LINE_END)
-        case .kill_ring_save:          log.error("NOT IMPLEMENTED")
-        case .yank:                    yank(p, handle_paste)
+        case .kill_region:             editor_kill_region(p)
+        case .kill_line:               editor_kill_line(p)
+        case .kill_ring_save:          editor_kill_ring_save(p)
+        case .yank:                    editor_yank(p)
         case .yank_from_history:       log.error("NOT IMPLEMENTED")
 
         case .mark_backward_char:      log.error("NOT IMPLEMENTED")
@@ -68,6 +68,7 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .switch_cursor:           editor_manage_cursors(p, .SWITCH)
         case .toggle_cursor_group:     editor_manage_cursors(p, .TOGGLE_GROUP)
 
+        case .newline:                 editor_newline_and_indent(p)
         case .self_insert:             editor_self_insert(p, data.(string))
     }
 }
@@ -191,10 +192,6 @@ kill_current_buffer :: proc(p: ^Pane) {
     }
 }
 
-kill_region :: proc(pane: ^Pane, cut: bool, callback: Copy_Proc) {
-    log.error("IMPLEMENT")
-}
-
 editor_switch_to_pane_on_click :: proc(x, y: i32) {
     found, index := find_pane_in_window_coords(x, y)
 
@@ -205,14 +202,9 @@ editor_switch_to_pane_on_click :: proc(x, y: i32) {
 
     current_pane = &open_panes[index]
     found.last_keystroke = time.tick_now()
-    rel_x, rel_y := get_relative_coords_from_pane(found, x, y)
+    rel_x := x % found.rect.w
+    rel_y := y % found.rect.h
     mouse_set_point(found, rel_x, rel_y)
-}
-
-get_relative_coords_from_pane :: proc(p: ^Pane, x, y: i32) -> (rel_x, rel_y: i32) {
-    rel_x = x % p.rect.w
-    rel_y = y % p.rect.h
-    return
 }
 
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
@@ -268,16 +260,45 @@ editor_undo_redo :: proc(p: ^Pane, a: enum { REDO, UNDO }) {
     }
 }
 
-yank :: proc(p: ^Pane, callback: Paste_Proc) {
-    editor_self_insert(p, callback())
+editor_kill_line :: proc(p: ^Pane) {
+    delete_all_cursors(p.buffer, make_cursor(get_last_cursor_pos(p.buffer)))
+    p.buffer.cursor_selection_mode = true
+    editor_move_cursor_to(p, .LINE_END)
+    editor_kill_region(p)
+}
+
+
+editor_kill_region :: proc(p: ^Pane) {
+    if has_selection(p.buffer) {
+        result := get_strings_in_selections(p.buffer)
+        handle_copy(result)
+        editor_delete_to(p, .LEFT)
+        delete_all_cursors(p.buffer, make_cursor(get_last_cursor_pos(p.buffer)))
+    }
+}
+
+editor_kill_ring_save :: proc(p: ^Pane) {
+    if has_selection(p.buffer) {
+        result := get_strings_in_selections(p.buffer)
+        handle_copy(result)
+        delete_all_cursors(p.buffer, make_cursor(get_last_cursor_pos(p.buffer)))
+    }
+}
+
+editor_yank :: proc(p: ^Pane) {
+    editor_self_insert(p, handle_paste())
+}
+
+editor_newline_and_indent :: proc(p: ^Pane) {
+    editor_self_insert(p, "\n")
 }
 
 editor_self_insert :: proc(p: ^Pane, s: string) {
-    insert_string(p.buffer, s)
-}
+    if has_selection(p.buffer) {
+        editor_delete_to(p, .LEFT)
+    }
 
-newline :: proc(p: ^Pane) {
-    insert_char(p.buffer, '\n')
+    insert_string(p.buffer, s)
 }
 
 editor_delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
@@ -291,12 +312,17 @@ editor_delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
         cursor_after_deletion := translate_cursor(p.buffer, use_last_cursor(p.buffer), t)
         count = cursor_after_deletion - cursor_at_start
 
+        // If trying to kill to the end of the line but we're currently there, we just
+        // take the next character forward and pull the next line to the current one.
         if t == .LINE_END && count == 0 {
             count = 1
         }
     }
 
+    if count == 0 { return }
+
     remove(p.buffer, count)
+    p.buffer.cursor_selection_mode = false
 }
 
 editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {

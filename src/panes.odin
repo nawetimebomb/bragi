@@ -190,7 +190,9 @@ update_and_draw_active_pane :: proc() {
 
                 cursor_face : Face = .cursor
 
-                if p.buffer.cursor_group_mode {
+                if p.buffer.cursor_selection_mode {
+                    cursor_face = .cursor
+                } else if p.buffer.cursor_group_mode {
                     cursor_face = .cursor_active
                 } else if cursor_index == len(p.buffer.cursors) - 1 {
                     cursor_face = .cursor_active

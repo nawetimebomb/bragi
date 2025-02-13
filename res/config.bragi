@@ -25,9 +25,9 @@ redo                            <C-S-/>
 
 ui_select                       <RET>
 
-# kill_region
+kill_region                     <C-w>
 kill_line                       <C-k>
-# kill_ring_save
+kill_ring_save                  <M-w>
 yank                            <C-y>
 # yank_from_history
 

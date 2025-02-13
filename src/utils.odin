@@ -116,65 +116,6 @@ is_newline :: #force_inline proc(b: byte) -> bool {
     return b == '\n'
 }
 
-scan_through_similar_runes :: proc(
-    s: string,
-    direction: Direction,
-    start_offset: int, count: int = 1,
-    rune_cat: Rune_Category = .undefined,
-) -> (offset: int) {
-    found: int
-    pos := start_offset
-    match_cat := rune_cat
-
-    if rune_cat == .undefined {
-        match_cat = get_rune_category(utf8.rune_at(s, pos))
-    }
-
-    for ; pos > 0 && pos < len(s); pos += int(direction) {
-        r := utf8.rune_at(s, pos)
-
-        if match_cat != get_rune_category(r) {
-            found += 1
-        }
-
-        if found == count { break }
-    }
-
-    offset = clamp(pos - start_offset, 0, len(s) - 1)
-    fmt.println(offset)
-    return
-}
-
-is_continuation_byte :: proc(b: byte) -> bool {
-	return b >= 0x80 && b < 0xc0
-}
-
-buffer_cursor_to_view_cursor :: proc(b: ^Buffer, p: Buffer_Cursor) -> (result: [2]int) {
-    result.y = get_line_index(b, p)
-    bol, _ := get_line_boundaries(b, result.y)
-    result.x = p - bol
-    return
-}
-
-buffer_cursor_to_caret :: proc(b: ^Buffer, pos: Buffer_Cursor) -> (result: Caret_Pos) {
-    result.y = get_line_index(b, pos)
-    bol, _ := get_line_boundaries(b, result.y)
-    result.x = pos - bol
-    return
-}
-
-get_parsed_length_to_kb :: proc(value_in_bytes: f64) -> string {
-    if value_in_bytes == 0 {
-        return ""
-    } else if value_in_bytes > 1000 * 1000 {
-        return fmt.tprintf("%.1fm", value_in_bytes / (1000 * 1000))
-    } else if value_in_bytes > 1000 {
-        return fmt.tprintf("%.1fk", value_in_bytes / 1000)
-    } else {
-        return fmt.tprintf("{0}", value_in_bytes)
-    }
-}
-
 get_dir_and_filename_from_fullpath :: proc(s: string) -> (dir, filename: string) {
     last_slash_index := strings.last_index(s, "/")
 

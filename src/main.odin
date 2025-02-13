@@ -77,7 +77,7 @@ frame_counter: u64
 open_buffers: [dynamic]Buffer
 open_panes:   [dynamic]Pane
 current_pane: ^Pane
-widgets_pane: Widget
+widgets_pane: Widgets
 
 bragi: Bragi
 

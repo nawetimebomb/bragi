@@ -221,6 +221,46 @@ draw_gutter :: proc(
     return
 }
 
+draw_text_with_highlight :: proc(
+    regular_font, highlight_font: Font,
+    s: string,
+    regular_color, highlight_color: Face,
+    hl_start, hl_end: int,
+    x, y: i32,
+) -> (sx: i32) {
+    colors := bragi.settings.colorscheme_table
+    sx = x
+    sy := y
+
+    if hl_start == hl_end {
+        return draw_text(regular_font, s, regular_color, x, y)
+    }
+
+    for r, index in s {
+        f := regular_font
+
+        if index >= hl_start && index < hl_end {
+            f = highlight_font
+            set_fg(f.texture, colors[highlight_color])
+        } else {
+            set_fg(f.texture, colors[regular_color])
+        }
+
+        g := f.glyphs[r]
+        src := make_rect(g.x, g.y, g.w, g.h)
+        dest := make_rect(
+            f32(sx + g.xoffset),
+            f32(sy + g.yoffset) - f.y_offset_for_centering,
+            f32(g.w), f32(g.h),
+        )
+
+        draw_copy(f.texture, &src, &dest)
+        sx += g.xadvance
+    }
+
+    return sx
+}
+
 draw_text :: proc(f: Font, s: string, color: Face, x, y: i32) -> (sx: i32) {
     colors := bragi.settings.colorscheme_table
     sx = x

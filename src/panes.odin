@@ -19,21 +19,11 @@ import sdl "vendor:sdl2"
 // These "search" panes will also have a targeting pane, where the search will be executed,
 // and the results will be pulled from.
 
-CURSOR_BLINK_COUNT   :: 10
+CURSOR_BLINK_COUNT   :: 6
 CURSOR_BLINK_TIMEOUT :: 500 * time.Millisecond
 CURSOR_RESET_TIMEOUT :: 50 * time.Millisecond
 
 SCROLLING_THRESHOLD :: 2
-
-Caret_Pos :: [2]int
-Caret :: struct {
-    blinking:       bool,
-    blinking_count: int,
-    coords:         Caret_Pos,
-    last_keystroke: time.Tick,
-    last_offset:    int,
-    last_update:    time.Tick,
-}
 
 Marker :: struct {
     buffer: ^Buffer,

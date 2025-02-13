@@ -20,8 +20,6 @@ import "tokenizer"
 
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
-Buffer_Cursor :: int
-
 Cursor_Operation :: enum {
     DELETE, SWITCH, TOGGLE_GROUP,
 }
@@ -71,8 +69,8 @@ Buffer :: struct {
 
     data:                  []byte,
     dirty:                 bool,
-    gap_end:               Buffer_Cursor,
-    gap_start:             Buffer_Cursor,
+    gap_end:               int,
+    gap_start:             int,
     lines:                 [dynamic]Range,
 
     str:                   string,
@@ -293,7 +291,7 @@ maybe_tokenize_buffer :: proc(b: ^Buffer) {
     profiling_end()
 }
 
-is_between_line :: #force_inline proc(b: ^Buffer, line, pos: Buffer_Cursor) -> bool {
+is_between_line :: #force_inline proc(b: ^Buffer, line, pos: int) -> bool {
     assert(line < len(b.lines))
     start, end := get_line_boundaries(b, line)
     return pos >= start && pos <= end
@@ -304,7 +302,7 @@ is_last_line :: #force_inline proc(b: ^Buffer, line: int) -> bool {
     return line == len(b.lines) - 1
 }
 
-get_line_index :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> (line: int) {
+get_line_index :: #force_inline proc(b: ^Buffer, pos: int) -> (line: int) {
     for offset, index in b.lines {
         if is_between_line(b, index, pos) {
             line = index
@@ -465,7 +463,7 @@ refresh_string_buffer :: proc(b: ^Buffer) {
     profiling_end()
 }
 
-get_byte_at :: #force_inline proc(b: ^Buffer, pos: Buffer_Cursor) -> byte {
+get_byte_at :: #force_inline proc(b: ^Buffer, pos: int) -> byte {
     left, right := buffer_get_strings(b)
 
     if pos < len(left) {
@@ -753,7 +751,7 @@ buffer_len :: proc(b: ^Buffer) -> int {
 }
 
 @(private="file")
-remove_raw :: proc(b: ^Buffer, pos: Buffer_Cursor, count: int) {
+remove_raw :: proc(b: ^Buffer, pos: int, count: int) {
     chars_to_remove := abs(count)
     effective_pos := pos
 
@@ -776,7 +774,7 @@ insert_raw :: proc{
 }
 
 @(private="file")
-insert_raw_char :: proc(b: ^Buffer, pos: Buffer_Cursor, char: byte) {
+insert_raw_char :: proc(b: ^Buffer, pos: int, char: byte) {
     assert(pos >= 0 && pos <= buffer_len(b))
     conditionally_grow_buffer(b, 1)
     move_gap(b, pos)
@@ -787,7 +785,7 @@ insert_raw_char :: proc(b: ^Buffer, pos: Buffer_Cursor, char: byte) {
 }
 
 @(private="file")
-insert_raw_array :: proc(b: ^Buffer, pos: Buffer_Cursor, array: []byte) {
+insert_raw_array :: proc(b: ^Buffer, pos: int, array: []byte) {
     assert(pos >= 0 && pos <= buffer_len(b))
     conditionally_grow_buffer(b, len(array))
     move_gap(b, pos)
@@ -798,18 +796,18 @@ insert_raw_array :: proc(b: ^Buffer, pos: Buffer_Cursor, array: []byte) {
 }
 
 @(private="file")
-insert_raw_rune :: proc(b: ^Buffer, pos: Buffer_Cursor, r: rune) {
+insert_raw_rune :: proc(b: ^Buffer, pos: int, r: rune) {
     bytes, _ := utf8.encode_rune(r)
     insert_raw_array(b, pos, bytes[:])
 }
 
 @(private="file")
-insert_raw_string :: proc(b: ^Buffer, pos: Buffer_Cursor, str: string) {
+insert_raw_string :: proc(b: ^Buffer, pos: int, str: string) {
     insert_raw_array(b, pos, transmute([]byte)str)
 }
 
 @(private="file")
-move_gap :: proc(b: ^Buffer, pos: Buffer_Cursor) {
+move_gap :: proc(b: ^Buffer, pos: int) {
     pos := clamp(pos, 0, buffer_len(b))
 
     if pos == b.gap_start { return }

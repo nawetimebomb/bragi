@@ -13,7 +13,7 @@ VIEWPORT_MAX_ITEMS :: 8
 
 WIDGETS_PANE_LARGE_SIZE :: 10
 
-Widget_Action :: enum {
+Widgets_Action :: enum {
     NONE,
     BUFFERS,
     FILES,
@@ -50,27 +50,27 @@ Result :: struct {
     value:     Result_Value,
 }
 
-Widget :: struct {
-    action:        Widget_Action,
-    caret:         Caret,
-    enabled:       bool,
-    did_select:    bool,
-    prev_state:    Pane_State,
-    query:         strings.Builder,
-    columns_len:   [MAX_VIEW_COLUMNS]int,
-    results:       [dynamic]Result,
-    target:        ^Pane,
-    texture:       Texture,
-    rect:          Rect,
-    relative_size: [2]i32,
-    viewport:      [2]i32,
+Widgets :: struct {
+    action :            Widgets_Action,
+    cursor_showing:     bool,
+    cursor_last_update: time.Tick,
+    cursor:             int,
+    selection:          int,
+    did_select:         bool,
+    query:              strings.Builder,
+    results:            [dynamic]Result,
+
+    enabled:            bool,
+    prev_state:         Pane_State,
+    columns_offset:     [MAX_VIEW_COLUMNS]int,
+    target:             ^Pane,
+
+    texture:            Texture,
+    rect:               Rect,
+    yoffset:            int,
 }
 
 widgets_init :: proc() {
-    widgets_pane.relative_size = {
-        window_width / char_width,
-        WIDGETS_PANE_LARGE_SIZE,
-    }
     widgets_pane.query = strings.builder_make()
     widgets_pane.results = make([dynamic]Result, 0)
 }
@@ -82,32 +82,26 @@ widgets_destroy :: proc() {
 }
 
 widgets_update_draw :: proc() {
-    caret := &widgets_pane.caret
-
     if !widgets_pane.enabled { return }
 
-    caret_y := i32(widgets_pane.caret.coords.y)
-
-    if caret_y > widgets_pane.viewport.y + VIEWPORT_MAX_ITEMS {
-        widgets_pane.viewport.y = caret_y - VIEWPORT_MAX_ITEMS
-    } else if caret_y < widgets_pane.viewport.y {
-        widgets_pane.viewport.y = caret_y
+    if widgets_pane.selection > widgets_pane.yoffset + VIEWPORT_MAX_ITEMS {
+        widgets_pane.yoffset = widgets_pane.selection - VIEWPORT_MAX_ITEMS
+    } else if widgets_pane.selection < widgets_pane.yoffset {
+        widgets_pane.yoffset = widgets_pane.selection
     }
 
-    widgets_pane.viewport.y = max(0, widgets_pane.viewport.y)
+    widgets_pane.yoffset = max(0, widgets_pane.yoffset)
+
+    item := widgets_pane.results[widgets_pane.selection]
 
     switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
-        item := widgets_pane.results[widgets_pane.caret.coords.y]
-
         if !item.invalid {
             widgets_pane.target.buffer = item.value.(Result_Buffer_Pointer)
         }
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
-        item := widgets_pane.results[widgets_pane.caret.coords.y]
-
         if !item.invalid {
             cursor_pos := item.value.(Result_Cursor_Pos)
             buffer := widgets_pane.target.buffer
@@ -129,7 +123,104 @@ widgets_update_draw :: proc() {
         }
     }
 
-    widgets_draw()
+    colors := &bragi.settings.colorscheme_table
+    font := &font_ui
+    font_bold := &font_ui_bold
+
+    set_renderer_target(widgets_pane.texture)
+    clear_background(colors[.background])
+
+    profiling_start("widgets.odin:widgets_update_draw -> Render results")
+    selected_line := widgets_pane.selection - widgets_pane.yoffset
+
+    for item, line_index in widgets_pane.results[widgets_pane.yoffset:] {
+        COLUMN_PADDING := 2 * font_ui.em_width
+
+        row := i32(line_index) * font.line_height
+        hl_start := item.highlight[0]
+        hl_end := item.highlight[1]
+        has_highlight := hl_start != hl_end
+        sx: i32
+
+        if selected_line == line_index {
+            set_bg(colors[.highlight_line])
+            draw_rect(0, row, widgets_pane.rect.w, font.line_height)
+        }
+
+        if item.invalid {
+            draw_text(font_ui, item.format, .default, sx, row)
+        } else {
+            splits := strings.split(item.format, "\n", context.temp_allocator)
+            offset: i32
+
+            for index in 0..<MAX_VIEW_COLUMNS {
+                col_string := splits[index]
+                face: Face
+
+                switch index {
+                case 0: face = .default
+                case 1: face = .highlight
+                case 2: face = .keyword
+                case 3: face = .constant
+                }
+
+                if index == 0 {
+                    draw_text_with_highlight(
+                        font_ui, font_ui_bold,
+                        col_string, .default, .highlight,
+                        hl_start, hl_end, 0, row,
+                    )
+                } else {
+                    padding := i32(index) * COLUMN_PADDING
+                    draw_text(
+                        font_ui, col_string, face,
+                        padding + offset * font_ui.em_width, row,
+                    )
+                }
+
+                offset += i32(widgets_pane.columns_offset[index])
+            }
+
+        }
+    }
+    profiling_end()
+
+    profiling_start("widgets.odin:widgets_update_draw -> Render prompt")
+    query := strings.to_string(widgets_pane.query)
+    prompt_fmt := fmt.tprintf(
+        "({0}/{1}) {2}: ",
+        widgets_pane.selection + 1,
+        len(widgets_pane.results),
+        get_prompt_text(),
+    )
+    prompt_y := widgets_pane.rect.h - font_ui.line_height
+
+    set_bg(colors[.background])
+    draw_rect(
+        0, widgets_pane.rect.h - font_ui.line_height,
+        widgets_pane.rect.w, font_ui.line_height,
+    )
+
+    // Draw the prompt and the query
+    sx := draw_text(font_ui_bold, prompt_fmt, .highlight, 0, prompt_y)
+    draw_text(font_ui, query, .default, sx, prompt_y)
+
+    cursor_rect := make_rect(
+        get_text_size(font_ui, prompt_fmt), prompt_y,
+        font_ui.em_width, font_ui.line_height,
+    )
+    cursor_rect.x += get_text_size(font_ui, query[:widgets_pane.cursor])
+    char_behind_cursor : byte = ' '
+
+    if widgets_pane.cursor < len(query) {
+        char_behind_cursor = query[widgets_pane.cursor]
+    }
+
+    draw_cursor(font_ui, {}, cursor_rect, true, char_behind_cursor, .cursor)
+
+    set_renderer_target()
+    draw_copy(widgets_pane.texture, nil, &widgets_pane.rect)
+    profiling_end()
 }
 
 rollback_to_prev_value :: proc() {
@@ -166,12 +257,11 @@ maybe_create_new_texture_for_widgets :: proc() {
     }
 }
 
-widgets_show :: proc(target: ^Pane, action: Widget_Action) {
+widgets_show :: proc(target: ^Pane, action: Widgets_Action) {
     editor_keyboard_quit(target)
     cursor_pos := get_last_cursor_pos(target.buffer)
 
     widgets_pane.action = action
-    widgets_pane.caret.coords = {}
     widgets_pane.enabled = true
     widgets_pane.target = target
     widgets_pane.prev_state = {
@@ -193,11 +283,11 @@ widgets_hide :: proc() {
 
     widgets_pane.enabled = false
     widgets_pane.action = .NONE
-    widgets_pane.caret.coords = {}
+    widgets_pane.cursor = 0
+    widgets_pane.selection = 0
     widgets_pane.did_select = false
     widgets_pane.prev_state = {}
     widgets_pane.target = nil
-    widgets_pane.viewport = {}
 
     strings.builder_reset(&widgets_pane.query)
     resize_panes()
@@ -251,7 +341,7 @@ filter_results :: proc() {
             }
 
             query = strings.to_string(widgets_pane.query)
-            widgets_pane.caret.coords.x = len(query)
+            widgets_pane.cursor = len(query)
         }
 
         dir, filename_query := get_dir_and_filename_from_fullpath(query)
@@ -307,6 +397,10 @@ filter_results :: proc() {
             s := ""
             clear(&b.cursors)
 
+            // This happens on the target pane, so we want to make it think we're
+            // also sending them keystrokes
+            widgets_pane.target.last_keystroke = time.tick_now()
+
             if case_sensitive {
                 s = strings.clone(b.str, context.temp_allocator)
             } else {
@@ -350,13 +444,12 @@ filter_results :: proc() {
         }
     }
 
-    widgets_pane.caret.coords.y = clamp(widgets_pane.caret.coords.y, 0, len(widgets_pane.results) - 1)
-    widgets_pane.viewport.y = 0
+    widgets_pane.selection =
+        clamp(widgets_pane.selection, 0, len(widgets_pane.results) - 1)
+    widgets_pane.yoffset = 0
 }
 
 ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
-    widgets_pane.caret.last_keystroke = time.tick_now()
-
     #partial switch cmd {
         case .search_backward:      ui_move_to(.UP)
         case .search_forward:       ui_move_to(.DOWN)
@@ -384,81 +477,59 @@ ui_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
     }
 }
 
-ui_translate :: proc(t: Cursor_Translation) -> (pos: Caret_Pos) {
-    pos = widgets_pane.caret.coords
-    query := strings.to_string(widgets_pane.query)
-    results := widgets_pane.results
-
-    switch t {
-    case .DOWN:
-        pos.y += 1
-        if pos.y >= len(results) {
-            pos.y = 0
-        }
-    case .UP:
-        pos.y -= 1
-        if pos.y < 0 {
-            pos.y = len(results) - 1
-        }
-    case .LEFT:
-        if pos.x > 0 {
-            pos.x -= 1
-        }
-    case .RIGHT:
-        if pos.x < len(query) {
-            pos.x += 1
-        }
-    case .BUFFER_START:
-        pos.x = 0
-    case .BUFFER_END:
-        pos.x = len(query)
-    case .LINE_START:
-        pos.x = 0
-    case .LINE_END:
-        pos.x = len(query)
-    case .WORD_START:
-        for pos.x > 0 && is_common_delimiter(query[pos.x - 1])  { pos.x -= 1 }
-        for pos.x > 0 && !is_common_delimiter(query[pos.x - 1]) { pos.x -= 1 }
-    case .WORD_END:
-        for pos.x < len(query) && is_common_delimiter(query[pos.x])  { pos.x += 1 }
-        for pos.x < len(query) && !is_common_delimiter(query[pos.x]) { pos.x += 1 }
-    }
-
-    return
-}
-
 ui_delete_to :: proc(t: Cursor_Translation) {
-    new_pos := ui_translate(t)
-    start := min(widgets_pane.caret.coords.x, new_pos.x)
-    end := max(widgets_pane.caret.coords.x, new_pos.x)
+    previous_pos := widgets_pane.cursor
+    ui_move_to(t)
+    current_pos := widgets_pane.cursor
+    start := min(previous_pos, current_pos)
+    end   := max(previous_pos, current_pos)
     remove_range(&widgets_pane.query.buf, start, end)
-    widgets_pane.caret.coords.x = start
     filter_results()
 }
 
 ui_move_to :: proc(t: Cursor_Translation) {
-    widgets_pane.caret.coords = ui_translate(t)
+    w := &widgets_pane
+    query := strings.to_string(w.query)
+
+    #partial switch t {
+        case .DOWN:         w.selection = min(w.selection + 1, len(w.results) - 1)
+        case .UP:           w.selection = max(w.selection - 1, 0)
+        case .LEFT:         w.cursor = max(w.cursor - 1, 0)
+        case .RIGHT:        w.cursor = min(w.cursor + 1, len(query))
+        case .BUFFER_START,
+            .LINE_START:    w.cursor = 0
+        case .BUFFER_END,
+            .LINE_END:      w.cursor = len(query)
+        case .WORD_START: {
+            for w.cursor > 0 &&
+                is_common_delimiter(query[w.cursor - 1])  { w.cursor -= 1 }
+            for w.cursor > 0 &&
+                !is_common_delimiter(query[w.cursor - 1]) { w.cursor -= 1 }
+        }
+        case .WORD_END: {
+            for w.cursor < len(query) &&
+                is_common_delimiter(query[w.cursor])  { w.cursor += 1 }
+            for w.cursor < len(query) &&
+                !is_common_delimiter(query[w.cursor]) { w.cursor += 1 }
+        }
+    }
 }
 
 ui_select :: proc() {
     widgets_pane.did_select = true
     handled := true
     query := strings.to_string(widgets_pane.query)
+    item := widgets_pane.results[widgets_pane.selection]
 
     switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
-        // NOTE: We only care about the selection with nil pointer because the other ones
-        // are changed on the fly, but this one requires a new buffer to be created.
-        item := widgets_pane.results[widgets_pane.caret.coords.y]
-
         if item.invalid {
             widgets_pane.target.buffer = add(buffer_init(query, 0))
         }
 
         widgets_hide()
     case .FILES:
-        item := widgets_pane.results[widgets_pane.caret.coords.y]
         if item.invalid {
             _, filename := get_dir_and_filename_from_fullpath(query)
             widgets_pane.target.buffer = add(buffer_init(filename, 0))
@@ -469,8 +540,8 @@ ui_select :: proc() {
                 strings.builder_reset(&widgets_pane.query)
                 strings.write_string(&widgets_pane.query, f.filepath)
                 strings.write_string(&widgets_pane.query, "\\")
-                widgets_pane.caret.coords.y = 0
-                widgets_pane.caret.coords.x = len(widgets_pane.query.buf)
+                widgets_pane.selection = 0
+                widgets_pane.cursor = len(widgets_pane.query.buf)
                 filter_results()
                 handled = false
             } else {
@@ -479,7 +550,6 @@ ui_select :: proc() {
         }
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         buffer := widgets_pane.target.buffer
-        item := widgets_pane.results[widgets_pane.caret.coords.y]
 
         if item.invalid {
             last_pos := widgets_pane.prev_state.cursor_pos
@@ -496,8 +566,8 @@ ui_select :: proc() {
 }
 
 ui_self_insert :: proc(s: string) {
-    if ok, _ := inject_at(&widgets_pane.query.buf, widgets_pane.caret.coords.x, s); ok {
-        widgets_pane.caret.coords.x += len(s)
+    if ok, _ := inject_at(&widgets_pane.query.buf, widgets_pane.cursor, s); ok {
+        widgets_pane.cursor += len(s)
     }
 
     filter_results()
@@ -523,7 +593,7 @@ get_prompt_text :: #force_inline proc() -> string {
 }
 
 clear_results :: proc() {
-    widgets_pane.columns_len = { 16, 6, 6, 0 }
+    widgets_pane.columns_offset = {}
 
     for &item in widgets_pane.results {
         delete(item.format)
@@ -540,10 +610,11 @@ clear_results :: proc() {
 }
 
 widgets_set_column_sizes :: #force_inline proc(cl0, cl1, cl2, cl3: int) {
-    widgets_pane.columns_len[0] = max(cl0, widgets_pane.columns_len[0])
-    widgets_pane.columns_len[1] = max(cl1, widgets_pane.columns_len[1])
-    widgets_pane.columns_len[2] = max(cl2, widgets_pane.columns_len[2])
-    widgets_pane.columns_len[3] = max(cl3, widgets_pane.columns_len[3])
+    co := &widgets_pane.columns_offset
+    co[0] = max(cl0, co[0])
+    co[1] = max(cl1, co[1])
+    co[2] = max(cl2, co[2])
+    co[3] = max(cl3, co[3])
 }
 
 widgets_get_buffer_row_format :: #force_inline proc(b: ^Buffer) -> string {
@@ -618,11 +689,6 @@ widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: int) -> str
         c0 = b.str[start_pos:end_pos]
     }
 
-    { // c1
-
-
-    }
-
     { // c2
         line_start := get_line_start_after_indent(b, coords.line)
         line_end := line_start
@@ -632,142 +698,4 @@ widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: int) -> str
 
     widgets_set_column_sizes(len(c0), len(c1), len(c2), len(c3))
     return fmt.aprintf("{0}\n{1}\n{2}\n{3}", c0, c1, c2, c3)
-}
-
-widgets_draw :: proc() {
-    caret := widgets_pane.caret
-    colors := &bragi.settings.colorscheme_table
-    font := &font_ui
-    font_bold := &font_ui_bold
-    viewport := widgets_pane.viewport
-
-    set_renderer_target(widgets_pane.texture)
-    clear_background(colors[.background])
-
-    { // Start Results
-        profiling_start("ui_pane.odin:widgets_render")
-
-        for item, line_index in widgets_pane.results[widgets_pane.viewport.y:] {
-            COLUMN_PADDING :: 2
-
-            row := i32(line_index) * font.line_height
-            hl_start := item.highlight[0]
-            hl_end := item.highlight[1]
-            has_highlight := hl_start != hl_end
-            row_builder := strings.builder_make(context.temp_allocator)
-            cl0 := widgets_pane.columns_len[0] + COLUMN_PADDING
-            cl1 := cl0 + widgets_pane.columns_len[1] + COLUMN_PADDING
-            cl2 := cl1 + widgets_pane.columns_len[2] + COLUMN_PADDING
-            cl3 := cl2 + widgets_pane.columns_len[3] + COLUMN_PADDING
-            x: i32
-
-            if item.invalid {
-                strings.write_string(&row_builder, item.format)
-            } else {
-                splits := strings.split(item.format, "\n", context.temp_allocator)
-
-                for col_len, col_index in widgets_pane.columns_len {
-                    col_str := splits[col_index]
-                    justify_proc := strings.left_justify
-
-                    if col_index == len(splits) - 1  {
-                        justify_proc = strings.right_justify
-                    }
-
-                    s := justify_proc(
-                        col_str,
-                        col_len + COLUMN_PADDING,
-                        " ",
-                        context.temp_allocator,
-                    )
-                    strings.write_string(&row_builder, s)
-                }
-            }
-
-            if caret.coords.y - int(viewport.y) == line_index {
-                set_bg(colors[.highlight_line])
-                draw_rect(0, row, widgets_pane.rect.w, font.line_height)
-            }
-
-            for r, char_index in strings.to_string(row_builder) {
-                used_font := font
-
-                if !item.invalid {
-                    if has_highlight && hl_start <= char_index && hl_end > char_index {
-                        used_font = font_bold
-                        set_fg(used_font.texture, colors[.highlight])
-                    } else if char_index >= cl1 {
-                        set_fg(used_font.texture, colors[.keyword])
-                    } else if char_index >= cl0 {
-                        set_fg(used_font.texture, colors[.highlight])
-                    } else {
-                        set_fg(used_font.texture, colors[.default])
-                    }
-                }
-
-                g := used_font.glyphs[r]
-                src := make_rect(g.x, g.y, g.w, g.h)
-                dest := make_rect(
-                    f32(x + g.xoffset),
-                    f32(row + g.yoffset) - used_font.y_offset_for_centering,
-                    f32(g.w), f32(g.h),
-                )
-                draw_copy(used_font.texture, &src, &dest)
-                x += g.xadvance
-            }
-        }
-
-        profiling_end()
-    } // End Results
-
-    { // Start Prompt
-        current_font := font_ui
-        prompt_fmt := fmt.tprintf(
-            "({0}/{1}) {2}: ", caret.coords.y + 1, len(widgets_pane.results), get_prompt_text(),
-        )
-        prompt_str := fmt.tprintf("{0}{1}", prompt_fmt, strings.to_string(widgets_pane.query))
-        row := widgets_pane.rect.h - current_font.line_height
-        x: i32
-
-        set_bg(colors[.background])
-        draw_rect(
-            0, widgets_pane.rect.h - current_font.line_height,
-            widgets_pane.rect.w, current_font.line_height,
-        )
-
-        if !caret.blinking {
-            set_bg(colors[.cursor])
-            draw_rect(
-                i32(caret.coords.x + len(prompt_fmt)) * current_font.em_width, row,
-                current_font.em_width, current_font.line_height,
-            )
-        }
-
-        for r, index in prompt_str {
-            current_font = font_ui
-
-            if index < len(prompt_fmt) {
-                current_font = font_ui_bold
-                set_fg(current_font.texture, colors[.highlight])
-                // TODO: Is cursor showing?
-            // } else if is_caret_showing(&caret, i32(index - len(prompt_fmt)), 0, 0) {
-            //     set_fg(current_font.texture, colors[.background])
-            } else {
-                set_fg(current_font.texture, colors[.default])
-            }
-
-            glyph := current_font.glyphs[r]
-            src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
-            dest := make_rect(
-                f32(x + glyph.xoffset),
-                f32(row + glyph.yoffset) - current_font.y_offset_for_centering,
-                f32(glyph.w), f32(glyph.h),
-            )
-            draw_copy(current_font.texture, &src, &dest)
-            x += glyph.xadvance
-        }
-    } // End Prompt
-
-    set_renderer_target()
-    draw_copy(widgets_pane.texture, nil, &widgets_pane.rect)
 }

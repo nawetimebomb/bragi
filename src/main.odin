@@ -67,8 +67,12 @@ window_width:    i32
 window_height:   i32
 window_in_focus: bool
 
+mouse_x: i32
+mouse_y: i32
+
 bragi_is_running: bool
 frame_delta_time: time.Duration
+frame_counter: u64
 
 open_buffers: [dynamic]Buffer
 open_panes:   [dynamic]Pane
@@ -122,7 +126,7 @@ initialize_context :: proc() {
                               {.SHOWN, .RESIZABLE, .ALLOW_HIGHDPI})
     assert(window != nil, "Cannot open window")
 
-    renderer = sdl.CreateRenderer(window, -1, {.ACCELERATED, .PRESENTVSYNC})
+    renderer = sdl.CreateRenderer(window, -1, {.ACCELERATED})
     assert(renderer != nil, "Cannot create renderer")
 
     sdl.SetCursor(sdl.CreateSystemCursor(.IBEAM))
@@ -222,6 +226,7 @@ main :: proc() {
     previous_frame_time := time.tick_now()
 
     for bragi_is_running {
+        frame_counter += 1
         frame_start := sdl.GetPerformanceCounter()
 
         set_bg(bragi.settings.colorscheme_table[.background])
@@ -233,7 +238,7 @@ main :: proc() {
 
         for &p in open_panes {
             if p.id != current_pane.id {
-                update_and_draw_inactive_panes(&p)
+                update_and_draw_dormant_panes(&p)
             }
         }
 
@@ -259,6 +264,12 @@ main :: proc() {
 
         if !window_in_focus {
             FRAMETIME_LIMIT :: 100 // 10 FPS
+
+            elapsed :=
+                f32(frame_end - frame_start) / f32(sdl.GetPerformanceCounter()) * 1000
+            sdl.Delay(u32(math.floor(FRAMETIME_LIMIT - elapsed)))
+        } else {
+            FRAMETIME_LIMIT :: 3.33 // 300 FPS
 
             elapsed :=
                 f32(frame_end - frame_start) / f32(sdl.GetPerformanceCounter()) * 1000

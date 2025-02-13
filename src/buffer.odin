@@ -93,6 +93,8 @@ Buffer :: struct {
     readonly:              bool,
     modified:              bool,
     crlf:                  bool,
+
+    last_update_frame:     u64,
 }
 
 buffer_init :: proc(
@@ -198,6 +200,8 @@ get_or_create_buffer :: proc(
 }
 
 buffer_update :: proc(b: ^Buffer) {
+    if b.last_update_frame == frame_counter { return }
+
     update_buffer_time(b)
 
     if len(b.cursors) == 0 { delete_all_cursors(b, make_cursor()) }
@@ -217,6 +221,7 @@ buffer_update :: proc(b: ^Buffer) {
         refresh_string_buffer(b)
         recalculate_lines(b)
         maybe_tokenize_buffer(b)
+        report_update_to_panes_using_buffer(b)
     }
 }
 
@@ -235,6 +240,8 @@ buffer_destroy :: proc(b: ^Buffer) {
 }
 
 update_buffer_time :: proc(b: ^Buffer) {
+    b.last_update_frame = frame_counter
+
     if b.enable_history {
         b.current_time = time.tick_now()
         if b.undo_timeout <= 0 {
@@ -395,12 +402,6 @@ push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.
 
     append(history, item) or_return
 
-    // TODO: Keep history length to 5 temporarily
-    for len(history) > 5 {
-        delete(history[0].data)
-        ordered_remove(history, 0)
-    }
-
     return nil
 }
 
@@ -528,31 +529,45 @@ check_overlapping_cursors :: proc(b: ^Buffer) {
     for i in 0..<len(b.cursors) {
         for j in 1..<len(b.cursors) {
             if i == j { continue }
-            pos1 := b.cursors[i].pos
-            pos2 := b.cursors[j].pos
+            // merge cursors that are actually on the same position, when no selection is happening
+            if !has_selection(b) {
+                pos1 := b.cursors[i].pos
+                pos2 := b.cursors[j].pos
 
-            // merge cursors that are actually on the same position
-            if !has_selection(b) && pos1 == pos2 {
-                ordered_remove(&b.cursors, i)
+                if pos1 == pos2 {
+                    ordered_remove(&b.cursors, i)
+                }
+            } else {
+                hi1 := max(b.cursors[i].pos, b.cursors[i].sel)
+                lo2 := min(b.cursors[j].pos, b.cursors[j].sel)
+                hi2 := max(b.cursors[j].pos, b.cursors[j].sel)
+
+                if hi1 >= lo2 && hi1 < hi2 {
+                    merge_cursors(b, i, j)
+                }
             }
-
-            // TODO: Add merging cursors when doing region selection,
-            // to do this we need to sort the cursors in correct order before checking
         }
     }
 }
 
 merge_cursors :: #force_inline proc(b: ^Buffer, i, j: int) {
-    c1 := &b.cursors[i]
-    c2 := &b.cursors[j]
+    hi_index := max(i, j)
+    lo_index := min(i, j)
+    merged_cursor := &b.cursors[lo_index]
+    c1 := b.cursors[i]
+    c2 := b.cursors[j]
 
     if c1.pos > c1.sel {
-        c2.sel = c1.sel
+        // going to the right
+        merged_cursor.pos = max(c1.pos, c2.pos)
+        merged_cursor.sel = min(c1.sel, c2.sel)
     } else {
-        c2.sel = c1.pos
+        // going to the left
+        merged_cursor.pos = min(c1.pos, c2.pos)
+        merged_cursor.sel = max(c1.sel, c2.sel)
     }
 
-    ordered_remove(&b.cursors, i)
+    ordered_remove(&b.cursors, hi_index)
 }
 
 get_strings_in_selections :: proc(b: ^Buffer) -> (result: string) {

@@ -35,15 +35,17 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .yank:                    editor_yank(p)
         case .yank_from_history:       log.error("NOT IMPLEMENTED")
 
-        case .mark_backward_char:      log.error("NOT IMPLEMENTED")
-        case .mark_backward_word:      log.error("NOT IMPLEMENTED")
-        case .mark_backward_paragraph: log.error("NOT IMPLEMENTED")
-        case .mark_forward_char:       log.error("NOT IMPLEMENTED")
-        case .mark_forward_word:       log.error("NOT IMPLEMENTED")
-        case .mark_forward_paragraph:  log.error("NOT IMPLEMENTED")
-        case .mark_rectangle:          log.error("NOT IMPLEMENTED")
-        case .mark_set:                editor_set_mark(p)
-        case .mark_whole_buffer:       log.error("NOT IMPLEMENTED")
+        // case .mark_backward_char:      log.error("NOT IMPLEMENTED")
+        // case .mark_backward_word:      log.error("NOT IMPLEMENTED")
+        // case .mark_backward_paragraph: log.error("NOT IMPLEMENTED")
+        // case .mark_forward_char:       log.error("NOT IMPLEMENTED")
+        // case .mark_forward_word:       log.error("NOT IMPLEMENTED")
+        // case .mark_forward_paragraph:  log.error("NOT IMPLEMENTED")
+        // case .mark_rectangle:          log.error("NOT IMPLEMENTED")
+        case .mark_whole_buffer:       editor_mark_whole_buffer(p)
+        case .set_mark:                editor_set_mark(p)
+        case .pop_mark:                editor_pop_mark(p)
+
 
         case .delete_backward_char:    editor_delete_to(p, .LEFT)
         case .delete_backward_word:    editor_delete_to(p, .WORD_START)
@@ -152,17 +154,41 @@ editor_search_forward :: proc(target: ^Pane) {
     widgets_show(target, .SEARCH_IN_BUFFER)
 }
 
+editor_mark_whole_buffer :: proc(p: ^Pane) {
+    delete_all_cursors(p.buffer, make_cursor())
+    p.buffer.cursor_selection_mode = true
+    last_cursor := use_last_cursor(p.buffer)
+    last_cursor.sel = buffer_len(p.buffer)
+}
+
 editor_set_mark :: proc(p: ^Pane) {
     if p.buffer.cursor_selection_mode {
-        p.buffer.cursor_selection_mode = false
-    } else {
-        p.buffer.cursor_selection_mode = true
-        pos := get_last_cursor_pos(p.buffer)
+        // Make sure all the cursors lose their selection
+        for &cursor in p.buffer.cursors {
+            cursor.sel = cursor.pos
+        }
+    }
 
-        append(&p.markers, Marker{
-            buffer = p.buffer,
-            pos = pos,
-        })
+    p.buffer.cursor_selection_mode = true
+    pos := get_last_cursor_pos(p.buffer)
+
+    append(&p.markers, Marker{
+        buffer = p.buffer,
+        pos = pos,
+    })
+}
+
+editor_pop_mark :: proc(p: ^Pane) {
+    if len(p.markers) > 0 {
+        marker := pop(&p.markers)
+        if marker.buffer.id == p.buffer.id {
+            delete_all_cursors(p.buffer, make_cursor(marker.pos))
+        } else {
+            delete_all_cursors(p.buffer, make_cursor(get_last_cursor_pos(p.buffer)))
+            delete_all_cursors(marker.buffer, make_cursor(marker.pos))
+            p.buffer = marker.buffer
+            reset_viewport(p)
+        }
     }
 }
 
@@ -202,6 +228,7 @@ editor_switch_to_pane_on_click :: proc(x, y: i32) {
 
     current_pane = &open_panes[index]
     found.last_keystroke = time.tick_now()
+    found.dirty = true
     rel_x := x % found.rect.w
     rel_y := y % found.rect.h
     mouse_set_point(found, rel_x, rel_y)
@@ -233,7 +260,7 @@ mouse_drag_line :: proc(pane: ^Pane, x, y: i32) {
     log.error("IMPLEMENT")
 }
 
-scroll :: proc(p: ^Pane, offset: int) {
+editor_scroll :: proc(p: ^Pane, offset: int) {
     MAX_SCROLL_OFFSET :: 7
     lines_count := len(p.buffer.lines)
 
@@ -243,7 +270,13 @@ scroll :: proc(p: ^Pane, offset: int) {
 
         if coords.line < p.yoffset || coords.line > p.yoffset + p.visible_lines {
             bol, _ := get_line_boundaries(p.buffer, p.yoffset)
-            set_last_cursor_pos(p.buffer, bol + coords.column)
+            p.dirty = true
+
+            if p.id == current_pane.id {
+                set_last_cursor_pos(p.buffer, bol + coords.column)
+            } else {
+                p.last_cursor_pos = bol + coords.column
+            }
         }
     }
 }
@@ -290,15 +323,18 @@ editor_yank :: proc(p: ^Pane) {
 }
 
 editor_newline_and_indent :: proc(p: ^Pane) {
-    editor_self_insert(p, "\n")
+    editor_self_insert(p, '\n')
 }
 
-editor_self_insert :: proc(p: ^Pane, s: string) {
+editor_self_insert :: proc(p: ^Pane, v: union { string, byte }) {
     if has_selection(p.buffer) {
         editor_delete_to(p, .LEFT)
     }
 
-    insert_string(p.buffer, s)
+    switch t in v {
+    case string: insert_string(p.buffer, t)
+    case byte:   insert_char(p.buffer, t)
+    }
 }
 
 editor_delete_to :: proc(p: ^Pane, t: Cursor_Translation) {

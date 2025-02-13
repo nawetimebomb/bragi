@@ -55,6 +55,9 @@ Pane :: struct {
     // users can navigate and edit the same buffer in two different panes.
     buffer: ^Buffer,
 
+    // Determines if there are changes that need to be recalculated
+    dirty: bool,
+
     rect: Rect,
     texture: Texture,
 
@@ -93,9 +96,6 @@ update_and_draw_active_pane :: proc() {
     assert(p.buffer != nil)
     buffer_update(p.buffer)
 
-    p.last_cursor_pos = get_last_cursor_pos(p.buffer)
-    p.last_time_active = time.tick_now()
-
     if time.tick_diff(p.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
         p.cursor_showing = true
         p.cursor_blink_count = 0
@@ -107,7 +107,21 @@ update_and_draw_active_pane :: proc() {
         p.cursor_showing = !p.cursor_showing
         p.cursor_blink_count += 1
         p.cursor_last_update = time.tick_now()
+
+        if p.cursor_blink_count >= CURSOR_BLINK_COUNT {
+            p.cursor_showing = true
+        }
+
+        p.dirty = true
     }
+
+    if !p.dirty {
+        draw_copy(p.texture, nil, &p.rect)
+        return
+    }
+
+    p.last_cursor_pos = get_last_cursor_pos(p.buffer)
+    p.last_time_active = time.tick_now()
 
     coords := get_last_cursor_pos_as_coords(p.buffer)
 
@@ -214,11 +228,19 @@ update_and_draw_active_pane :: proc() {
     draw_modeline(p, true)
     set_renderer_target()
     draw_copy(p.texture, nil, &p.rect)
+    p.dirty = false
 }
 
-update_and_draw_inactive_panes :: proc(p: ^Pane) {
+update_and_draw_dormant_panes :: proc(p: ^Pane) {
     assert(p.buffer != nil)
     buffer_update(p.buffer)
+
+    if !p.dirty {
+        draw_copy(p.texture, nil, &p.rect)
+        return
+    }
+
+    p.last_cursor_pos = clamp(p.last_cursor_pos, 0, buffer_len(p.buffer))
 
     coords := get_coords(p.buffer, p.last_cursor_pos)
     colors := bragi.settings.colorscheme_table
@@ -262,6 +284,7 @@ update_and_draw_inactive_panes :: proc(p: ^Pane) {
     draw_modeline(p, false)
     set_renderer_target()
     draw_copy(p.texture, nil, &p.rect)
+    p.dirty = false
 }
 
 prepare_cursor_for_drawing :: #force_inline proc(
@@ -321,12 +344,14 @@ resize_panes :: proc() {
         p.texture = make_texture(p.texture, .RGBA32, .TARGET, p.rect)
         p.visible_columns = int(p.rect.w / char_width)
         p.visible_lines = int(p.rect.h / line_height)
+        p.dirty = true
     }
 }
 
 reset_viewport :: proc(p: ^Pane) {
     if p.visible_lines > len(p.buffer.lines) {
         p.yoffset = 0
+        p.dirty = true
     }
 }
 
@@ -350,4 +375,12 @@ get_pen_for_panes :: #force_inline proc() -> (result: [2]i32) {
     PADDING_FOR_TEXT_CONTENT :: 2
     result.x = PADDING_FOR_TEXT_CONTENT
     return
+}
+
+report_update_to_panes_using_buffer :: proc(b: ^Buffer) {
+    for &p in open_panes {
+        if p.buffer.id == b.id {
+            p.dirty = true
+        }
+    }
 }

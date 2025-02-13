@@ -140,6 +140,7 @@ handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> (handled: bool) {
 
     if exists && command != .noop {
         handled = do_command(command, p, match)
+        p.dirty = true
     }
 
     return
@@ -192,6 +193,10 @@ process_inputs :: proc() {
                 delete(e.drop.file)
                 return
             }
+            case .MOUSEMOTION: {
+                mouse_x = e.motion.x
+                mouse_y = e.motion.y
+            }
             case .MOUSEBUTTONDOWN: {
                 mouse := e.button
 
@@ -210,20 +215,20 @@ process_inputs :: proc() {
             }
             case .MOUSEWHEEL: {
                 wheel := e.wheel
-                // TODO: Figure out which pane is being scrolled
-                scroll(current_pane, auto_cast wheel.y * -1 * 5)
+                found, _ := find_pane_in_window_coords(mouse_x, mouse_y)
+                editor_scroll(found, int(wheel.y * -1 * 5))
                 return
             }
             case .KEYDOWN: {
                 input_handled = handle_keydown(current_pane, e.key.keysym)
             }
             case .TEXTINPUT: {
-                if !input_handled {
-                    input_char := cstring(raw_data(e.text.text[:]))
-                    str := string(input_char)
-                    do_command(.self_insert, current_pane, str)
-                }
-                return
+                if input_handled { return }
+
+                input_char := cstring(raw_data(e.text.text[:]))
+                str := string(input_char)
+                do_command(.self_insert, current_pane, str)
+                current_pane.dirty = true
             }
         }
     }

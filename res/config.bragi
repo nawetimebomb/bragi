@@ -38,8 +38,11 @@ yank                            <C-y>
 # mark_forward_word
 # mark_forward_paragraph
 # mark_rectangle
-mark_set                        <C-SPACE>
-# mark_whole_buffer
+mark_whole_buffer               <C-x-C-p>
+
+set_mark                        <C-SPACE>
+pop_mark                        <C-x-C-SPACE>
+
 
 delete_backward_char            <BACKSPACE>
 delete_backward_word            <C-BACKSPACE> <M-BACKSPACE>

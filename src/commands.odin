@@ -36,15 +36,18 @@ Command :: enum {
     yank,              // just paste
     yank_from_history, // paste, but from a selection
 
-    mark_backward_char,
-    mark_backward_word,
-    mark_backward_paragraph,
-    mark_forward_char,
-    mark_forward_word,
-    mark_forward_paragraph,
-    mark_rectangle,
-    mark_set,
+    // mark_backward_char,
+    // mark_backward_word,
+    // mark_backward_paragraph,
+    // mark_forward_char,
+    // mark_forward_word,
+    // mark_forward_paragraph,
+    // mark_rectangle,
+
     mark_whole_buffer,
+
+    set_mark,
+    pop_mark,
 
     delete_backward_char,
     delete_backward_word,

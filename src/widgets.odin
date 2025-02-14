@@ -123,12 +123,11 @@ widgets_update_draw :: proc() {
         }
     }
 
-    colors := &bragi.settings.colorscheme_table
     font := &font_ui
     font_bold := &font_ui_bold
 
     set_renderer_target(widgets_pane.texture)
-    clear_background(colors[.background])
+    clear_background(colorscheme[.background])
 
     profiling_start("widgets.odin:widgets_update_draw -> Render results")
     selected_line := widgets_pane.selection - widgets_pane.yoffset
@@ -143,7 +142,7 @@ widgets_update_draw :: proc() {
         sx: i32
 
         if selected_line == line_index {
-            set_bg(colors[.highlight_line])
+            set_bg(colorscheme[.highlight_line])
             draw_rect(0, row, widgets_pane.rect.w, font.line_height)
         }
 
@@ -195,7 +194,7 @@ widgets_update_draw :: proc() {
     )
     prompt_y := widgets_pane.rect.h - font_ui.line_height
 
-    set_bg(colors[.background])
+    set_bg(colorscheme[.background])
     draw_rect(
         0, widgets_pane.rect.h - font_ui.line_height,
         widgets_pane.rect.w, font_ui.line_height,

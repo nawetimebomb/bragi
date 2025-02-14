@@ -127,10 +127,8 @@ update_and_draw_active_pane :: proc() {
         p.yoffset = coords.line
     }
 
-    colors := bragi.settings.colorscheme_table
-
     set_renderer_target(p.texture)
-    clear_background(colors[.background])
+    clear_background(colorscheme[.background])
 
     first_line := p.yoffset
     last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
@@ -227,10 +225,9 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     p.last_cursor_pos = clamp(p.last_cursor_pos, 0, buffer_len(p.buffer))
 
     coords := get_coords(p.buffer, p.last_cursor_pos)
-    colors := bragi.settings.colorscheme_table
 
     set_renderer_target(p.texture)
-    clear_background(colors[.background])
+    clear_background(colorscheme[.background])
 
     first_line := p.yoffset
     last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)

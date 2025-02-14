@@ -1,6 +1,7 @@
 package main
 
 import     "core:fmt"
+import     "core:log"
 import     "core:slice"
 import     "core:strings"
 import     "core:time"
@@ -216,6 +217,12 @@ process_inputs :: proc() {
             case .MOUSEWHEEL: {
                 wheel := e.wheel
                 found, _ := find_pane_in_window_coords(mouse_x, mouse_y)
+
+                if found == nil {
+                    log.errorf("Couldn't find Pane at {0}, {1}", mouse_x, mouse_y)
+                    return
+                }
+
                 editor_scroll(found, int(wheel.y * -1 * 5))
                 return
             }
@@ -227,6 +234,11 @@ process_inputs :: proc() {
 
                 input_char := cstring(raw_data(e.text.text[:]))
                 str := string(input_char)
+                test_chars := transmute([]byte)str
+                if len(test_chars) > 1 {
+                    log.errorf("Can't handle multi-byte character {0}", str)
+                    return
+                }
                 do_command(.self_insert, current_pane, str)
                 current_pane.dirty = true
             }

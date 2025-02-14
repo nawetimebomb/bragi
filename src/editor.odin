@@ -269,10 +269,10 @@ editor_scroll :: proc(p: ^Pane, offset: int) {
     if p.visible_lines < lines_count {
         coords := get_last_cursor_pos_as_coords(p.buffer)
         p.yoffset = clamp(p.yoffset + offset, 0, lines_count - MAX_SCROLL_OFFSET)
+        p.dirty = true
 
         if coords.line < p.yoffset || coords.line > p.yoffset + p.visible_lines {
             bol, _ := get_line_boundaries(p.buffer, p.yoffset)
-            p.dirty = true
 
             if p.id == current_pane.id {
                 set_last_cursor_pos(p.buffer, bol + coords.column)

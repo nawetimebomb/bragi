@@ -34,17 +34,15 @@ set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
 }
 
 set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: tokenizer.Token_Kind) {
-    colors := bragi.settings.colorscheme_table
-
     switch k {
-    case .generic:      set_fg(t, colors[.default])
-    case .builtin:      set_fg(t, colors[.builtin])
-    case .comment:      set_fg(t, colors[.comment])
-    case .constant:     set_fg(t, colors[.constant])
-    case .keyword:      set_fg(t, colors[.keyword])
-    case .preprocessor: set_fg(t, colors[.preprocessor])
-    case .string:       set_fg(t, colors[.string])
-    case .type:         set_fg(t, colors[.type])
+    case .generic:      set_fg(t, colorscheme[.default])
+    case .builtin:      set_fg(t, colorscheme[.builtin])
+    case .comment:      set_fg(t, colorscheme[.comment])
+    case .constant:     set_fg(t, colorscheme[.constant])
+    case .keyword:      set_fg(t, colorscheme[.keyword])
+    case .preprocessor: set_fg(t, colorscheme[.preprocessor])
+    case .string:       set_fg(t, colorscheme[.string])
+    case .type:         set_fg(t, colorscheme[.type])
     }
 }
 
@@ -52,17 +50,16 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
     SMALL_PADDING :: 4
     MODELINE_H_PADDING :: 10
     MODELINE_V_PADDING :: 3
-    colors := bragi.settings.colorscheme_table
 
     modeline_y := p.rect.h - font_ui.line_height - MODELINE_V_PADDING
     background_y := modeline_y - MODELINE_V_PADDING
     borderline_y := background_y - 1
     background_h := font_ui.line_height + MODELINE_V_PADDING * 2
 
-    set_bg(colors[.ui_border])
+    set_bg(colorscheme[.ui_border])
     draw_line(0, borderline_y, p.rect.w, borderline_y)
 
-    set_bg(focused ? colors[.modeline_on_bg] : colors[.modeline_off_bg])
+    set_bg(focused ? colorscheme[.modeline_on_bg] : colorscheme[.modeline_off_bg])
     draw_rect(0, background_y, p.rect.w, background_h, true)
 
     text_face : Face = focused ? .modeline_on_fg : .modeline_off_fg
@@ -166,8 +163,7 @@ clear_background :: #force_inline proc(color: Color) {
 }
 
 draw_pane_divider :: proc() {
-    colors := bragi.settings.colorscheme_table
-    set_bg(colors[.ui_border])
+    set_bg(colorscheme[.ui_border])
     draw_line(0, 0, 0, window_height)
 }
 
@@ -177,7 +173,6 @@ draw_gutter :: proc(
 ) -> (gutter_size: i32) {
     GUTTER_PADDING :: 2
     LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
-    colors := bragi.settings.colorscheme_table
 
     if bragi.settings.show_line_numbers {
         // Testing the size of the string by using the largest number, hopefully
@@ -186,10 +181,10 @@ draw_gutter :: proc(
             font_ui, size_test_str, len(size_test_str) + GUTTER_PADDING,
         )
 
-        set_bg(colors[.ui_gutter])
+        set_bg(colorscheme[.ui_gutter])
         draw_rect(0, 0, gutter_size, prect.h)
 
-        set_bg(colors[.ui_border])
+        set_bg(colorscheme[.ui_border])
         draw_line(0, 0, 0, prect.h)
 
         for line_number in start..<end {
@@ -209,11 +204,11 @@ draw_gutter :: proc(
         }
     } else {
         gutter_size = GUTTER_PADDING
-        set_bg(colors[.ui_gutter])
+        set_bg(colorscheme[.ui_gutter])
         draw_rect(0, 0, gutter_size, prect.h)
 
         if prect.x > 0 {
-            set_bg(colors[.ui_border])
+            set_bg(colorscheme[.ui_border])
             draw_line(0, 0, 0, prect.h)
         }
     }
@@ -228,7 +223,6 @@ draw_text_with_highlight :: proc(
     hl_start, hl_end: int,
     x, y: i32,
 ) -> (sx: i32) {
-    colors := bragi.settings.colorscheme_table
     sx = x
     sy := y
 
@@ -241,9 +235,9 @@ draw_text_with_highlight :: proc(
 
         if index >= hl_start && index < hl_end {
             f = highlight_font
-            set_fg(f.texture, colors[highlight_color])
+            set_fg(f.texture, colorscheme[highlight_color])
         } else {
-            set_fg(f.texture, colors[regular_color])
+            set_fg(f.texture, colorscheme[regular_color])
         }
 
         g := f.glyphs[r]
@@ -262,7 +256,6 @@ draw_text_with_highlight :: proc(
 }
 
 draw_text :: proc(f: Font, s: string, color: Face, x, y: i32) -> (sx: i32) {
-    colors := bragi.settings.colorscheme_table
     sx = x
     sy := y
 
@@ -275,7 +268,7 @@ draw_text :: proc(f: Font, s: string, color: Face, x, y: i32) -> (sx: i32) {
             f32(g.w), f32(g.h),
         )
 
-        set_fg(f.texture, colors[color])
+        set_fg(f.texture, colorscheme[color])
         draw_copy(f.texture, &src, &dest)
         sx += g.xadvance
     }
@@ -290,7 +283,6 @@ draw_code :: proc(
     selections: []Range = {},
     is_colored: bool,
 ) {
-    colors := bragi.settings.colorscheme_table
     line_height := font.line_height
 
     is_selected :: proc(selections: []Range, offset: int) -> bool {
@@ -323,11 +315,11 @@ draw_code :: proc(
             if is_colored {
                 set_fg_for_token(font.texture, code.tokens[x_offset])
             } else {
-                set_fg(font.texture, colors[.default])
+                set_fg(font.texture, colorscheme[.default])
             }
 
             if is_selected(selections, code.start_offset + x_offset) {
-                set_bg(colors[.region])
+                set_bg(colorscheme[.region])
                 draw_rect(sx, sy, char_width, line_height, true)
             }
 
@@ -345,8 +337,7 @@ draw_cursor :: #force_inline proc(
     behind_cursor: byte,
     cursor_face: Face,
 ) {
-    colors := bragi.settings.colorscheme_table
-    set_bg(colors[cursor_face])
+    set_bg(colorscheme[cursor_face])
     draw_rect(pen.x + r.x, pen.y + r.y, r.w, r.h, fill)
 
     if is_valid_glyph(rune(behind_cursor)) {
@@ -357,7 +348,7 @@ draw_cursor :: #force_inline proc(
             f32(pen.y + r.y + g.yoffset) - f.y_offset_for_centering,
             f32(g.w), f32(g.h),
         )
-        set_fg(f.texture, colors[.background])
+        set_fg(f.texture, colorscheme[.background])
         draw_copy(f.texture, &src, &dest)
     }
 }

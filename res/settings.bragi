@@ -1,0 +1,105 @@
+[[settings]]
+# C = Ctrl | M = Alt | S = Shift
+[[keymaps]]
+
+[global]
+modifier                        <C-x>
+
+increase_font_size              <C-S-=>
+decrease_font_size              <C-->
+reset_font_size                 <C-0>
+
+quit_mode                       <C-g> <ESC>
+
+find_file                       <C-x-C-f>
+switch_buffer                   <C-x-b>
+search_backward                 <C-r>
+search_forward                  <C-s>
+kill_current_buffer             <C-x-k>
+save_buffer                     <C-x-C-s>
+
+delete_this_pane                <C-x-0>
+delete_other_panes              <C-x-1>
+new_pane_to_the_right           <C-x-3>
+other_pane                      <C-x-o> <M-o>
+
+undo                            <C-/>
+redo                            <C-S-/>
+
+ui_select                       <RET>
+
+kill_region                     <C-w>
+kill_line                       <C-k>
+kill_ring_save                  <M-w>
+yank                            <C-y>
+# yank_from_history
+
+# mark_backward_char
+# mark_backward_word
+# mark_backward_paragraph
+# mark_forward_char
+# mark_forward_word
+# mark_forward_paragraph
+# mark_rectangle
+mark_whole_buffer               <C-x-C-p>
+
+set_mark                        <C-SPACE>
+pop_mark                        <C-x-C-SPACE>
+
+
+delete_backward_char            <BACKSPACE>
+delete_backward_word            <C-BACKSPACE> <M-BACKSPACE>
+delete_forward_char             <C-d> <DEL>
+delete_forward_word             <M-d> <M-DEL>
+
+backward_char                   <C-b>
+backward_word                   <M-b>
+# backward_paragraph
+forward_char                    <C-f>
+forward_word                    <M-f>
+# forward_paragraph
+
+next_line                       <C-n>
+previous_line                   <C-p>
+
+beginning_of_buffer             <M-S-,>
+beginning_of_line               <C-a>
+end_of_buffer                   <M-S-.>
+end_of_line                     <C-e>
+
+dupe_next_line                  <C-S-n>
+dupe_previous_line              <C-S-p>
+switch_cursor                   <C-S-TAB>
+toggle_cursor_group             <C-S-a>
+delete_cursor                   <C-S-d>
+
+# Comments
+[[interface]]
+
+[colorscheme]
+# based on night-owl: https://github.com/aaronjensen/night-owl-emacs
+background                      011627
+builtin                         c792ea
+comment                         637777
+constant                        f78c6c
+cursor                          80a4c2
+cursor_active                   f78c6c
+default                         d6deeb
+highlight                       ffeb95
+highlight_line                  1d3b53
+keyword                         c792ea
+preprocessor                    c792ea
+region                          1d3b53
+string                          ecc48d
+type                            ffcb8b
+
+modeline_off_bg                 011627
+modeline_off_fg                 676e95
+modeline_on_bg                  0b2942
+modeline_on_fg                  d6deeb
+modeline_shadow                 5f7e97
+
+ui_border                       5f7e97
+ui_gutter                       011627
+ui_line_number                  4b6479
+ui_line_number_current          d6deeb

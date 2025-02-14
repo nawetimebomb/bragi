@@ -8,18 +8,9 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 
-PARSE_ERROR_KEYBINDING_EXISTS_FMT :: "Error in line {0}: Keybinding {1} already bound"
-PARSE_ERROR_EXPECT_GOT_FMT        :: "Error in line {0}: Invalid setting.\n\tExpect: {1}\n\tGot: {2}"
-PARSE_ERROR_INVALID_COMMAND_FMT   :: "Error in line {0}: Invalid command {1}"
-PARSE_ERROR_INVALID_FACE_FMT      :: "Error in line {0}: Invalid face name {1}"
-PARSE_ERROR_MISSING_HEADING_FMT   :: "Error in line {0}: Heading not found, not able to determine configuration"
-
 Color :: distinct [4]u8
 Major_Modes_Table :: map[Major_Mode]Major_Mode_Settings
-Colorscheme_Table :: map[Face]Color
 Keybindings_Table :: map[string]Command
-
-DEFAULT_COLORSCHEME :: #load("../res/config.bragi")
 
 Major_Mode :: enum {
     Bragi,
@@ -36,7 +27,7 @@ Indentation_Char :: enum { Space, Tab, }
 //   Electric: Matches the configuration of the Major Mode
 Auto_Indentation_Type  :: enum { Off, Relaxed, Electric, }
 
-Face :: enum {
+Face :: enum u8 {
     background,
     cursor,
     cursor_active,
@@ -64,12 +55,23 @@ Face :: enum {
     ui_line_number_current,
 }
 
+Editor_Command :: distinct Command
+Global_Command :: distinct Command
+Widget_Command :: distinct Command
+
+Keymaps :: struct {
+    editor: map[string]Editor_Command,
+    global: map[string]Global_Command,
+    widget: map[string]Widget_Command,
+}
+
+Settings_Value :: union { bool, int, string, }
+
 Settings :: struct {
     handle:                      os.Handle,
     last_write_time:             os.File_Time,
     use_internal_data:           bool,
 
-    colorscheme_table:           Colorscheme_Table,
     keybindings_table:           Keybindings_Table,
     major_modes_table:           Major_Modes_Table,
 
@@ -149,7 +151,7 @@ load_settings :: proc(data: []u8) {
     parse_settings_data(data)
 }
 
-parse_settings_data :: proc(data: []u8) {
+_parse_settings_data :: proc(data: []u8) {
     Parsing_Setting :: enum {
         none,
         colors,
@@ -164,7 +166,7 @@ parse_settings_data :: proc(data: []u8) {
     line_number := 0
     settings_str := string(data)
 
-    clear(&bragi.settings.colorscheme_table)
+    clear(&colorscheme)
     for key, _ in bragi.settings.keybindings_table {
         delete(key)
     }
@@ -269,7 +271,7 @@ parse_settings_data :: proc(data: []u8) {
                     continue
                 }
 
-                bragi.settings.colorscheme_table[v] = hex_to_color(setting[1])
+                colorscheme[v] = hex_to_color(setting[1])
             }
         }
     }
@@ -286,7 +288,6 @@ reload_settings :: proc() {
     }
 }
 
-@(private="file")
 hex_to_color :: proc(hex_str: string) -> Color {
     color: Color
     value, ok := strconv.parse_int(hex_str, 16)

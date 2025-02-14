@@ -18,9 +18,6 @@ import sdl "vendor:sdl2"
 TITLE   :: "Bragi"
 VERSION :: "0b"
 
-SETTINGS_DATA     :: #load("../res/config.bragi")
-SETTINGS_FILENAME :: "config.bragi"
-
 TITLE_TIMEOUT :: 1 * time.Second
 
 Program_Context :: struct {
@@ -55,16 +52,17 @@ char_width:             i32
 line_height:            i32
 y_offset_for_centering: f32
 
-MINIMUM_WINDOW_SIZE      :: 800
-DEFAULT_BASE_WINDOW_SIZE :: 900
+MINIMUM_WINDOW_SIZE :: 800
+DEFAULT_WINDOW_SIZE :: 900
+DEFAULT_WINDOW_POS  :: sdl.WINDOWPOS_CENTERED
 
 dpi_scale:       f32
 renderer:        ^sdl.Renderer
 window:          ^sdl.Window
-window_x:        i32
-window_y:        i32
-window_width:    i32
-window_height:   i32
+window_x:        i32 = DEFAULT_WINDOW_POS
+window_y:        i32 = DEFAULT_WINDOW_POS
+window_width:    i32 = DEFAULT_WINDOW_SIZE
+window_height:   i32 = DEFAULT_WINDOW_SIZE
 window_in_focus: bool
 
 mouse_x: i32
@@ -78,6 +76,13 @@ open_buffers: [dynamic]Buffer
 open_panes:   [dynamic]Pane
 current_pane: ^Pane
 widgets_pane: Widgets
+
+SETTINGS_DATA     :: #load("../res/settings.bragi")
+SETTINGS_FILENAME :: "settings.bragi"
+
+colorscheme: map[Face]Color
+keymaps: Keymaps
+settings: Settings
 
 bragi: Bragi
 
@@ -108,12 +113,21 @@ destroy_settings :: proc() {
     log.debug("Destroying settings")
 
     delete(bragi.settings.major_modes_table)
-    delete(bragi.settings.colorscheme_table)
+    delete(colorscheme)
 
     for key, _ in bragi.settings.keybindings_table {
         delete(key)
     }
     delete(bragi.settings.keybindings_table)
+
+        clear(&colorscheme)
+
+    for key in keymaps.editor { delete(key) }
+    for key in keymaps.global { delete(key) }
+    for key in keymaps.widget { delete(key) }
+    delete(keymaps.editor)
+    delete(keymaps.global)
+    delete(keymaps.widget)
 }
 
 initialize_context :: proc() {
@@ -121,8 +135,7 @@ initialize_context :: proc() {
 
     assert(sdl.Init({.VIDEO}) == 0, sdl.GetErrorString())
 
-    window = sdl.CreateWindow(TITLE, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
-                              DEFAULT_BASE_WINDOW_SIZE, DEFAULT_BASE_WINDOW_SIZE,
+    window = sdl.CreateWindow(TITLE, window_x, window_y, window_width, window_height,
                               {.SHOWN, .RESIZABLE, .ALLOW_HIGHDPI})
     assert(window != nil, "Cannot open window")
 
@@ -229,7 +242,7 @@ main :: proc() {
         frame_counter += 1
         frame_start := sdl.GetPerformanceCounter()
 
-        set_bg(bragi.settings.colorscheme_table[.background])
+        set_bg(colorscheme[.background])
         sdl.RenderClear(renderer)
 
         process_inputs()

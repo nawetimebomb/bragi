@@ -176,7 +176,7 @@ update_and_draw_active_pane :: proc() {
     draw_code(font_editor, pen, code_lines[:], selections[:], is_colored)
 
     if p.cursor_showing {
-        if p.buffer.interactive_cursors {
+        if p.buffer.interactive_mode {
             for cursor, cursor_index in p.buffer.cursors {
                 out_of_screen_coords, rect, byte_behind_cursor :=
                     prepare_cursor_for_drawing(p, font_editor, cursor.pos)
@@ -186,9 +186,9 @@ update_and_draw_active_pane :: proc() {
 
                 cursor_face : Face = .cursor
 
-                if p.buffer.cursor_selection_mode {
+                if p.buffer.selection_mode {
                     cursor_face = .cursor
-                } else if p.buffer.cursor_group_mode {
+                } else if p.buffer.group_mode {
                     cursor_face = .cursor_active
                 } else if cursor_index == len(p.buffer.cursors) - 1 {
                     cursor_face = .cursor_active

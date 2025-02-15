@@ -93,13 +93,13 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
         )
 
         if focused {
-            if p.buffer.interactive_cursors {
+            if p.buffer.interactive_mode {
                 number_of_cursors := fmt.tprintf(" [{0}]", len(p.buffer.cursors))
-                face : Face = p.buffer.cursor_group_mode ? .cursor_active : text_face
+                face : Face = p.buffer.group_mode ? .cursor_active : text_face
                 sx = draw_text(font_ui, number_of_cursors, face, sx, modeline_y)
             }
 
-            if p.buffer.cursor_selection_mode {
+            if p.buffer.selection_mode {
                 sx = draw_text(
                     font_ui, " selection", text_face, sx, modeline_y,
                 )

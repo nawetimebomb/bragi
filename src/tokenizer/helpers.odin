@@ -122,6 +122,7 @@ scan_through_until_whitespace :: #force_inline proc() -> (skipped: int) {
 
 skip_all_whitespaces :: #force_inline proc() {
     for c := get_char(); !is_eof() && is_whitespace(); {
+        R[T.offset] = .generic
         advance()
     }
 }

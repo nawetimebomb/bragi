@@ -61,40 +61,40 @@ History_State :: struct {
 }
 
 Buffer :: struct {
-    allocator:             runtime.Allocator,
-    id:                    uuid.Identifier,
+    allocator:           runtime.Allocator,
+    id:                  uuid.Identifier,
 
-    cursors:               [dynamic]Cursor,
-    interactive_cursors:   bool,
-    cursor_group_mode:     bool,
-    cursor_selection_mode: bool,
+    cursors:             [dynamic]Cursor,
+    interactive_mode:    bool, // when the user have control of the multiple cursors
+    group_mode:          bool, // the user wants to control all cursors at the same time
+    selection_mode:      bool, // when the user is doing selection with their keyboard
 
-    data:                  []byte,
-    tokens:                [dynamic]Token_Kind,
-    dirty:                 bool,
-    gap_end:               int,
-    gap_start:             int,
-    lines:                 [dynamic]int,
+    data:                []byte,
+    tokens:              [dynamic]Token_Kind,
+    dirty:               bool,
+    gap_end:             int,
+    gap_start:           int,
+    lines:               [dynamic]int,
 
-    str:                   string,
+    str:                 string,
 
-    enable_history:        bool,
-    redo:                  [dynamic]History_State,
-    undo:                  [dynamic]History_State,
-    history_limit:         int,
-    current_time:          time.Tick,
-    last_edit_time:        time.Tick,
-    undo_timeout:          time.Duration,
+    enable_history:      bool,
+    redo:                [dynamic]History_State,
+    undo:                [dynamic]History_State,
+    history_limit:       int,
+    current_time:        time.Tick,
+    last_edit_time:      time.Tick,
+    undo_timeout:        time.Duration,
 
-    status:                string,
-    filepath:              string,
-    major_mode:            Major_Mode,
-    name:                  string,
-    readonly:              bool,
-    modified:              bool,
-    crlf:                  bool,
+    status:              string,
+    filepath:            string,
+    major_mode:          Major_Mode,
+    name:                string,
+    readonly:            bool,
+    modified:            bool,
+    crlf:                bool,
 
-    last_update_frame:     u64,
+    last_update_frame:   u64,
 }
 
 buffer_init :: proc(
@@ -206,9 +206,9 @@ buffer_update :: proc(b: ^Buffer) {
 
     if len(b.cursors) == 0 { delete_all_cursors(b, make_cursor()) }
 
-    if b.interactive_cursors {
+    if b.interactive_mode {
         if len(b.cursors) == 1 {
-            b.interactive_cursors = false
+            b.interactive_mode = false
         } else {
             check_overlapping_cursors(b)
         }
@@ -289,8 +289,10 @@ maybe_tokenize_buffer :: proc(b: ^Buffer) {
 
     tokenize_proc: #type proc(^string, int, ^[dynamic]Token_Kind)
 
-    if len(b.tokens) != len(b.data) {
-        resize(&b.tokens, len(b.data))
+    clear(&b.tokens)
+
+    if len(b.tokens) < buffer_len(b) {
+        resize(&b.tokens, buffer_len(b))
     }
 
     #partial switch b.major_mode {
@@ -330,7 +332,6 @@ get_line_boundaries :: #force_inline proc(b: ^Buffer, line: int) -> (start, end:
     next_line_index := min(line + 1, len(b.lines) - 1)
     start = b.lines[line]
     end = b.lines[next_line_index] - 1
-    // if next_line_index != len(b.lines) - 1 { end -= 1 }
     return
 }
 
@@ -491,9 +492,9 @@ get_byte_at :: #force_inline proc(b: ^Buffer, pos: int) -> byte {
 delete_all_cursors :: proc(b: ^Buffer, new_cursor: Cursor = {}) {
     clear(&b.cursors)
     append(&b.cursors, new_cursor)
-    b.cursor_selection_mode = false
-    b.cursor_group_mode = false
-    b.interactive_cursors = false
+    b.selection_mode = false
+    b.group_mode = false
+    b.interactive_mode = false
 }
 
 make_cursor :: proc(pos: int = 0) -> (result: Cursor) {
@@ -535,7 +536,7 @@ get_last_cursor_decomp :: #force_inline proc(b: ^Buffer) -> (pos, sel, col_offse
 
 has_selection :: #force_inline proc(b: ^Buffer) -> (result: bool) {
     pos, sel, _ := get_last_cursor_decomp(b)
-    return b.cursor_selection_mode || pos != sel
+    return b.selection_mode || pos != sel
 }
 
 check_overlapping_cursors :: proc(b: ^Buffer) {

@@ -158,20 +158,20 @@ editor_search_forward :: proc(target: ^Pane) {
 
 editor_mark_whole_buffer :: proc(p: ^Pane) {
     delete_all_cursors(p.buffer, make_cursor())
-    p.buffer.cursor_selection_mode = true
+    p.buffer.selection_mode = true
     last_cursor := use_last_cursor(p.buffer)
     last_cursor.sel = buffer_len(p.buffer)
 }
 
 editor_set_mark :: proc(p: ^Pane) {
-    if p.buffer.cursor_selection_mode {
+    if p.buffer.selection_mode {
         // Make sure all the cursors lose their selection
         for &cursor in p.buffer.cursors {
             cursor.sel = cursor.pos
         }
     }
 
-    p.buffer.cursor_selection_mode = true
+    p.buffer.selection_mode = true
     pos := get_last_cursor_pos(p.buffer)
 
     append(&p.markers, Marker{
@@ -297,7 +297,7 @@ editor_undo_redo :: proc(p: ^Pane, a: enum { REDO, UNDO }) {
 
 editor_kill_line :: proc(p: ^Pane) {
     delete_all_cursors(p.buffer, make_cursor(get_last_cursor_pos(p.buffer)))
-    p.buffer.cursor_selection_mode = true
+    p.buffer.selection_mode = true
     editor_move_cursor_to(p, .LINE_END)
     editor_kill_region(p)
 }
@@ -360,11 +360,11 @@ editor_delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
     if count == 0 { return }
 
     remove(p.buffer, count)
-    p.buffer.cursor_selection_mode = false
+    p.buffer.selection_mode = false
 }
 
 editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
-    if p.buffer.cursor_selection_mode {
+    if p.buffer.selection_mode {
         // If selection mode is enabled, we update all the cursors,
         // as selection has to be done this way.
         // Note, though, that selection will be cleared out if the
@@ -374,7 +374,7 @@ editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
         for &cursor in p.buffer.cursors {
             cursor.pos = translate_cursor(p.buffer, &cursor, t)
         }
-    } else if p.buffer.cursor_group_mode {
+    } else if p.buffer.group_mode {
         // If group mode is enabled, then we move all cursors accordingly
         // but make sure we're not selecting.
         for &cursor in p.buffer.cursors {
@@ -391,27 +391,27 @@ editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
 }
 
 editor_dupe_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
-    if p.buffer.cursor_selection_mode {
-        p.buffer.cursor_selection_mode = false
+    if p.buffer.selection_mode {
+        p.buffer.selection_mode = false
         pos := get_last_cursor_pos(p.buffer)
         delete_all_cursors(p.buffer, make_cursor(pos))
     }
 
-    p.buffer.interactive_cursors = true
+    p.buffer.interactive_mode = true
     new_pos := get_last_cursor_pos(p.buffer)
     append(&p.buffer.cursors, make_cursor(new_pos))
     editor_move_cursor_to(p, t)
 }
 
 editor_manage_cursors :: proc(p: ^Pane, o: Cursor_Operation) {
-    if p.buffer.interactive_cursors && len(p.buffer.cursors) > 1 {
+    if p.buffer.interactive_mode && len(p.buffer.cursors) > 1 {
         switch o {
         case .DELETE:
             pop(&p.buffer.cursors)
         case .SWITCH:
             promote_cursor_index(p.buffer, 0)
         case .TOGGLE_GROUP:
-            p.buffer.cursor_group_mode = !p.buffer.cursor_group_mode
+            p.buffer.group_mode = !p.buffer.group_mode
         }
     }
 }

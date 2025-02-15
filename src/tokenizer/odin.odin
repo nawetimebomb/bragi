@@ -1,5 +1,6 @@
 package tokenizer
 
+import "core:fmt"
 import "core:slice"
 
 tokenize_odin :: proc(s: ^string, start_offset: int, tokens: ^[dynamic]Token_Kind) {

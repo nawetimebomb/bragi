@@ -24,6 +24,7 @@ Font :: struct {
     glyphs: [NUM_GLYPHS]Glyph,
     line_height: i32,
     texture: ^sdl.Texture,
+    xadvance: i32,
     y_offset_for_centering: f32,
 }
 
@@ -42,6 +43,7 @@ fonts_init :: proc() {
     char_width             = font_editor.em_width
     line_height            = font_editor.line_height
     y_offset_for_centering = font_editor.y_offset_for_centering
+    xadvance               = font_editor.xadvance
 
     log.debug("Fonts initialization complete")
     profiling_end()
@@ -96,6 +98,7 @@ increase_font_size :: proc() {
         char_width             = font_editor.em_width
         line_height            = font_editor.line_height
         y_offset_for_centering = font_editor.y_offset_for_centering
+        xadvance               = font_editor.xadvance
     }
 }
 
@@ -110,6 +113,7 @@ decrease_font_size :: proc() {
         char_width             = font_editor.em_width
         line_height            = font_editor.line_height
         y_offset_for_centering = font_editor.y_offset_for_centering
+        xadvance               = font_editor.xadvance
     }
 }
 
@@ -176,10 +180,11 @@ generate_font_bitmap_texture :: proc(result: ^Font) {
     result.y_offset_for_centering =
         0.5 * f32(result.face.glyph.metrics.hori_bearing_y >> 6) + 0.5
 
-    // Using the 'M' glyph for em_width
+    // Using the 'W' glyph for em_width and xadvance
     glyph_index = ft.get_char_index(result.face, 'W')
     ft.load_glyph(result.face, glyph_index, {})
     result.em_width = i32(result.face.glyph.bitmap.width)
+    result.xadvance = i32(result.face.glyph.advance.x >> 6)
 
     pixels := make([]u32, texture_size * texture_size)
     format := sdl.AllocFormat(u32(sdl.PixelFormatEnum.RGBA32))

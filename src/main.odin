@@ -50,6 +50,7 @@ font_ui_size     : u32 = DEFAULT_FONT_UI_SIZE
 // font_editor related values
 char_width:             i32
 line_height:            i32
+xadvance:               i32
 y_offset_for_centering: f32
 
 MINIMUM_WINDOW_SIZE :: 800
@@ -234,6 +235,7 @@ main :: proc() {
     load_keybinds()
 
     bragi.settings.show_line_numbers = true
+    bragi.settings.line_wrap_by_default = true
 
     last_update_time := time.tick_now()
     previous_frame_time := time.tick_now()

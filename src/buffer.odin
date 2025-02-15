@@ -204,11 +204,15 @@ buffer_update :: proc(b: ^Buffer) {
 
     update_buffer_time(b)
 
-    if len(b.cursors) == 0 { delete_all_cursors(b, make_cursor()) }
+    if len(b.cursors) == 0 {
+        delete_all_cursors(b, make_cursor())
+        report_update_to_panes_using_buffer(b)
+    }
 
     if b.interactive_mode {
         if len(b.cursors) == 1 {
             b.interactive_mode = false
+            report_update_to_panes_using_buffer(b)
         } else {
             check_overlapping_cursors(b)
         }
@@ -305,20 +309,20 @@ maybe_tokenize_buffer :: proc(b: ^Buffer) {
     profiling_end()
 }
 
-is_between_line :: #force_inline proc(b: ^Buffer, line, pos: int) -> bool {
-    assert(line < len(b.lines))
-    start, end := get_line_boundaries(b, line)
+is_between_line :: #force_inline proc(lines: []int, line, pos: int) -> bool {
+    assert(line < len(lines))
+    start, end := get_line_boundaries(lines, line)
     return pos >= start && pos <= end
 }
 
-is_last_line :: #force_inline proc(b: ^Buffer, line: int) -> bool {
-    assert(line < len(b.lines))
-    return line == len(b.lines) - 1
+is_last_line :: #force_inline proc(lines: []int, line: int) -> bool {
+    assert(line < len(lines))
+    return line == len(lines) - 1
 }
 
-get_line_index :: #force_inline proc(b: ^Buffer, pos: int) -> (line: int) {
-    for offset, index in b.lines {
-        if is_between_line(b, index, pos) {
+get_line_index :: #force_inline proc(lines: []int, pos: int) -> (line: int) {
+    for offset, index in lines {
+        if is_between_line(lines, index, pos) {
             line = index
             break
         }
@@ -327,29 +331,29 @@ get_line_index :: #force_inline proc(b: ^Buffer, pos: int) -> (line: int) {
     return
 }
 
-get_line_boundaries :: #force_inline proc(b: ^Buffer, line: int) -> (start, end: int) {
-    assert(line < len(b.lines))
-    next_line_index := min(line + 1, len(b.lines) - 1)
-    start = b.lines[line]
-    end = b.lines[next_line_index] - 1
+get_line_boundaries :: #force_inline proc(lines: []int, line: int) -> (start, end: int) {
+    assert(line < len(lines))
+    next_line_index := min(line + 1, len(lines) - 1)
+    start = lines[line]
+    end = lines[next_line_index] - 1
     return
 }
 
-get_line_text :: #force_inline proc(b: ^Buffer, line: int) -> (result: string) {
-    assert(line < len(b.lines))
-    start, end := get_line_boundaries(b, line)
-    return b.str[start:end]
-}
-
-get_line_length :: #force_inline proc(b: ^Buffer, line: int) -> (length: int) {
-    assert(line < len(b.lines))
-    start, end := get_line_boundaries(b, line)
+get_line_length :: #force_inline proc(lines: []int, line: int) -> (length: int) {
+    assert(line < len(lines))
+    start, end := get_line_boundaries(lines, line)
     return end - start
 }
 
-get_line_start_after_indent :: #force_inline proc(b: ^Buffer, line: int) -> (offset: int) {
+get_line_text :: #force_inline proc(b: ^Buffer, lines: []int, line: int) -> (result: string) {
+    assert(line < len(lines))
+    start, end := get_line_boundaries(lines, line)
+    return b.str[start:end]
+}
+
+get_line_start_after_indent :: #force_inline proc(b: ^Buffer, lines: []int, line: int) -> (offset: int) {
     assert(line < len(b.lines))
-    bol, eol := get_line_boundaries(b, line)
+    bol, eol := get_line_boundaries(lines, line)
     offset = bol
 
     for offset < eol && is_whitespace(b.str[offset]) {
@@ -510,9 +514,9 @@ promote_cursor_index :: #force_inline proc(b: ^Buffer, cursor_index: int) {
     append(&b.cursors, new_cursor)
 }
 
-get_coords :: #force_inline proc(b: ^Buffer, pos: int) -> (result: Coords) {
-    result.line = get_line_index(b, pos)
-    bol, _ := get_line_boundaries(b, result.line)
+get_coords :: #force_inline proc(b: ^Buffer, lines: []int, pos: int) -> (result: Coords) {
+    result.line = get_line_index(lines, pos)
+    bol, _ := get_line_boundaries(lines, result.line)
     result.column = pos - bol
     return
 }
@@ -521,8 +525,8 @@ use_last_cursor :: #force_inline proc(b: ^Buffer) -> (cursor: ^Cursor) {
     return &b.cursors[len(b.cursors) - 1]
 }
 
-get_last_cursor_pos_as_coords :: #force_inline proc(b: ^Buffer) -> (pos: Coords) {
-    return get_coords(b, get_last_cursor_pos(b))
+get_last_cursor_pos_as_coords :: #force_inline proc(b: ^Buffer, lines: []int) -> (pos: Coords) {
+    return get_coords(b, lines, get_last_cursor_pos(b))
 }
 
 get_last_cursor_pos :: #force_inline proc(b: ^Buffer) -> (pos: int) {
@@ -604,8 +608,8 @@ set_last_cursor_pos :: #force_inline proc(b: ^Buffer, pos: int) {
     }
 }
 
-get_offset_from_coords :: proc(b: ^Buffer, coords: Coords) -> (pos: int) {
-    bol, _ := get_line_boundaries(b, coords.line)
+get_offset_from_coords :: proc(lines: []int, coords: Coords) -> (pos: int) {
+    bol, _ := get_line_boundaries(lines, coords.line)
     return bol + coords.column
 }
 
@@ -617,77 +621,6 @@ dwim_last_cursor_col_offset :: proc(cursor: ^Cursor, new_offset: int) -> (offset
     }
 
     return cursor.col_offset
-}
-
-translate_cursor :: proc(
-    b: ^Buffer,
-    start_cursor: ^Cursor,
-    t: Cursor_Translation,
-) -> (pos: int) {
-    pos = start_cursor.pos
-    lines_count := len(b.lines)
-    coords := get_coords(b, pos)
-
-    is_punctuation :: proc(b: ^Buffer, c: byte) -> bool {
-        punctuations := get_punctuations(b.major_mode)
-        return strings.contains_rune(punctuations, rune(c))
-    }
-
-    switch t {
-    case .DOWN:
-        if coords.line < lines_count - 1 {
-            coords.line += 1
-            coords.column = min(
-                dwim_last_cursor_col_offset(start_cursor, coords.column),
-                get_line_length(b, coords.line),
-            )
-            pos = get_offset_from_coords(b, coords)
-            return
-        }
-    case .UP:
-        if coords.line > 0 {
-            coords.line -= 1
-            coords.column = min(
-                dwim_last_cursor_col_offset(start_cursor, coords.column),
-                get_line_length(b, coords.line),
-            )
-            pos = get_offset_from_coords(b, coords)
-            return
-        }
-    case .LEFT:
-        pos = max(pos - 1, 0)
-        dwim_last_cursor_col_offset(start_cursor, -1)
-        return
-    case .RIGHT:
-        pos = min(pos + 1, buffer_len(b))
-        dwim_last_cursor_col_offset(start_cursor, -1)
-        return
-    case .BUFFER_START:
-        pos = 0
-        return
-    case .BUFFER_END:
-        pos = buffer_len(b)
-        return
-    case .LINE_START:
-        bol, _ := get_line_boundaries(b, coords.line)
-        bol_after_indent := get_line_start_after_indent(b, coords.line)
-        pos = pos == bol ? bol_after_indent : bol
-        return
-    case .LINE_END:
-        _, eol := get_line_boundaries(b, coords.line)
-        pos = eol
-        return
-    case .WORD_START:
-        for pos > 0 && is_punctuation(b, get_byte_at(b, pos - 1)) { pos -= 1 }
-        for pos > 0 && !is_punctuation(b, get_byte_at(b, pos - 1)) { pos -= 1 }
-        return
-    case .WORD_END:
-        for pos < buffer_len(b) && is_punctuation(b, get_byte_at(b, pos))  { pos += 1 }
-        for pos < buffer_len(b) && !is_punctuation(b, get_byte_at(b, pos)) { pos += 1}
-        return
-    }
-
-    return
 }
 
 update_future_cursor_offsets :: proc(b: ^Buffer, starting_cursor, offset: int) {

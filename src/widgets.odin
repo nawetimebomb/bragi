@@ -674,7 +674,7 @@ widgets_get_file_row_format :: #force_inline proc(f: ^Result_File_Info) -> strin
 }
 
 widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: int) -> string {
-    coords := get_coords(b, pos)
+    coords := get_coords(b, b.lines[:], pos)
     c0 := ""
     c1 := fmt.tprintf("{0}:{1}", coords.line + 1, coords.column)
     c2 := ""
@@ -689,7 +689,7 @@ widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: int) -> str
     }
 
     { // c2
-        line_start := get_line_start_after_indent(b, coords.line)
+        line_start := get_line_start_after_indent(b, b.lines[:], coords.line)
         line_end := line_start
         for line_end < len(b.str) && b.str[line_end] != '\n' { line_end += 1 }
         c2 = b.str[line_start:line_end]

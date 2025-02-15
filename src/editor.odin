@@ -239,9 +239,10 @@ editor_switch_to_pane_on_click :: proc(x, y: i32) {
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     coords: Coords
     coords.line = clamp(int(y / line_height) + p.yoffset, 0, len(p.buffer.lines) - 1)
+    lines_array := get_lines_array(p)
 
     // Calculate column of the cursor
-    line := get_line_text(p.buffer, coords.line)
+    line := get_line_text(p.buffer, lines_array, coords.line)
     size_of_line := get_text_size(font_editor, line)
 
     if x >= size_of_line + p.size_of_gutter {
@@ -250,7 +251,7 @@ mouse_set_point :: proc(p: ^Pane, x, y: i32) {
         coords.column = int((x - p.size_of_gutter) / char_width)
     }
 
-    coords_as_buffer_cursor := get_offset_from_coords(p.buffer, coords)
+    coords_as_buffer_cursor := get_offset_from_coords(lines_array, coords)
     delete_all_cursors(p.buffer, make_cursor(coords_as_buffer_cursor))
 }
 
@@ -267,12 +268,13 @@ editor_scroll :: proc(p: ^Pane, offset: int) {
     lines_count := len(p.buffer.lines)
 
     if p.visible_lines < lines_count {
-        coords := get_last_cursor_pos_as_coords(p.buffer)
+        buffer_lines := get_lines_array(p)
+        coords := get_last_cursor_pos_as_coords(p.buffer, buffer_lines)
         p.yoffset = clamp(p.yoffset + offset, 0, lines_count - MAX_SCROLL_OFFSET)
         p.dirty = true
 
         if coords.line < p.yoffset || coords.line > p.yoffset + p.visible_lines {
-            bol, _ := get_line_boundaries(p.buffer, p.yoffset)
+            bol, _ := get_line_boundaries(buffer_lines, p.yoffset)
 
             if p.id == current_pane.id {
                 set_last_cursor_pos(p.buffer, bol + coords.column)
@@ -347,7 +349,7 @@ editor_delete_to :: proc(p: ^Pane, t: Cursor_Translation) {
         count = sel - pos
     } else {
         cursor_at_start := get_last_cursor_pos(p.buffer)
-        cursor_after_deletion := translate_cursor(p.buffer, use_last_cursor(p.buffer), t)
+        cursor_after_deletion := translate_cursor(p, use_last_cursor(p.buffer), t)
         count = cursor_after_deletion - cursor_at_start
 
         // If trying to kill to the end of the line but we're currently there, we just
@@ -372,20 +374,20 @@ editor_move_cursor_to :: proc(p: ^Pane, t: Cursor_Translation) {
         // as to make a selection, it is best for the user to have
         // all the required cursors in place.
         for &cursor in p.buffer.cursors {
-            cursor.pos = translate_cursor(p.buffer, &cursor, t)
+            cursor.pos = translate_cursor(p, &cursor, t)
         }
     } else if p.buffer.group_mode {
         // If group mode is enabled, then we move all cursors accordingly
         // but make sure we're not selecting.
         for &cursor in p.buffer.cursors {
-            cursor.pos = translate_cursor(p.buffer, &cursor, t)
+            cursor.pos = translate_cursor(p, &cursor, t)
             cursor.sel = cursor.pos
         }
     } else {
         // Otherwise, if the user is in cursor mode, the user manipulates
         // the last active cursor.
         last_cursor := use_last_cursor(p.buffer)
-        last_cursor.pos = translate_cursor(p.buffer, last_cursor, t)
+        last_cursor.pos = translate_cursor(p, last_cursor, t)
         last_cursor.sel = last_cursor.pos
     }
 }

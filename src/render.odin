@@ -68,10 +68,12 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
     {
         coords: Coords
 
+        // NOTE: using the buffer lines as reference as we want to point the user
+        // to the correct line:column from the buffer, not from what they are seeing
         if focused {
-            coords = get_last_cursor_pos_as_coords(p.buffer)
+            coords = get_last_cursor_pos_as_coords(p.buffer, p.buffer.lines[:])
         } else {
-            coords = get_coords(p.buffer, p.last_cursor_pos)
+            coords = get_coords(p.buffer, p.buffer.lines[:], p.last_cursor_pos)
         }
 
         left_start_column  :: MODELINE_H_PADDING
@@ -167,10 +169,7 @@ draw_pane_divider :: proc() {
     draw_line(0, 0, 0, window_height)
 }
 
-draw_gutter :: proc(
-    prect: Rect,
-    start, end, current: int,
-) -> (gutter_size: i32) {
+draw_gutter :: proc(p: ^Pane, start, end, current: int) -> (gutter_size: i32) {
     GUTTER_PADDING :: 2
     LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
 
@@ -182,34 +181,45 @@ draw_gutter :: proc(
         )
 
         set_bg(colorscheme[.ui_gutter])
-        draw_rect(0, 0, gutter_size, prect.h)
+        draw_rect(0, 0, gutter_size, p.rect.h)
 
         set_bg(colorscheme[.ui_border])
-        draw_line(0, 0, 0, prect.h)
+        draw_line(0, 0, 0, p.rect.h)
+
+        line_number := start
+        sy : i32 = -line_height
 
         for line_number in start..<end {
-            index := line_number - start
-            sy := i32(line_number - start) * line_height
+            // TODO: Fix this, looks like shit
+            line_size := get_line_size(p, line_number)
+
+            if line_size > 0 {
+                sy += line_height * i32(line_size)
+            } else {
+                sy += line_height
+            }
+
             line_number_str := strings.right_justify(
                 fmt.tprintf("{0}", line_number + 1),
                 len(size_test_str) + LINE_NUMBER_JUSTIFY,
                 " ",
                 context.temp_allocator,
             )
+
             draw_text(
                 font_ui, line_number_str,
-                current == index ? .ui_line_number_current : .ui_line_number,
+                current == line_number ? .ui_line_number_current : .ui_line_number,
                 0, sy,
             )
         }
     } else {
         gutter_size = GUTTER_PADDING
         set_bg(colorscheme[.ui_gutter])
-        draw_rect(0, 0, gutter_size, prect.h)
+        draw_rect(0, 0, gutter_size, p.rect.h)
 
-        if prect.x > 0 {
+        if p.rect.x > 0 {
             set_bg(colorscheme[.ui_border])
-            draw_line(0, 0, 0, prect.h)
+            draw_line(0, 0, 0, p.rect.h)
         }
     }
 

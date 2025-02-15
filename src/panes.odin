@@ -3,9 +3,9 @@ package main
 import     "core:encoding/uuid"
 import     "core:fmt"
 import     "core:log"
+import     "core:slice"
 import     "core:strings"
 import     "core:time"
-import sdl "vendor:sdl2"
 
 // Panes follow the concept of "windows" in Emacs. The editor window can separate in
 // different panes, and each pane can have its own functionality, or serve as a helper
@@ -41,12 +41,15 @@ Pane :: struct {
 
     id: uuid.Identifier,
 
+    wrapped_lines: [dynamic]int,
+
     // The pane contents, buffer and its cursor goes here. Cursor lives in the pane so,
     // users can navigate and edit the same buffer in two different panes.
     buffer: ^Buffer,
 
     // Determines if there are changes that need to be recalculated
     dirty: bool,
+    buffer_was_dirty: bool,
 
     rect: Rect,
     texture: Texture,
@@ -73,6 +76,7 @@ pane_create :: proc(b: ^Buffer = nil) -> (result: Pane) {
 
 pane_destroy :: proc(p: ^Pane) {
     delete(p.markers)
+    delete(p.wrapped_lines)
 }
 
 update_and_draw_active_pane :: proc() {
@@ -85,6 +89,14 @@ update_and_draw_active_pane :: proc() {
 
     assert(p.buffer != nil)
     buffer_update(p.buffer)
+
+    if p.buffer_was_dirty || p.dirty {
+        p.buffer_was_dirty = false
+
+        if bragi.settings.line_wrap_by_default {
+            recalculate_wrapped_lines(p)
+        }
+    }
 
     if time.tick_diff(p.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
         p.cursor_showing = true
@@ -112,13 +124,16 @@ update_and_draw_active_pane :: proc() {
 
     p.last_cursor_pos = get_last_cursor_pos(p.buffer)
     p.last_time_active = time.tick_now()
+    buffer_lines := get_lines_array(p)
+    coords := get_last_cursor_pos_as_coords(p.buffer, buffer_lines)
+    buffer_coords := get_last_cursor_pos_as_coords(p.buffer, p.buffer.lines[:])
 
-    coords := get_last_cursor_pos_as_coords(p.buffer)
-
-    if coords.column > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
-        p.xoffset = coords.column - p.visible_columns + SCROLLING_THRESHOLD
-    } else if coords.column < p.xoffset {
-        p.xoffset = coords.column
+    if !bragi.settings.line_wrap_by_default {
+        if coords.column > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
+            p.xoffset = coords.column - p.visible_columns + SCROLLING_THRESHOLD
+        } else if coords.column < p.xoffset {
+            p.xoffset = coords.column
+        }
     }
 
     if coords.line > p.yoffset + p.visible_lines - SCROLLING_THRESHOLD {
@@ -131,14 +146,13 @@ update_and_draw_active_pane :: proc() {
     clear_background(colorscheme[.background])
 
     first_line := p.yoffset
-    last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
-    start_offset, _ := get_line_boundaries(p.buffer, first_line)
-    _, end_offset := get_line_boundaries(p.buffer, last_line)
+    last_line := min(p.yoffset + p.visible_lines, len(buffer_lines) - 1)
+    start_offset, _ := get_line_boundaries(buffer_lines, first_line)
+    _, end_offset := get_line_boundaries(buffer_lines, last_line)
 
-    screen_y := coords.line - p.yoffset
-    screen_x := coords.column - p.xoffset
-
-    p.size_of_gutter = draw_gutter(p.rect, first_line, last_line, screen_y)
+    p.size_of_gutter = draw_gutter(
+        p, first_line, last_line, buffer_coords.line,
+    )
 
     selections := make(
         [dynamic]Range, 0, len(p.buffer.cursors), context.temp_allocator,
@@ -158,7 +172,6 @@ update_and_draw_active_pane :: proc() {
     }
 
     is_colored := p.buffer.major_mode != .Fundamental
-    if last_line == 0 { last_line = 1 }
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
     pen := get_pen_for_panes()
     pen.x += p.size_of_gutter
@@ -166,7 +179,7 @@ update_and_draw_active_pane :: proc() {
     for line_number in first_line..<last_line {
         index := line_number - first_line
         code_line := Code_Line{}
-        start, end := get_line_boundaries(p.buffer, line_number)
+        start, end := get_line_boundaries(buffer_lines, line_number)
         code_line.start_offset = start
         code_line.line = p.buffer.str[start:end]
         if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
@@ -217,6 +230,15 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     assert(p.buffer != nil)
     buffer_update(p.buffer)
 
+    if p.buffer_was_dirty {
+        p.dirty = true
+        p.buffer_was_dirty = false
+
+        if bragi.settings.line_wrap_by_default {
+            recalculate_wrapped_lines(p)
+        }
+    }
+
     if !p.dirty {
         draw_copy(p.texture, nil, &p.rect)
         return
@@ -224,18 +246,21 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
 
     p.last_cursor_pos = clamp(p.last_cursor_pos, 0, buffer_len(p.buffer))
 
-    coords := get_coords(p.buffer, p.last_cursor_pos)
+    buffer_lines := get_lines_array(p)
+    coords := get_coords(p.buffer, buffer_lines, p.last_cursor_pos)
+    buffer_coords := get_coords(p.buffer, p.buffer.lines[:], p.last_cursor_pos)
 
     set_renderer_target(p.texture)
     clear_background(colorscheme[.background])
 
     first_line := p.yoffset
-    last_line := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
-    start_offset, _ := get_line_boundaries(p.buffer, first_line)
-    _, end_offset := get_line_boundaries(p.buffer, last_line)
-    screen_y := coords.line - p.yoffset
+    last_line := min(p.yoffset + p.visible_lines, len(buffer_lines) - 1)
+    start_offset, _ := get_line_boundaries(buffer_lines, first_line)
+    _, end_offset := get_line_boundaries(buffer_lines, last_line)
 
-    p.size_of_gutter = draw_gutter(p.rect, first_line, last_line, screen_y)
+    p.size_of_gutter = draw_gutter(
+        p, first_line, last_line, buffer_coords.line,
+    )
 
     is_colored := p.buffer.major_mode != .Fundamental
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
@@ -245,7 +270,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     for line_number in first_line..<last_line {
         index := line_number - first_line
         code_line := Code_Line{}
-        start, end := get_line_boundaries(p.buffer, line_number)
+        start, end := get_line_boundaries(buffer_lines, line_number)
         code_line.start_offset = start
         code_line.line = p.buffer.str[start:end]
         if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
@@ -265,13 +290,15 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
 prepare_cursor_for_drawing :: #force_inline proc(
     p: ^Pane, font: Font, pos: int,
 ) -> (out_of_screen_coords: bool, rect: Rect, byte_behind_cursor: byte) {
-    coords := get_coords(p.buffer, pos)
+    buffer_lines := get_lines_array(p)
+    coords := get_coords(p.buffer, buffer_lines, pos)
 
     if !is_within_the_screen(coords, p.yoffset, p.visible_lines) {
         return true, rect, byte_behind_cursor
     }
 
-    line := get_line_text(p.buffer, coords.line)
+
+    line := get_line_text(p.buffer, buffer_lines, coords.line)
     rect.x = get_width_based_on_text_size(font, line[:coords.column], coords.column)
     rect.y = i32(coords.line - p.yoffset) * font.line_height
     rect.h = font.line_height
@@ -317,7 +344,7 @@ resize_panes :: proc() {
 
         p.rect = make_rect(x, 0, w, h)
         p.texture = make_texture(p.texture, .RGBA32, .TARGET, p.rect)
-        p.visible_columns = int(p.rect.w / char_width)
+        p.visible_columns = int((p.rect.w - p.size_of_gutter) / char_width) - 1
         p.visible_lines = int(p.rect.h / line_height)
         p.dirty = true
     }
@@ -352,10 +379,145 @@ get_pen_for_panes :: #force_inline proc() -> (result: [2]i32) {
     return
 }
 
+get_lines_array :: proc(p: ^Pane) -> []int {
+    if bragi.settings.line_wrap_by_default {
+        return p.wrapped_lines[:]
+    } else {
+        return p.buffer.lines[:]
+    }
+}
+
+recalculate_wrapped_lines :: #force_inline proc(p: ^Pane) {
+    wrap_needed_line := -1
+
+    delete(p.wrapped_lines)
+
+    for i := 0; i < len(p.buffer.lines); i += 1 {
+        line_len := get_line_length(p.buffer.lines[:], i)
+
+        if line_len > p.visible_columns {
+            wrap_needed_line = i
+            break
+        }
+    }
+
+    if wrap_needed_line != -1 {
+        p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:wrap_needed_line])
+        start_offset, _ := get_line_boundaries(p.buffer.lines[:], wrap_needed_line)
+        count := 0
+
+        append(&p.wrapped_lines, start_offset)
+
+        for i := start_offset; i < len(p.buffer.str); i += 1 {
+            count += 1
+
+            if p.buffer.str[i] == '\n' || count > p.visible_columns {
+                count = 0
+                append(&p.wrapped_lines, i + 1)
+            }
+        }
+
+        append(&p.wrapped_lines, len(p.buffer.str) + 1)
+    } else {
+        p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:])
+    }
+}
+
 report_update_to_panes_using_buffer :: proc(b: ^Buffer) {
     for &p in open_panes {
         if p.buffer.id == b.id {
-            p.dirty = true
+            p.buffer_was_dirty = true
         }
     }
+}
+
+translate_cursor :: proc(
+    p: ^Pane,
+    start_cursor: ^Cursor,
+    t: Cursor_Translation,
+) -> (pos: int) {
+    pos = start_cursor.pos
+    lines := get_lines_array(p)
+    lines_count := len(lines)
+    coords := get_coords(p.buffer, lines, pos)
+
+    is_punctuation :: proc(b: ^Buffer, c: byte) -> bool {
+        punctuations := get_punctuations(b.major_mode)
+        return strings.contains_rune(punctuations, rune(c))
+    }
+
+    switch t {
+    case .DOWN:
+        if coords.line < lines_count - 1 {
+            coords.line += 1
+            coords.column = min(
+                dwim_last_cursor_col_offset(start_cursor, coords.column),
+                get_line_length(lines, coords.line),
+            )
+            pos = get_offset_from_coords(lines, coords)
+            return
+        }
+    case .UP:
+        if coords.line > 0 {
+            coords.line -= 1
+            coords.column = min(
+                dwim_last_cursor_col_offset(start_cursor, coords.column),
+                get_line_length(lines, coords.line),
+            )
+            pos = get_offset_from_coords(lines, coords)
+            return
+        }
+    case .LEFT:
+        pos = max(pos - 1, 0)
+        dwim_last_cursor_col_offset(start_cursor, -1)
+        return
+    case .RIGHT:
+        pos = min(pos + 1, buffer_len(p.buffer))
+        dwim_last_cursor_col_offset(start_cursor, -1)
+        return
+    case .BUFFER_START:
+        pos = 0
+        return
+    case .BUFFER_END:
+        pos = buffer_len(p.buffer)
+        return
+    case .LINE_START:
+        line_index_in_buffer := get_line_index(p.buffer.lines[:], pos)
+        bol, _ := get_line_boundaries(p.buffer.lines[:], line_index_in_buffer)
+        pos = pos != bol ? bol :
+            get_line_start_after_indent(p.buffer, p.buffer.lines[:], line_index_in_buffer)
+        return
+    case .LINE_END:
+        line_index_in_buffer := get_line_index(p.buffer.lines[:], pos)
+        _, eol := get_line_boundaries(p.buffer.lines[:], line_index_in_buffer)
+        pos = eol
+        return
+    case .WORD_START:
+        for pos > 0 && is_punctuation(p.buffer, get_byte_at(p.buffer, pos - 1)) { pos -= 1 }
+        for pos > 0 && !is_punctuation(p.buffer, get_byte_at(p.buffer, pos - 1)) { pos -= 1 }
+        return
+    case .WORD_END:
+        for pos < buffer_len(p.buffer) && is_punctuation(p.buffer, get_byte_at(p.buffer, pos))  { pos += 1 }
+        for pos < buffer_len(p.buffer) && !is_punctuation(p.buffer, get_byte_at(p.buffer, pos)) { pos += 1}
+        return
+    }
+
+    return
+}
+
+is_line_a_wrapped_line :: proc(p: ^Pane, line: int) -> bool {
+    wrapped_line_start := p.wrapped_lines[line]
+
+    return !slice.contains(p.buffer.lines[:], wrapped_line_start)
+}
+
+get_line_size :: proc(p: ^Pane, line: int) -> int {
+    lines_array := get_lines_array(p)
+    if is_last_line(lines_array, line) { return 1 }
+    bol, _ := get_line_boundaries(lines_array, line)
+    current_line_in_buffer := get_line_index(p.buffer.lines[:], bol)
+    next_line_in_buffer := current_line_in_buffer + 1
+    bol_next_line_buffer, _ := get_line_boundaries(p.buffer.lines[:], next_line_in_buffer)
+    next_line_index_wrapped := get_line_index(lines_array, bol_next_line_buffer)
+    return next_line_index_wrapped - line
 }

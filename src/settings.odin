@@ -86,6 +86,7 @@ Settings :: struct {
     remove_trailing_whitespaces: bool,
     save_desktop_mode:           bool,
     show_line_numbers:           bool,
+    line_wrap_by_default:        bool,
 }
 
 Major_Mode_Settings :: struct {

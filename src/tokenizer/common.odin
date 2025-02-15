@@ -3,7 +3,7 @@ package tokenizer
 import "core:slice"
 
 @private
-R: []Token_Kind
+R: ^[dynamic]Token_Kind
 
 @private
 S: ^string
@@ -13,26 +13,21 @@ T: Tokenizer
 
 @private
 Tokenizer :: struct {
-    column: int,
-    line:   int,
     offset: int,
 }
 
 @private
-tokenizer_init :: proc(s: ^string) {
-    T.column = -1
-    T.offset = -1
+tokenizer_init :: proc(s: ^string, start_offset: int, tokens: ^[dynamic]Token_Kind) {
+    T.offset = start_offset
     S = s
-    R = make([]Token_Kind, len(s))
+    R = tokens
 }
 
 @private
-tokenizer_finish :: proc() -> []Token_Kind {
-    result := slice.clone(R[:])
+tokenizer_finish :: proc() {
     S = nil
     T = Tokenizer{}
-    delete(R)
-    return result
+    R = nil
 }
 
 @private

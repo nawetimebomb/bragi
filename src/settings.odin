@@ -12,6 +12,12 @@ Color :: distinct [4]u8
 Major_Modes_Table :: map[Major_Mode]Major_Mode_Settings
 Keybindings_Table :: map[string]Command
 
+PARSE_ERROR_KEYBINDING_EXISTS_FMT :: "Error in line {0}: Keybinding {1} already bound"
+PARSE_ERROR_EXPECT_GOT_FMT        :: "Error in line {0}: Invalid setting.\n\tExpect: {1}\n\tGot: {2}"
+PARSE_ERROR_INVALID_COMMAND_FMT   :: "Error in line {0}: Invalid command {1}"
+PARSE_ERROR_INVALID_FACE_FMT      :: "Error in line {0}: Invalid face name {1}"
+PARSE_ERROR_MISSING_HEADING_FMT   :: "Error in line {0}: Heading not found, not able to determine configuration"
+
 Major_Mode :: enum {
     Bragi,
     Fundamental,
@@ -310,7 +316,7 @@ major_mode_bragi :: proc() -> Major_Mode_Settings {
     return {
         auto_indent_type  = .Relaxed,
         enable_lexer      = true,
-        file_extensions   = "bragi",
+        file_extensions   = "",
         indentation_char  = .Space,
         indentation_width = 0,
         name              = "Bragi",

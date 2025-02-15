@@ -20,6 +20,8 @@ import "tokenizer"
 
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
+Token_Kind :: tokenizer.Token_Kind
+
 Cursor_Operation :: enum {
     DELETE, SWITCH, TOGGLE_GROUP,
 }
@@ -68,13 +70,13 @@ Buffer :: struct {
     cursor_selection_mode: bool,
 
     data:                  []byte,
+    tokens:                [dynamic]Token_Kind,
     dirty:                 bool,
     gap_end:               int,
     gap_start:             int,
-    lines:                 [dynamic]Range,
+    lines:                 [dynamic]int,
 
     str:                   string,
-    tokens:                []tokenizer.Token_Kind,
 
     enable_history:        bool,
     redo:                  [dynamic]History_State,
@@ -110,7 +112,7 @@ buffer_init :: proc(
         dirty          = false,
         gap_start      = 0,
         gap_end        = bytes,
-        lines          = make([dynamic]Range, 0, 16),
+        lines          = make([dynamic]int, 0, 16),
 
         enable_history = true,
         redo           = make([dynamic]History_State, 0, 5, allocator),
@@ -138,7 +140,7 @@ create_buffer :: proc(
         enable_history = true,
         gap_start      = 0,
         gap_end        = bytes,
-        lines          = make([dynamic]Range, 0, 16),
+        lines          = make([dynamic]int, 0, 16),
         major_mode     = .Fundamental,
         name           = strings.clone(name),
         redo           = make([dynamic]History_State, 0, 5),
@@ -250,43 +252,53 @@ update_buffer_time :: proc(b: ^Buffer) {
 
 recalculate_lines :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:recalculate_lines")
-    left, right := buffer_get_strings(b)
+    prev_lines_count := max(len(b.lines), cap(b.lines))
 
     clear(&b.lines)
-    append(&b.lines, Range{0, 0})
+    reserve(&b.lines, prev_lines_count)
+    append(&b.lines, 0)
 
     for index := 0; index < len(b.str); index += 1 {
         if b.str[index] == '\n' {
-            eocl := index
-            bonl := eocl + 1
-            last_line_index := len(b.lines) - 1
-            b.lines[last_line_index].end = eocl
-            append(&b.lines, Range{bonl, bonl})
+            append(&b.lines, index + 1)
         }
     }
 
-    b.lines[len(b.lines) - 1].end = buffer_len(b)
-    append(&b.lines, Range{buffer_len(b), buffer_len(b)})
+    // last line, adding padding for safety
+    append(&b.lines, buffer_len(b) + 1)
     profiling_end()
+}
+
+find_earlier_offset_in_cursors :: proc(b: ^Buffer) -> (result: int) {
+    result = buffer_len(b)
+
+    for cursor in b.cursors {
+        result = min(result, min(cursor.pos, cursor.sel))
+    }
+
+    return
 }
 
 maybe_tokenize_buffer :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:maybe_tokenize_buffer")
+
     if b.major_mode == .Fundamental {
         // We don't tokenize Fundamental mode
         return
     }
 
-    tokenize_proc: #type proc(^string) -> []tokenizer.Token_Kind
+    tokenize_proc: #type proc(^string, int, ^[dynamic]Token_Kind)
 
-    delete(b.tokens)
+    if len(b.tokens) != len(b.data) {
+        resize(&b.tokens, len(b.data))
+    }
 
     #partial switch b.major_mode {
         case .Bragi: log.error("not implemented")
         case .Odin:  tokenize_proc = tokenizer.tokenize_odin
     }
 
-    b.tokens = tokenize_proc(&b.str)
+    tokenize_proc(&b.str, -1, &b.tokens)
 
     profiling_end()
 }
@@ -313,10 +325,13 @@ get_line_index :: #force_inline proc(b: ^Buffer, pos: int) -> (line: int) {
     return
 }
 
-get_line_boundaries :: #force_inline proc(b: ^Buffer, line: int, loc := #caller_location) -> (start, end: int) {
-    log.assertf(line < len(b.lines), "Failed: line: {0}, caller: {1}", line, loc)
-    result := b.lines[line]
-    return result.start, result.end
+get_line_boundaries :: #force_inline proc(b: ^Buffer, line: int) -> (start, end: int) {
+    assert(line < len(b.lines))
+    next_line_index := min(line + 1, len(b.lines) - 1)
+    start = b.lines[line]
+    end = b.lines[next_line_index] - 1
+    // if next_line_index != len(b.lines) - 1 { end -= 1 }
+    return
 }
 
 get_line_text :: #force_inline proc(b: ^Buffer, line: int) -> (result: string) {

@@ -2,8 +2,8 @@ package tokenizer
 
 import "core:slice"
 
-tokenize_odin :: proc(s: ^string) -> []Token_Kind {
-    tokenizer_init(s)
+tokenize_odin :: proc(s: ^string, start_offset: int, tokens: ^[dynamic]Token_Kind) {
+    tokenizer_init(s, start_offset, tokens)
 
     COMMON_DELIMITERS        :: "().,:;[]{} \n\t"
     MULTI_LINE_COMMENT_END   :: "*/"
@@ -106,11 +106,13 @@ tokenize_odin :: proc(s: ^string) -> []Token_Kind {
                 save_tokens(.preprocessor, start, end)
             case slice.contains(TYPES[:], word):
                 save_tokens(.type, start, end)
+            case :
+                save_tokens(.generic, start, end)
             }
         }
     }
 
-    return tokenizer_finish()
+    tokenizer_finish()
 }
 
 odin_punctuations :: proc() -> string {

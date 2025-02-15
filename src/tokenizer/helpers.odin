@@ -6,7 +6,6 @@ import "core:strings"
 Test_Proc :: #type proc() -> bool
 
 advance :: #force_inline proc() {
-    T.column += 1
     T.offset += 1
 }
 
@@ -123,11 +122,6 @@ scan_through_until_whitespace :: #force_inline proc() -> (skipped: int) {
 
 skip_all_whitespaces :: #force_inline proc() {
     for c := get_char(); !is_eof() && is_whitespace(); {
-        if c == '\n' {
-            T.line += 1
-            T.column = 0
-        }
-
         advance()
     }
 }

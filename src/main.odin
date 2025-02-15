@@ -33,8 +33,8 @@ Bragi :: struct {
 }
 
 FONT_EDITOR  :: #load("../res/FiraCode-Retina.ttf")
-FONT_UI      :: #load("../res/FiraCode-Retina.ttf")
-FONT_UI_BOLD :: #load("../res/FiraCode-SemiBold.ttf")
+FONT_UI      :: #load("../fonts/RobotoMono-Regular.ttf")
+FONT_UI_BOLD :: #load("../fonts/RobotoMono-Bold.ttf")
 
 font_editor:  Font
 font_ui:      Font

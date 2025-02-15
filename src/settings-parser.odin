@@ -1,3 +1,4 @@
+#+private file
 package main
 
 import "core:fmt"
@@ -5,12 +6,6 @@ import "core:log"
 import "core:reflect"
 import "core:slice"
 import "core:strings"
-
-PARSE_ERROR_KEYBINDING_EXISTS_FMT :: "Error in line {0}: Keybinding {1} already bound"
-PARSE_ERROR_EXPECT_GOT_FMT        :: "Error in line {0}: Invalid setting.\n\tExpect: {1}\n\tGot: {2}"
-PARSE_ERROR_INVALID_COMMAND_FMT   :: "Error in line {0}: Invalid command {1}"
-PARSE_ERROR_INVALID_FACE_FMT      :: "Error in line {0}: Invalid face name {1}"
-PARSE_ERROR_MISSING_HEADING_FMT   :: "Error in line {0}: Heading not found, not able to determine configuration"
 
 SUBSECTION_WRONG_SECTION :: "Line {0}: Subsection {1} inside wrong section {2}"
 MISSING_HEADING :: "Line {0}: Missing section heading"
@@ -20,42 +15,50 @@ INCORRECT_FORMAT :: "Line {0}: Incorrect format. Expected: {1}, Got: {2}"
 UNKNOWN_COMMAND :: "Line {0}: Unknown command {1}"
 UNKNOWN_FACE :: "Line {0}: Unknown face {1}"
 
-@(private="file")
+SECTION_SETTINGS  :: "[[settings]]"
+SECTION_KEYMAPS   :: "[[keymaps]]"
+SECTION_INTERFACE :: "[[interface]]"
+
+SUBSECTION_UI          :: "[ui]"
+SUBSECTION_COLORSCHEME :: "[colorscheme]"
+SUBSECTION_GLOBAL      :: "[global]"
+SUBSECTION_EDITOR      :: "[editor]"
+SUBSECTION_WIDGET      :: "[widget]"
+
 Command_Group :: union { Global_Command, Editor_Command, Widget_Command }
 
+Section :: enum u8 {
+    unspecified, interface, keymaps, settings,
+}
+
+Subsection :: enum u8 {
+    unspecified, colorscheme, ui, editor, global, widget,
+}
+
+Settings_Parser :: struct {
+    line:       int,
+    offset:     int,
+    section:    Section,
+    subsection: Subsection,
+}
+
+p: Settings_Parser
+
+@private
 parse_settings_data :: proc(data: []u8) -> (success: bool) {
-    Section :: enum u8 { undefined, interface, keymaps, settings, }
-    Subsection :: enum u8 {
-        undefined, colorscheme, ui, editor, global, widget,
-    }
-    Settings_Parser :: struct {
-        line:       int,
-        section:    Section,
-        subsection: Subsection,
-    }
-
-    SECTION_SETTINGS  :: "[[settings]]"
-    SECTION_KEYMAPS   :: "[[keymaps]]"
-    SECTION_INTERFACE :: "[[interface]]"
-
-    SUBSECTION_UI          :: "[ui]"
-    SUBSECTION_COLORSCHEME :: "[colorscheme]"
-    SUBSECTION_GLOBAL      :: "[global]"
-    SUBSECTION_EDITOR      :: "[editor]"
-    SUBSECTION_WIDGET      :: "[widget]"
-
     is_not_empty :: proc(s: string) -> bool { return len(s) > 0 }
 
-    p: Settings_Parser
 
     clear(&colorscheme)
 
     for key in keymaps.editor { delete(key) }
     for key in keymaps.global { delete(key) }
     for key in keymaps.widget { delete(key) }
+    for key in bragi.settings.keybindings_table { delete(key) }
     clear(&keymaps.editor)
     clear(&keymaps.global)
     clear(&keymaps.widget)
+    clear(&bragi.settings.keybindings_table)
 
     settings_str := string(data)
 
@@ -66,53 +69,43 @@ parse_settings_data :: proc(data: []u8) -> (success: bool) {
         case strings.starts_with(line, "#"): continue
         case line == SECTION_SETTINGS:
             p.section = .settings
-            p.subsection = .undefined
+            p.subsection = .unspecified
         case line == SECTION_KEYMAPS:
             p.section = .keymaps
-            p.subsection = .undefined
+            p.subsection = .unspecified
         case line == SECTION_INTERFACE:
             p.section = .interface
-            p.subsection = .undefined
+            p.subsection = .unspecified
 
         case line == SUBSECTION_COLORSCHEME:
             p.subsection = .colorscheme
             if p.section != .interface {
-                log.errorf(
-                    SUBSECTION_WRONG_SECTION, p.line, line, p.section,
-                )
+                log.errorf(SUBSECTION_WRONG_SECTION, p.line, line, p.section)
                 return false
             }
         case line == SUBSECTION_UI:
             p.subsection = .ui
             if p.section != .interface {
-                log.errorf(
-                    SUBSECTION_WRONG_SECTION, p.line, line, p.section,
-                )
+                log.errorf(SUBSECTION_WRONG_SECTION, p.line, line, p.section)
                 return false
             }
 
         case line == SUBSECTION_GLOBAL:
             p.subsection = .global
             if p.section != .keymaps {
-                log.errorf(
-                    SUBSECTION_WRONG_SECTION, p.line, line, p.section,
-                )
+                log.errorf(SUBSECTION_WRONG_SECTION, p.line, line, p.section)
                 return false
             }
         case line == SUBSECTION_EDITOR:
             p.subsection = .editor
             if p.section != .keymaps {
-                log.errorf(
-                    SUBSECTION_WRONG_SECTION, p.line, line, p.section,
-                )
+                log.errorf(SUBSECTION_WRONG_SECTION, p.line, line, p.section)
                 return false
             }
         case line == SUBSECTION_WIDGET:
             p.subsection = .widget
             if p.section != .keymaps {
-                log.errorf(
-                    SUBSECTION_WRONG_SECTION, p.line, line, p.section,
-                )
+                log.errorf(SUBSECTION_WRONG_SECTION, p.line, line, p.section)
                 return false
             }
 
@@ -122,12 +115,12 @@ parse_settings_data :: proc(data: []u8) -> (success: bool) {
             if len(setting) == 0 { continue }
 
             switch p.section {
-            case .undefined:
+            case .unspecified:
                 log.errorf(MISSING_HEADING, p.line)
                 return false
 
             case .settings:
-                if p.subsection != .undefined {
+                if p.subsection != .unspecified {
                     log.errorf(INVALID_SUBHEADING, p.line)
                     return false
                 }
@@ -140,7 +133,7 @@ parse_settings_data :: proc(data: []u8) -> (success: bool) {
                 // TODO: Handle setting parsing
 
             case .keymaps:
-                if p.subsection == .undefined {
+                if p.subsection == .unspecified {
                     log.errorf(MISSING_SUBHEADING, p.line)
                     return false
                 }
@@ -151,7 +144,7 @@ parse_settings_data :: proc(data: []u8) -> (success: bool) {
                 }
 
                 switch p.subsection {
-                case .undefined, .ui, .colorscheme:
+                case .unspecified, .ui, .colorscheme:
                     log.errorf(INVALID_SUBHEADING, p.line)
                     return false
                 case .global:
@@ -184,7 +177,7 @@ parse_settings_data :: proc(data: []u8) -> (success: bool) {
                 }
 
             case .interface:
-                if p.subsection == .undefined {
+                if p.subsection == .unspecified {
                     log.errorf(MISSING_SUBHEADING, p.line)
                     return false
                 }
@@ -195,7 +188,7 @@ parse_settings_data :: proc(data: []u8) -> (success: bool) {
                 }
 
                 switch p.subsection {
-                case .undefined, .global, .editor, .widget:
+                case .unspecified, .global, .editor, .widget:
                     log.errorf(INVALID_SUBHEADING, p.line)
                     return false
                 case .ui:

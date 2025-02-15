@@ -1,4 +1,5 @@
 [[settings]]
+
 # C = Ctrl | M = Alt | S = Shift
 [[keymaps]]
 
@@ -75,6 +76,11 @@ delete_cursor                   <C-S-d>
 
 # Comments
 [[interface]]
+
+[ui]
+
+font                            default
+font_size                       18
 
 [colorscheme]
 # based on night-owl: https://github.com/aaronjensen/night-owl-emacs

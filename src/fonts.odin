@@ -177,7 +177,7 @@ generate_font_bitmap_texture :: proc(result: ^Font) {
         0.5 * f32(result.face.glyph.metrics.hori_bearing_y >> 6) + 0.5
 
     // Using the 'M' glyph for em_width
-    glyph_index = ft.get_char_index(result.face, 'M')
+    glyph_index = ft.get_char_index(result.face, 'W')
     ft.load_glyph(result.face, glyph_index, {})
     result.em_width = i32(result.face.glyph.bitmap.width)
 

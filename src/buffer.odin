@@ -69,6 +69,13 @@ Buffer :: struct {
     group_mode:          bool, // the user wants to control all cursors at the same time
     selection_mode:      bool, // when the user is doing selection with their keyboard
 
+    // Save the cursor incursion to recreate lines faster
+    cursor_incursion: struct {
+        before:    int,
+        after:     int,
+        direction: enum { backward, forward },
+    },
+
     data:                []byte,
     tokens:              [dynamic]Token_Kind,
     dirty:               bool,
@@ -256,13 +263,26 @@ update_buffer_time :: proc(b: ^Buffer) {
 
 recalculate_lines :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:recalculate_lines")
-    prev_lines_count := max(len(b.lines), cap(b.lines))
+    start := 0
 
-    clear(&b.lines)
-    reserve(&b.lines, prev_lines_count)
-    append(&b.lines, 0)
+    if len(b.lines) > 1 {
+        first_modified_offset: int
 
-    for index := 0; index < len(b.str); index += 1 {
+        if b.cursor_incursion.direction == .backward {
+            first_modified_offset = b.cursor_incursion.after
+        } else {
+            first_modified_offset = b.cursor_incursion.before
+        }
+
+        modified_line := get_line_index(b.lines[:], first_modified_offset)
+        modified_bol, _ := get_line_boundaries(b.lines[:], modified_line)
+        start = modified_bol
+        remove_range(&b.lines, modified_line, len(b.lines))
+    }
+
+    append(&b.lines, start)
+
+    for index := start; index < len(b.str); index += 1 {
         if b.str[index] == '\n' {
             append(&b.lines, index + 1)
         }
@@ -270,6 +290,7 @@ recalculate_lines :: proc(b: ^Buffer) {
 
     // last line, adding padding for safety
     append(&b.lines, buffer_len(b) + 1)
+
     profiling_end()
 }
 
@@ -279,6 +300,8 @@ find_earlier_offset_in_cursors :: proc(b: ^Buffer) -> (result: int) {
     for cursor in b.cursors {
         result = min(result, min(cursor.pos, cursor.sel))
     }
+
+    fmt.println("First cursor: ", result)
 
     return
 }
@@ -321,7 +344,7 @@ is_last_line :: #force_inline proc(lines: []int, line: int) -> bool {
 }
 
 get_line_index :: #force_inline proc(lines: []int, pos: int) -> (line: int) {
-    for offset, index in lines {
+    for _, index in lines {
         if is_between_line(lines, index, pos) {
             line = index
             break
@@ -645,6 +668,10 @@ remove :: proc(b: ^Buffer, count: int) {
         return
     }
 
+    before := buffer_len(b)
+    after := 0
+    direction: i8
+
     for &cursor, index in b.cursors {
         chars_to_delete := count
 
@@ -663,10 +690,13 @@ remove :: proc(b: ^Buffer, count: int) {
             continue
         }
 
+        before = min(cursor.pos, before)
         remove_raw(b, cursor.pos, chars_to_delete)
 
         if count < 0 {
             update_future_cursor_offsets(b, index, chars_to_delete)
+            after = max(cursor.pos, after)
+            direction = -1
         } else {
             // Since we're deleting forward from the position, we don't want to update
             // our current cursor, but update all future ones because we need to find
@@ -674,24 +704,48 @@ remove :: proc(b: ^Buffer, count: int) {
             // substracting the amount of characters that have been deleted from the
             // current cursor.
             update_future_cursor_offsets(b, index + 1, chars_to_delete * -1)
+            after = max(cursor.pos, after)
+            direction = 1
         }
     }
+
+    b.cursor_incursion.before = before
+    b.cursor_incursion.after = after
+    b.cursor_incursion.direction = direction == -1 ? .backward : .forward
 }
 
 insert_char :: proc(b: ^Buffer, char: byte) {
     check_buffer_history_state(b)
+    before := buffer_len(b)
+    after := 0
+
     for &cursor, index in b.cursors {
+        before = min(cursor.pos, before)
         insert_raw(b, cursor.pos, char)
         update_future_cursor_offsets(b, index, 1)
+        after = max(cursor.pos, after)
     }
+
+    b.cursor_incursion.before = before
+    b.cursor_incursion.after = after
+    b.cursor_incursion.direction = .forward
 }
 
 insert_string :: proc(b: ^Buffer, str: string) {
     check_buffer_history_state(b)
+    before := buffer_len(b)
+    after := 0
+
     for &cursor, index in b.cursors {
+        before = min(cursor.pos, before)
         insert_raw(b, cursor.pos, str)
         update_future_cursor_offsets(b, index, len(str))
+        after = max(cursor.pos, after)
     }
+
+    b.cursor_incursion.before = before
+    b.cursor_incursion.after = after
+    b.cursor_incursion.direction = .forward
 }
 
 buffer_len :: proc(b: ^Buffer) -> int {

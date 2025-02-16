@@ -90,10 +90,10 @@ update_and_draw_active_pane :: proc() {
     assert(p.buffer != nil)
     buffer_update(p.buffer)
 
-    if p.buffer_was_dirty || p.dirty {
+    if p.buffer_was_dirty {
         p.buffer_was_dirty = false
 
-        if bragi.settings.line_wrap_by_default {
+        if should_use_wrapped_lines(p) {
             recalculate_wrapped_lines(p)
         }
     }
@@ -128,7 +128,7 @@ update_and_draw_active_pane :: proc() {
     coords := get_last_cursor_pos_as_coords(p.buffer, buffer_lines)
     buffer_coords := get_last_cursor_pos_as_coords(p.buffer, p.buffer.lines[:])
 
-    if !bragi.settings.line_wrap_by_default {
+    if !should_use_wrapped_lines(p) {
         if coords.column > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
             p.xoffset = coords.column - p.visible_columns + SCROLLING_THRESHOLD
         } else if coords.column < p.xoffset {
@@ -147,11 +147,12 @@ update_and_draw_active_pane :: proc() {
 
     first_line := p.yoffset
     last_line := min(p.yoffset + p.visible_lines, len(buffer_lines) - 1)
+    last_line_number := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
     start_offset, _ := get_line_boundaries(buffer_lines, first_line)
     _, end_offset := get_line_boundaries(buffer_lines, last_line)
 
     p.size_of_gutter = draw_gutter(
-        p, first_line, last_line, buffer_coords.line,
+        p, first_line, last_line_number, buffer_coords.line,
     )
 
     selections := make(
@@ -234,7 +235,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
         p.dirty = true
         p.buffer_was_dirty = false
 
-        if bragi.settings.line_wrap_by_default {
+        if should_use_wrapped_lines(p) {
             recalculate_wrapped_lines(p)
         }
     }
@@ -344,7 +345,7 @@ resize_panes :: proc() {
 
         p.rect = make_rect(x, 0, w, h)
         p.texture = make_texture(p.texture, .RGBA32, .TARGET, p.rect)
-        p.visible_columns = int((p.rect.w - p.size_of_gutter) / char_width) - 1
+        p.visible_columns = int((p.rect.w - p.size_of_gutter) / char_width)
         p.visible_lines = int(p.rect.h / line_height)
         p.dirty = true
     }
@@ -380,7 +381,7 @@ get_pen_for_panes :: #force_inline proc() -> (result: [2]i32) {
 }
 
 get_lines_array :: proc(p: ^Pane) -> []int {
-    if bragi.settings.line_wrap_by_default {
+    if should_use_wrapped_lines(p) {
         return p.wrapped_lines[:]
     } else {
         return p.buffer.lines[:]
@@ -411,9 +412,22 @@ recalculate_wrapped_lines :: #force_inline proc(p: ^Pane) {
         for i := start_offset; i < len(p.buffer.str); i += 1 {
             count += 1
 
-            if p.buffer.str[i] == '\n' || count > p.visible_columns {
+            if p.buffer.str[i] == '\n' {
                 count = 0
                 append(&p.wrapped_lines, i + 1)
+                continue
+            }
+
+            if count > p.visible_columns {
+                if p.buffer.str[i] != ' ' {
+                    for p.buffer.str[i] != ' ' {
+                        i -= 1
+                    }
+                }
+
+                count = 0
+                append(&p.wrapped_lines, i + 1)
+                continue
             }
         }
 
@@ -505,19 +519,7 @@ translate_cursor :: proc(
     return
 }
 
-is_line_a_wrapped_line :: proc(p: ^Pane, line: int) -> bool {
-    wrapped_line_start := p.wrapped_lines[line]
-
-    return !slice.contains(p.buffer.lines[:], wrapped_line_start)
-}
-
-get_line_size :: proc(p: ^Pane, line: int) -> int {
-    lines_array := get_lines_array(p)
-    if is_last_line(lines_array, line) { return 1 }
-    bol, _ := get_line_boundaries(lines_array, line)
-    current_line_in_buffer := get_line_index(p.buffer.lines[:], bol)
-    next_line_in_buffer := current_line_in_buffer + 1
-    bol_next_line_buffer, _ := get_line_boundaries(p.buffer.lines[:], next_line_in_buffer)
-    next_line_index_wrapped := get_line_index(lines_array, bol_next_line_buffer)
-    return next_line_index_wrapped - line
+should_use_wrapped_lines :: proc(p: ^Pane) -> bool {
+    // TODO: Change bragi.settings.line_wrap_by_default for language specific ones
+    return bragi.settings.line_wrap_by_default && p.visible_columns > 30
 }

@@ -173,6 +173,24 @@ draw_gutter :: proc(p: ^Pane, start, end, current: int) -> (gutter_size: i32) {
     GUTTER_PADDING :: 2
     LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
 
+    // @FIX: scrolling when the line size is big desyncs the line rendering.
+    // For example, if line 17 is 2 line_height size, as soon as I scroll over so
+    // the second part of the line is shown, with the incorrect line number.
+
+    get_line_size :: proc(p: ^Pane, current_line_buffer: int) -> int {
+        if should_use_wrapped_lines(p) {
+            arr := get_lines_array(p)
+            start_offset_buffer := p.buffer.lines[current_line_buffer]
+            next_start_offset_buffer := p.buffer.lines[current_line_buffer + 1]
+            line_match_wrapped := get_line_index(arr, start_offset_buffer)
+            next_line_match_wrapped := get_line_index(arr, next_start_offset_buffer)
+            return next_line_match_wrapped - line_match_wrapped
+        } else {
+            return 1
+        }
+    }
+
+
     if bragi.settings.show_line_numbers {
         // Testing the size of the string by using the largest number, hopefully
         size_test_str := fmt.tprintf("{0}", end)
@@ -187,18 +205,9 @@ draw_gutter :: proc(p: ^Pane, start, end, current: int) -> (gutter_size: i32) {
         draw_line(0, 0, 0, p.rect.h)
 
         line_number := start
-        sy : i32 = -line_height
+        sy : i32 = 0
 
         for line_number in start..<end {
-            // TODO: Fix this, looks like shit
-            line_size := get_line_size(p, line_number)
-
-            if line_size > 0 {
-                sy += line_height * i32(line_size)
-            } else {
-                sy += line_height
-            }
-
             line_number_str := strings.right_justify(
                 fmt.tprintf("{0}", line_number + 1),
                 len(size_test_str) + LINE_NUMBER_JUSTIFY,
@@ -211,6 +220,9 @@ draw_gutter :: proc(p: ^Pane, start, end, current: int) -> (gutter_size: i32) {
                 current == line_number ? .ui_line_number_current : .ui_line_number,
                 0, sy,
             )
+
+            line_size := get_line_size(p, line_number)
+            sy += line_height * i32(line_size)
         }
     } else {
         gutter_size = GUTTER_PADDING

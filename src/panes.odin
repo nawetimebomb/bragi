@@ -146,9 +146,7 @@ update_and_draw_active_pane :: proc() {
     start_offset, _ := get_line_boundaries(buffer_lines, first_line)
     _, end_offset := get_line_boundaries(buffer_lines, last_line)
 
-    p.size_of_gutter = draw_gutter(
-        p, first_line, last_line_number, buffer_coords.line,
-    )
+    p.size_of_gutter = draw_gutter(p, p.last_cursor_pos)
 
     selections := make(
         [dynamic]Range, 0, len(p.buffer.cursors), context.temp_allocator,
@@ -250,9 +248,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     start_offset, _ := get_line_boundaries(buffer_lines, first_line)
     _, end_offset := get_line_boundaries(buffer_lines, last_line)
 
-    p.size_of_gutter = draw_gutter(
-        p, first_line, last_line_number, buffer_coords.line,
-    )
+    p.size_of_gutter = draw_gutter(p, p.last_cursor_pos)
 
     is_colored := p.buffer.major_mode != .Fundamental
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)

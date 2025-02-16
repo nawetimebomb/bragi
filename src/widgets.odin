@@ -92,16 +92,17 @@ widgets_update_draw :: proc() {
 
     widgets_pane.yoffset = max(0, widgets_pane.yoffset)
 
-    item := widgets_pane.results[widgets_pane.selection]
-
     switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
+        item := widgets_pane.results[widgets_pane.selection]
         if !item.invalid {
             widgets_pane.target.buffer = item.value.(Result_Buffer_Pointer)
         }
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
+        item := widgets_pane.results[widgets_pane.selection]
+
         if !item.invalid {
             cursor_pos := item.value.(Result_Cursor_Pos)
             buffer := widgets_pane.target.buffer

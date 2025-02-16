@@ -129,6 +129,12 @@ settings_is_lexer_enabled :: proc(mm: Major_Mode) -> bool {
     return bragi.settings.major_modes_table[mm].enable_lexer
 }
 
+should_show_line_numbers :: proc() -> bool {
+    // TODO: Make this as the default, but use the Major_Mode value for the
+    // actual value
+    return bragi.settings.show_line_numbers
+}
+
 load_settings_from_internal_data :: proc() {
     log.debug("Loading settings from internal program data")
     bragi.settings.use_internal_data = true

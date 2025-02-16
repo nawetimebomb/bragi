@@ -169,13 +169,10 @@ draw_pane_divider :: proc() {
     draw_line(0, 0, 0, window_height)
 }
 
-draw_gutter :: proc(p: ^Pane, start, end, current: int) -> (gutter_size: i32) {
+// current is the offset from the buffer
+draw_gutter :: proc(p: ^Pane, current: int) -> (gutter_size: i32) {
     GUTTER_PADDING :: 2
     LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
-
-    // @FIX: scrolling when the line size is big desyncs the line rendering.
-    // For example, if line 17 is 2 line_height size, as soon as I scroll over so
-    // the second part of the line is shown, with the incorrect line number.
 
     get_line_size :: proc(p: ^Pane, current_line_buffer: int) -> int {
         if should_use_wrapped_lines(p) {
@@ -185,15 +182,17 @@ draw_gutter :: proc(p: ^Pane, start, end, current: int) -> (gutter_size: i32) {
             line_match_wrapped := get_line_index(arr, start_offset_buffer)
             next_line_match_wrapped := get_line_index(arr, next_start_offset_buffer)
             return next_line_match_wrapped - line_match_wrapped
-        } else {
-            return 1
         }
+
+        // Line size is always 1 when not wrapping lines
+        return 1
     }
 
+    if should_show_line_numbers() {
+        lines := get_lines_array(p)
+        buffer_lines := p.buffer.lines[:]
 
-    if bragi.settings.show_line_numbers {
-        // Testing the size of the string by using the largest number, hopefully
-        size_test_str := fmt.tprintf("{0}", end)
+        size_test_str := fmt.tprintf("{0}", len(lines))
         gutter_size = get_width_based_on_text_size(
             font_ui, size_test_str, len(size_test_str) + GUTTER_PADDING,
         )
@@ -204,21 +203,21 @@ draw_gutter :: proc(p: ^Pane, start, end, current: int) -> (gutter_size: i32) {
         set_bg(colorscheme[.ui_border])
         draw_line(0, 0, 0, p.rect.h)
 
-        line_number := start
+        current_line := get_line_index(buffer_lines, current)
+        last_line := len(buffer_lines) - 1
         sy : i32 = 0
 
-        for line_number in start..<end {
+        for line_number in 0..<last_line {
             line_number_str := strings.right_justify(
                 fmt.tprintf("{0}", line_number + 1),
                 len(size_test_str) + LINE_NUMBER_JUSTIFY,
                 " ",
                 context.temp_allocator,
             )
-
             draw_text(
                 font_ui, line_number_str,
-                current == line_number ? .ui_line_number_current : .ui_line_number,
-                0, sy,
+                current_line == line_number ? .ui_line_number_current : .ui_line_number,
+                0, sy - i32(p.yoffset) * line_height,
             )
 
             line_size := get_line_size(p, line_number)

@@ -47,6 +47,11 @@ Pane :: struct {
     // users can navigate and edit the same buffer in two different panes.
     buffer: ^Buffer,
 
+    // Some values are determined after the first painting, so when creating a new pane,
+    // we need to first render it, gather those values and reconsider some settings of
+    // the newly created pane.
+    initialized: bool,
+
     // Determines if there are changes that need to be recalculated
     dirty: bool,
 
@@ -119,9 +124,8 @@ update_and_draw_active_pane :: proc() {
 
     p.last_cursor_pos = get_last_cursor_pos(p.buffer)
     p.last_time_active = time.tick_now()
-    buffer_lines := get_lines_array(p)
-    coords := get_last_cursor_pos_as_coords(p.buffer, buffer_lines)
-    buffer_coords := get_last_cursor_pos_as_coords(p.buffer, p.buffer.lines[:])
+    lines := get_lines_array(p)
+    coords := get_last_cursor_pos_as_coords(p.buffer, lines)
 
     if !should_use_wrapped_lines(p) {
         if coords.column > p.xoffset + p.visible_columns - SCROLLING_THRESHOLD {
@@ -141,12 +145,11 @@ update_and_draw_active_pane :: proc() {
     clear_background(colorscheme[.background])
 
     first_line := p.yoffset
-    last_line := min(p.yoffset + p.visible_lines, len(buffer_lines) - 1)
-    last_line_number := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
-    start_offset, _ := get_line_boundaries(buffer_lines, first_line)
-    _, end_offset := get_line_boundaries(buffer_lines, last_line)
+    last_line := min(p.yoffset + p.visible_lines, len(lines) - 1)
+    start_offset, _ := get_line_boundaries(lines, first_line)
+    _, end_offset := get_line_boundaries(lines, last_line)
 
-    p.size_of_gutter = draw_gutter(p, p.last_cursor_pos)
+    p.size_of_gutter = draw_gutter(p)
 
     selections := make(
         [dynamic]Range, 0, len(p.buffer.cursors), context.temp_allocator,
@@ -173,7 +176,7 @@ update_and_draw_active_pane :: proc() {
     for line_number in first_line..<last_line {
         index := line_number - first_line
         code_line := Code_Line{}
-        start, end := get_line_boundaries(buffer_lines, line_number)
+        start, end := get_line_boundaries(lines, line_number)
         code_line.start_offset = start
         code_line.line = p.buffer.str[start:end]
         if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
@@ -218,6 +221,11 @@ update_and_draw_active_pane :: proc() {
     set_renderer_target()
     draw_copy(p.texture, nil, &p.rect)
     p.dirty = false
+
+    if !p.initialized {
+        p.initialized = true
+        resize_panes()
+    }
 }
 
 update_and_draw_dormant_panes :: proc(p: ^Pane) {
@@ -235,20 +243,19 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
 
     p.last_cursor_pos = clamp(p.last_cursor_pos, 0, buffer_len(p.buffer))
 
-    buffer_lines := get_lines_array(p)
-    coords := get_coords(p.buffer, buffer_lines, p.last_cursor_pos)
-    buffer_coords := get_coords(p.buffer, p.buffer.lines[:], p.last_cursor_pos)
+    lines := get_lines_array(p)
+    coords := get_coords(p.buffer, lines, p.last_cursor_pos)
 
     set_renderer_target(p.texture)
     clear_background(colorscheme[.background])
 
     first_line := p.yoffset
-    last_line := min(p.yoffset + p.visible_lines, len(buffer_lines) - 1)
+    last_line := min(p.yoffset + p.visible_lines, len(lines) - 1)
     last_line_number := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
-    start_offset, _ := get_line_boundaries(buffer_lines, first_line)
-    _, end_offset := get_line_boundaries(buffer_lines, last_line)
+    start_offset, _ := get_line_boundaries(lines, first_line)
+    _, end_offset := get_line_boundaries(lines, last_line)
 
-    p.size_of_gutter = draw_gutter(p, p.last_cursor_pos)
+    p.size_of_gutter = draw_gutter(p)
 
     is_colored := p.buffer.major_mode != .Fundamental
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
@@ -258,7 +265,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     for line_number in first_line..<last_line {
         index := line_number - first_line
         code_line := Code_Line{}
-        start, end := get_line_boundaries(buffer_lines, line_number)
+        start, end := get_line_boundaries(lines, line_number)
         code_line.start_offset = start
         code_line.line = p.buffer.str[start:end]
         if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
@@ -278,15 +285,15 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
 prepare_cursor_for_drawing :: #force_inline proc(
     p: ^Pane, font: Font, pos: int,
 ) -> (out_of_screen_coords: bool, rect: Rect, byte_behind_cursor: byte) {
-    buffer_lines := get_lines_array(p)
-    coords := get_coords(p.buffer, buffer_lines, pos)
+    lines := get_lines_array(p)
+    coords := get_coords(p.buffer, lines, pos)
 
     if !is_within_the_screen(coords, p.yoffset, p.visible_lines) {
         return true, rect, byte_behind_cursor
     }
 
 
-    line := get_line_text(p.buffer, buffer_lines, coords.line)
+    line := get_line_text(p.buffer, lines, coords.line)
     rect.x = get_width_based_on_text_size(font, line[:coords.column], coords.column)
     rect.y = i32(coords.line - p.yoffset) * font.line_height
     rect.h = font.line_height
@@ -368,6 +375,7 @@ get_pen_for_panes :: #force_inline proc() -> (result: [2]i32) {
 }
 
 get_lines_array :: proc(p: ^Pane) -> []int {
+    // It will return the wrapped lines if any, or the actual buffer lines
     if should_use_wrapped_lines(p) {
         return p.wrapped_lines[:]
     } else {

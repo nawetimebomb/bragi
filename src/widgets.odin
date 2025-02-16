@@ -275,22 +275,24 @@ widgets_show :: proc(target: ^Pane, action: Widgets_Action) {
 }
 
 widgets_hide :: proc() {
-    clear_results()
+    if widgets_pane.enabled {
+        clear_results()
 
-    if !widgets_pane.did_select {
-        rollback_to_prev_value()
+        if !widgets_pane.did_select {
+            rollback_to_prev_value()
+        }
+
+        widgets_pane.enabled = false
+        widgets_pane.action = .NONE
+        widgets_pane.cursor = 0
+        widgets_pane.selection = 0
+        widgets_pane.did_select = false
+        widgets_pane.prev_state = {}
+        widgets_pane.target = nil
+
+        strings.builder_reset(&widgets_pane.query)
+        resize_panes()
     }
-
-    widgets_pane.enabled = false
-    widgets_pane.action = .NONE
-    widgets_pane.cursor = 0
-    widgets_pane.selection = 0
-    widgets_pane.did_select = false
-    widgets_pane.prev_state = {}
-    widgets_pane.target = nil
-
-    strings.builder_reset(&widgets_pane.query)
-    resize_panes()
 }
 
 filter_results :: proc() {

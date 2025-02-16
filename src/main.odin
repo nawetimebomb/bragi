@@ -53,8 +53,8 @@ line_height:            i32
 xadvance:               i32
 y_offset_for_centering: f32
 
-MINIMUM_WINDOW_SIZE :: 800
-DEFAULT_WINDOW_SIZE :: 900
+MINIMUM_WINDOW_SIZE :: 1000
+DEFAULT_WINDOW_SIZE :: 1000
 DEFAULT_WINDOW_POS  :: sdl.WINDOWPOS_CENTERED
 
 dpi_scale:       f32

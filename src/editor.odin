@@ -239,10 +239,10 @@ editor_switch_to_pane_on_click :: proc(x, y: i32) {
 mouse_set_point :: proc(p: ^Pane, x, y: i32) {
     coords: Coords
     coords.line = clamp(int(y / line_height) + p.yoffset, 0, len(p.buffer.lines) - 1)
-    lines_array := get_lines_array(p)
+    lines := get_lines_array(p)
 
     // Calculate column of the cursor
-    line := get_line_text(p.buffer, lines_array, coords.line)
+    line := get_line_text(p.buffer, lines, coords.line)
     size_of_line := get_text_size(font_editor, line)
 
     if x >= size_of_line + p.size_of_gutter {
@@ -251,7 +251,7 @@ mouse_set_point :: proc(p: ^Pane, x, y: i32) {
         coords.column = int((x - p.size_of_gutter) / char_width)
     }
 
-    coords_as_buffer_cursor := get_offset_from_coords(lines_array, coords)
+    coords_as_buffer_cursor := get_offset_from_coords(lines, coords)
     delete_all_cursors(p.buffer, make_cursor(coords_as_buffer_cursor))
 }
 
@@ -268,13 +268,13 @@ editor_scroll :: proc(p: ^Pane, offset: int) {
     lines_count := len(p.buffer.lines)
 
     if p.visible_lines < lines_count {
-        buffer_lines := get_lines_array(p)
-        coords := get_last_cursor_pos_as_coords(p.buffer, buffer_lines)
+        lines := get_lines_array(p)
+        coords := get_last_cursor_pos_as_coords(p.buffer, lines)
         p.yoffset = clamp(p.yoffset + offset, 0, lines_count - MAX_SCROLL_OFFSET)
         p.dirty = true
 
         if coords.line < p.yoffset || coords.line > p.yoffset + p.visible_lines {
-            bol, _ := get_line_boundaries(buffer_lines, p.yoffset)
+            bol, _ := get_line_boundaries(lines, p.yoffset)
 
             if p.id == current_pane.id {
                 set_last_cursor_pos(p.buffer, bol + coords.column)

@@ -170,7 +170,7 @@ draw_pane_divider :: proc() {
 }
 
 // current is the offset from the buffer
-draw_gutter :: proc(p: ^Pane, current: int) -> (gutter_size: i32) {
+draw_gutter :: proc(p: ^Pane) -> (gutter_size: i32) {
     GUTTER_PADDING :: 2
     LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
 
@@ -189,10 +189,9 @@ draw_gutter :: proc(p: ^Pane, current: int) -> (gutter_size: i32) {
     }
 
     if should_show_line_numbers() {
-        lines := get_lines_array(p)
         buffer_lines := p.buffer.lines[:]
 
-        size_test_str := fmt.tprintf("{0}", len(lines))
+        size_test_str := fmt.tprintf("{0}", len(buffer_lines))
         gutter_size = get_width_based_on_text_size(
             font_ui, size_test_str, len(size_test_str) + GUTTER_PADDING,
         )
@@ -203,22 +202,38 @@ draw_gutter :: proc(p: ^Pane, current: int) -> (gutter_size: i32) {
         set_bg(colorscheme[.ui_border])
         draw_line(0, 0, 0, p.rect.h)
 
-        current_line := get_line_index(buffer_lines, current)
+        first_visible_line := p.yoffset
+        last_visible_line := p.yoffset + p.visible_lines
+        current_line := get_line_index(buffer_lines, p.last_cursor_pos)
         last_line := len(buffer_lines) - 1
         sy : i32 = 0
 
+        if should_use_wrapped_lines(p) {
+            wrapped_lines := get_lines_array(p)
+            bol_wrapped, _ := get_line_boundaries(wrapped_lines, p.yoffset)
+            first_visible_line = get_line_index(buffer_lines, bol_wrapped)
+        }
+
         for line_number in 0..<last_line {
-            line_number_str := strings.right_justify(
-                fmt.tprintf("{0}", line_number + 1),
-                len(size_test_str) + LINE_NUMBER_JUSTIFY,
-                " ",
-                context.temp_allocator,
-            )
-            draw_text(
-                font_ui, line_number_str,
-                current_line == line_number ? .ui_line_number_current : .ui_line_number,
-                0, sy - i32(p.yoffset) * line_height,
-            )
+            if line_number > last_visible_line { break }
+            if line_number >= first_visible_line {
+                line_number_face : Face = .ui_line_number
+
+                if current_line == line_number {
+                    line_number_face = .ui_line_number_current
+                }
+
+                line_number_str := strings.right_justify(
+                    fmt.tprintf("{0}", line_number + 1),
+                    len(size_test_str) + LINE_NUMBER_JUSTIFY,
+                    " ",
+                    context.temp_allocator,
+                )
+                draw_text(
+                    font_ui, line_number_str, line_number_face,
+                    0, sy - i32(p.yoffset) * line_height,
+                )
+            }
 
             line_size := get_line_size(p, line_number)
             sy += line_height * i32(line_size)

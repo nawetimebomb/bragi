@@ -49,7 +49,6 @@ Pane :: struct {
 
     // Determines if there are changes that need to be recalculated
     dirty: bool,
-    buffer_was_dirty: bool,
 
     rect: Rect,
     texture: Texture,
@@ -90,14 +89,6 @@ update_and_draw_active_pane :: proc() {
     assert(p.buffer != nil)
     buffer_update(p.buffer)
 
-    if p.buffer_was_dirty {
-        p.buffer_was_dirty = false
-
-        if should_use_wrapped_lines(p) {
-            recalculate_wrapped_lines(p)
-        }
-    }
-
     if time.tick_diff(p.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
         p.cursor_showing = true
         p.cursor_blink_count = 0
@@ -120,6 +111,10 @@ update_and_draw_active_pane :: proc() {
     if !p.dirty {
         draw_copy(p.texture, nil, &p.rect)
         return
+    }
+
+    if should_use_wrapped_lines(p) {
+        recalculate_wrapped_lines(p)
     }
 
     p.last_cursor_pos = get_last_cursor_pos(p.buffer)
@@ -231,18 +226,13 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     assert(p.buffer != nil)
     buffer_update(p.buffer)
 
-    if p.buffer_was_dirty {
-        p.dirty = true
-        p.buffer_was_dirty = false
-
-        if should_use_wrapped_lines(p) {
-            recalculate_wrapped_lines(p)
-        }
-    }
-
     if !p.dirty {
         draw_copy(p.texture, nil, &p.rect)
         return
+    }
+
+    if should_use_wrapped_lines(p) {
+        recalculate_wrapped_lines(p)
     }
 
     p.last_cursor_pos = clamp(p.last_cursor_pos, 0, buffer_len(p.buffer))
@@ -256,11 +246,12 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
 
     first_line := p.yoffset
     last_line := min(p.yoffset + p.visible_lines, len(buffer_lines) - 1)
+    last_line_number := min(p.yoffset + p.visible_lines, len(p.buffer.lines) - 1)
     start_offset, _ := get_line_boundaries(buffer_lines, first_line)
     _, end_offset := get_line_boundaries(buffer_lines, last_line)
 
     p.size_of_gutter = draw_gutter(
-        p, first_line, last_line, buffer_coords.line,
+        p, first_line, last_line_number, buffer_coords.line,
     )
 
     is_colored := p.buffer.major_mode != .Fundamental
@@ -440,7 +431,7 @@ recalculate_wrapped_lines :: #force_inline proc(p: ^Pane) {
 report_update_to_panes_using_buffer :: proc(b: ^Buffer) {
     for &p in open_panes {
         if p.buffer.id == b.id {
-            p.buffer_was_dirty = true
+            p.dirty = true
         }
     }
 }
@@ -521,5 +512,5 @@ translate_cursor :: proc(
 
 should_use_wrapped_lines :: proc(p: ^Pane) -> bool {
     // TODO: Change bragi.settings.line_wrap_by_default for language specific ones
-    return bragi.settings.line_wrap_by_default && p.visible_columns > 30
+    return bragi.settings.line_wrap_by_default && p.visible_columns > 45
 }

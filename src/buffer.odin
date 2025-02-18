@@ -13,11 +13,6 @@ import "core:time"
 import "core:unicode/utf8"
 import "tokenizer"
 
-// Ideas on how to improve cursor management:
-// cursors should be part of the buffer, so whenever we change the pane buffer, the cursor
-// is already in there. We changed this because we were handling input later on.
-// We don't really need cursors in panes, we can keep marks in panes though.
-
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
 Token_Kind :: tokenizer.Token_Kind
@@ -379,7 +374,7 @@ get_line_start_after_indent :: #force_inline proc(b: ^Buffer, lines: []int, line
     bol, eol := get_line_boundaries(lines, line)
     offset = bol
 
-    for offset < eol && is_whitespace(b.str[offset]) {
+    for offset < eol && is_whitespace_temp(b.str[offset]) {
         offset +=1
     }
 

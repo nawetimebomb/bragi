@@ -45,42 +45,6 @@ add_pane :: proc(p: Pane) -> ^Pane {
     return &open_panes[len(open_panes) - 1]
 }
 
-get_rune_category :: proc(r: rune) -> Rune_Category {
-    switch get_rune_type(r) {
-    case .alpha, .numeric:          return .word
-    case .punctuation, .whitespace: return .non_word
-    case .unknown:
-        log.errorf("Could not find a category for rune {0}", r)
-    }
-
-    return .non_word
-}
-
-get_rune_type :: proc(r: rune) -> Rune_Type {
-    switch {
-    case is_alpha(r):             return .alpha
-    case is_number(r):            return .numeric
-    case is_common_delimiter(r):  return .punctuation
-    case is_whitespace(r):        return .whitespace
-    case :
-        log.errorf("Could not find a type for rune {0}", r)
-    }
-
-    return .unknown
-}
-
-is_alpha :: #force_inline proc(r: rune) -> bool {
-    return is_alpha_lowercase(r) || is_alpha_uppercase(r)
-}
-
-is_alpha_lowercase :: #force_inline proc(r: rune) -> bool {
-    return r >= 'a' && r <= 'z'
-}
-
-is_alpha_uppercase :: #force_inline proc(r: rune) -> bool {
-    return r >= 'A' && r <= 'Z'
-}
-
 is_common_delimiter :: proc{
     is_common_delimiter_char,
     is_common_delimiter_rune,
@@ -95,25 +59,9 @@ is_common_delimiter_rune :: #force_inline proc(r: rune) -> bool {
     return strings.contains_rune(DELIMITERS, r)
 }
 
-is_number :: #force_inline proc(r: rune) -> bool {
-    return r >= '0' && r <= '9'
-}
-
-is_whitespace :: proc{
-    is_char_whitespace,
-    is_rune_whitespace,
-}
-
-is_char_whitespace :: #force_inline proc(b: byte) -> bool {
-    return b == ' ' || b == '\t' || b == '\n'
-}
-
-is_rune_whitespace :: #force_inline proc(r: rune) -> bool {
-    return r == ' ' || r == '\t' || r == '\n'
-}
-
-is_newline :: #force_inline proc(b: byte) -> bool {
-    return b == '\n'
+// TODO: this needs to be removed once the tokenizer is fully working
+is_whitespace_temp :: proc(c: byte) -> bool {
+    return c == ' ' || c == '\t' || c == '\n'
 }
 
 get_dir_and_filename_from_fullpath :: proc(s: string) -> (dir, filename: string) {

@@ -412,9 +412,17 @@ filter_results :: proc() {
             for strings.contains(s, query) {
                 found_index := strings.index(s, query)
                 cursor_pos := len(b.str) - len(s) + found_index + len(query)
+
+                start := cursor_pos - len(query)
+                for start > 0 && !is_common_delimiter(b.str[start - 1]) { start -= 1 }
+                end := start + 1
+                for end < len(b.str) && !is_common_delimiter(b.str[end]) { end += 1 }
+                hl_word := b.str[start:end]
+                start_hl := strings.index(hl_word, query)
+
                 result := Result{
-                    format    = widgets_get_search_row_format(b, cursor_pos),
-                    highlight = { 0, len(query) },
+                    format    = widgets_get_search_row_format(b, cursor_pos, hl_word),
+                    highlight = { start_hl, start_hl + len(query) },
                     value     = cursor_pos,
                 }
 
@@ -676,20 +684,12 @@ widgets_get_file_row_format :: #force_inline proc(f: ^Result_File_Info) -> strin
     return fmt.aprintf("{0}\n{1}\n{2}\n{3}", c0, c1, c2, c3)
 }
 
-widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: int) -> string {
+widgets_get_search_row_format :: #force_inline proc(b: ^Buffer, pos: int, word_found: string) -> string {
     coords := get_coords(b, b.lines[:], pos)
-    c0 := ""
+    c0 := word_found
     c1 := fmt.tprintf("{0}:{1}", coords.line + 1, coords.column)
     c2 := ""
     c3 := ""
-
-    { // c0
-        start_pos := pos - len(strings.to_string(widgets_pane.query))
-        end_pos := start_pos + 1
-        for end_pos < len(b.str) && is_whitespace(b.str[end_pos])  { end_pos += 1 }
-        for end_pos < len(b.str) && !is_whitespace(b.str[end_pos]) { end_pos += 1 }
-        c0 = b.str[start_pos:end_pos]
-    }
 
     { // c2
         line_start := get_line_start_after_indent(b, b.lines[:], coords.line)

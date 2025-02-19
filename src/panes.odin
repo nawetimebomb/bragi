@@ -151,8 +151,8 @@ update_and_draw_active_pane :: proc() {
 
     p.size_of_gutter = draw_gutter(p)
 
-    selections := make(
-        [dynamic]Range, 0, len(p.buffer.cursors), context.temp_allocator,
+    sections := make(
+        [dynamic]Buffer_Section, 0, len(p.buffer.cursors), context.temp_allocator,
     )
     for cursor in p.buffer.cursors {
         // If there's currently no selection, or if the cursor offset,
@@ -162,10 +162,16 @@ update_and_draw_active_pane :: proc() {
             (cursor.pos < start_offset || cursor.pos > end_offset) &&
             (cursor.sel < start_offset || cursor.sel > end_offset) { continue }
 
-        append(&selections, Range{
-            min(cursor.pos, cursor.sel),
-            max(cursor.pos, cursor.sel),
+        append(&sections, Buffer_Section{
+            start = min(cursor.pos, cursor.sel),
+            end = max(cursor.pos, cursor.sel),
+            kind = .region,
         })
+    }
+
+    for s in p.buffer.sections {
+        if s.start < start_offset || s.end > end_offset { continue }
+        append(&sections, s)
     }
 
     is_colored := p.buffer.major_mode != .Fundamental
@@ -183,7 +189,7 @@ update_and_draw_active_pane :: proc() {
         code_lines[index] = code_line
     }
 
-    draw_code(font_editor, pen, code_lines[:], selections[:], is_colored)
+    draw_code(font_editor, pen, code_lines[:], sections[:], is_colored)
 
     if p.cursor_showing {
         if p.buffer.interactive_mode {
@@ -257,6 +263,15 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
 
     p.size_of_gutter = draw_gutter(p)
 
+    sections := make(
+        [dynamic]Buffer_Section, 0, len(p.buffer.cursors), context.temp_allocator,
+    )
+    for s in p.buffer.sections {
+        if s.start < start_offset || s.end > end_offset { continue }
+        append(&sections, s)
+    }
+
+
     is_colored := p.buffer.major_mode != .Fundamental
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
     pen := get_pen_for_panes()
@@ -272,7 +287,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
         code_lines[index] = code_line
     }
 
-    draw_code(font_editor, pen, code_lines[:], {}, is_colored)
+    draw_code(font_editor, pen, code_lines[:], sections[:], is_colored)
 
     _, rect, _ := prepare_cursor_for_drawing(p, font_editor, p.last_cursor_pos)
     draw_cursor(font_editor, pen, rect, false, ' ', .cursor)

@@ -415,7 +415,7 @@ filter_results :: proc() {
 
                 start := cursor_pos - len(query)
                 for start > 0 && !is_common_delimiter(b.str[start - 1]) { start -= 1 }
-                end := start + 1
+                end := cursor_pos
                 for end < len(b.str) && !is_common_delimiter(b.str[end]) { end += 1 }
                 hl_word := b.str[start:end]
                 start_hl := strings.index(hl_word, query)

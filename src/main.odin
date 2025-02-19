@@ -236,6 +236,7 @@ main :: proc() {
 
     bragi.settings.show_line_numbers = true
     bragi.settings.line_wrap_by_default = true
+    bragi.settings.show_trailing_whitespaces = true
 
     last_update_time := time.tick_now()
     previous_frame_time := time.tick_now()

@@ -4,7 +4,6 @@ import     "core:fmt"
 import     "core:slice"
 import     "core:strings"
 import     "core:time"
-import     "tokenizer"
 import sdl "vendor:sdl2"
 
 Rect :: sdl.Rect
@@ -13,7 +12,7 @@ Texture :: ^sdl.Texture
 Code_Line :: struct {
     line:         string,
     start_offset: int,
-    tokens:       []tokenizer.Token_Kind,
+    tokens:       []Token_Kind,
 }
 
 Cursor_Settings :: struct {
@@ -27,22 +26,49 @@ set_bg :: #force_inline proc(c: Color) {
     }
 }
 
+set_bg_for_highlight :: #force_inline proc(k: Buffer_Section_Kind) {
+    switch k {
+    case .none:
+    case .region:              set_bg(colorscheme[.region])
+    case .trailing_whitespace: set_bg(colorscheme[.trailing_whitespace])
+    }
+}
+
 set_fg :: #force_inline proc(t: ^sdl.Texture, c: Color) {
     if c.a != 0 {
         sdl.SetTextureColorMod(t, c.r, c.g, c.b)
     }
 }
 
-set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: tokenizer.Token_Kind) {
-    switch k {
-    case .generic:      set_fg(t, colorscheme[.default])
-    case .builtin:      set_fg(t, colorscheme[.builtin])
-    case .comment:      set_fg(t, colorscheme[.comment])
-    case .constant:     set_fg(t, colorscheme[.constant])
-    case .keyword:      set_fg(t, colorscheme[.keyword])
-    case .preprocessor: set_fg(t, colorscheme[.preprocessor])
-    case .string:       set_fg(t, colorscheme[.string])
-    case .type:         set_fg(t, colorscheme[.type])
+set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: Token_Kind) {
+    #partial switch k {
+        case .generic, .identifier, .punctuation: {
+            set_fg(t, colorscheme[.default])
+        }
+        case .function: {
+            set_fg(t, colorscheme[.code_function_name])
+        }
+        case .builtin_function, .builtin_variable: {
+            set_fg(t, colorscheme[.builtin])
+        }
+        case .comment, .comment_multiline: {
+            set_fg(t, colorscheme[.comment])
+        }
+        case .constant: {
+            set_fg(t, colorscheme[.constant])
+        }
+        case .keyword: {
+            set_fg(t, colorscheme[.keyword])
+        }
+        case .directive: {
+            set_fg(t, colorscheme[.preprocessor])
+        }
+        case .string_literal, .string_raw: {
+            set_fg(t, colorscheme[.string])
+        }
+        case .type: {
+            set_fg(t, colorscheme[.type])
+        }
     }
 }
 
@@ -316,14 +342,17 @@ draw_code :: proc(
     font: Font,
     pen: [2]i32,
     code_lines: []Code_Line,
-    selections: []Range = {},
+    sections: []Buffer_Section = {},
     is_colored: bool,
 ) {
     line_height := font.line_height
 
-    is_selected :: proc(selections: []Range, offset: int) -> bool {
-        for sel in selections {
-            if offset >= sel.start && offset < sel.end { return true }
+    should_highlight :: proc(sections: []Buffer_Section, offset: int) -> bool {
+        for s in sections {
+            if offset >= s.start && offset < s.end {
+                set_bg_for_highlight(s.kind)
+                return true
+            }
         }
 
         return false
@@ -354,8 +383,7 @@ draw_code :: proc(
                 set_fg(font.texture, colorscheme[.default])
             }
 
-            if is_selected(selections, code.start_offset + x_offset) {
-                set_bg(colorscheme[.region])
+            if should_highlight(sections, code.start_offset + x_offset) {
                 draw_rect(sx, sy, char_width, line_height, true)
             }
 

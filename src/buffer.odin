@@ -11,24 +11,24 @@ import "core:strings"
 import "core:thread"
 import "core:time"
 import "core:unicode/utf8"
-import "tokenizer"
 
 UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
-Token_Kind :: tokenizer.Token_Kind
+Buffer_Section_Kind :: enum u8 {
+    none,
+    region,
+    trailing_whitespace,
+}
 
 Cursor_Operation :: enum {
     DELETE, SWITCH, TOGGLE_GROUP,
 }
 
 Cursor_Translation :: enum {
-    DOWN, RIGHT, LEFT, UP,
-    BUFFER_START,
-    BUFFER_END,
-    LINE_START,
-    LINE_END,
-    WORD_START,
-    WORD_END,
+    DOWN, LEFT, RIGHT, UP,
+    BUFFER_END, BUFFER_START,
+    LINE_END, LINE_START,
+    WORD_END, WORD_START,
 }
 
 Cursor :: struct {
@@ -48,6 +48,11 @@ Coords :: struct {
     line, column: int,
 }
 
+Buffer_Section :: struct {
+    using range: Range,
+    kind: Buffer_Section_Kind,
+}
+
 History_State :: struct {
     cursors_pos: []int,
     data:        []byte,
@@ -59,6 +64,7 @@ Buffer :: struct {
     allocator:           runtime.Allocator,
     id:                  uuid.Identifier,
 
+    sections:            []Buffer_Section,
     cursors:             [dynamic]Cursor,
     interactive_mode:    bool, // when the user have control of the multiple cursors
     group_mode:          bool, // the user wants to control all cursors at the same time
@@ -240,6 +246,7 @@ buffer_destroy :: proc(b: ^Buffer) {
     delete(b.lines)
     delete(b.name)
     delete(b.redo)
+    delete(b.sections)
     delete(b.str)
     delete(b.tokens)
     delete(b.undo)
@@ -291,25 +298,21 @@ recalculate_lines :: proc(b: ^Buffer) {
 
 find_earlier_offset_in_cursors :: proc(b: ^Buffer) -> (result: int) {
     result = buffer_len(b)
-
-    for cursor in b.cursors {
-        result = min(result, min(cursor.pos, cursor.sel))
-    }
-
-    fmt.println("First cursor: ", result)
-
+    for cursor in b.cursors { result = min(result, min(cursor.pos, cursor.sel)) }
     return
 }
 
 maybe_tokenize_buffer :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:maybe_tokenize_buffer")
 
+    tokenize_proc: #type proc(^Buffer, int, int) -> []Buffer_Section
+
+    delete(b.sections)
+
     if b.major_mode == .Fundamental {
         // We don't tokenize Fundamental mode
         return
     }
-
-    tokenize_proc: #type proc(^string, int, ^[dynamic]Token_Kind)
 
     clear(&b.tokens)
 
@@ -319,10 +322,10 @@ maybe_tokenize_buffer :: proc(b: ^Buffer) {
 
     #partial switch b.major_mode {
         case .Bragi: log.error("not implemented")
-        case .Odin:  tokenize_proc = tokenizer.tokenize_odin
+        case .Odin:  tokenize_proc = tokenize_odin
     }
 
-    tokenize_proc(&b.str, -1, &b.tokens)
+    b.sections = tokenize_proc(b, -1, -1)
 
     profiling_end()
 }

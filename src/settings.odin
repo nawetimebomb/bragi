@@ -37,12 +37,14 @@ Face :: enum u8 {
     background,
     cursor,
     cursor_active,
+    code_function_name,
     builtin,
     comment,
     constant,
     default,
     highlight,
     highlight_line,
+    trailing_whitespace,
     keyword,
     preprocessor,
     region,
@@ -87,6 +89,7 @@ Settings :: struct {
     save_desktop_mode:           bool,
     show_line_numbers:           bool,
     line_wrap_by_default:        bool,
+    show_trailing_whitespaces:   bool,
 }
 
 Major_Mode_Settings :: struct {

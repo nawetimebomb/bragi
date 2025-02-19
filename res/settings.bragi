@@ -90,9 +90,11 @@ comment                         637777
 constant                        f78c6c
 cursor                          80a4c2
 cursor_active                   f78c6c
+code_function_name              82aaff
 default                         d6deeb
 highlight                       ffeb95
 highlight_line                  1d3b53
+trailing_whitespace             c792ea
 keyword                         c792ea
 preprocessor                    c792ea
 region                          1d3b53

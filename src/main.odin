@@ -40,7 +40,7 @@ font_editor:  Font
 font_ui:      Font
 font_ui_bold: Font
 
-DEFAULT_FONT_EDITOR_SIZE :: 25
+DEFAULT_FONT_EDITOR_SIZE :: 20
 DEFAULT_FONT_UI_SIZE     :: 20
 
 // font base size is the one configured by the user, the other ones are derived
@@ -53,7 +53,7 @@ line_height:            i32
 xadvance:               i32
 y_offset_for_centering: f32
 
-MINIMUM_WINDOW_SIZE :: 1000
+MINIMUM_WINDOW_SIZE :: 900
 DEFAULT_WINDOW_SIZE :: 1000
 DEFAULT_WINDOW_POS  :: sdl.WINDOWPOS_CENTERED
 

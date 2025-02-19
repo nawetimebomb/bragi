@@ -54,7 +54,7 @@ set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: Token_Kind) {
         case .comment, .comment_multiline: {
             set_fg(t, colorscheme[.comment])
         }
-        case .constant: {
+        case .number, .value: {
             set_fg(t, colorscheme[.constant])
         }
         case .keyword: {

@@ -19,21 +19,23 @@ Token_Kind :: enum u8 {
     operation,
     punctuation,
 
-    constant,
+    number,
     directive,
     enum_variant,
     function,
     keyword,
     type,
+    value,
 
     builtin_function,
     builtin_variable,
 }
 
 Tokenizer :: struct {
-    buf: string,
-    offset, max_offset: int,
-    whitespace_to_left: bool,
+    buf:                 string,
+    offset, max_offset:  int,
+    whitespace_to_left:  bool,
+    whitespace_to_right: bool,
 }
 
 start_tokenizer :: proc(b: ^Buffer, start, end: int) -> (t: Tokenizer) {
@@ -76,6 +78,12 @@ skip_whitespaces :: #force_inline proc(t: ^Tokenizer) {
     old_offset := t.offset
     for !is_eof(t) && is_whitespace(t) { t.offset += 1 }
     t.whitespace_to_left = t.offset != old_offset
+}
+
+temp_string :: proc(args: ..string) -> string {
+    temp := strings.builder_make(context.temp_allocator)
+    for s in args { strings.write_string(&temp, s) }
+    return strings.to_string(temp)
 }
 
 is_alpha :: #force_inline proc(t: ^Tokenizer) -> bool {

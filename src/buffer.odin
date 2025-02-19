@@ -16,8 +16,6 @@ UNDO_DEFAULT_TIMEOUT :: 300 * time.Millisecond
 
 Buffer_Section_Kind :: enum u8 {
     none,
-    region,
-    trailing_whitespace,
 }
 
 Cursor_Operation :: enum {
@@ -311,6 +309,7 @@ maybe_tokenize_buffer :: proc(b: ^Buffer) {
 
     if b.major_mode == .Fundamental {
         // We don't tokenize Fundamental mode
+        delete(b.tokens)
         return
     }
 

@@ -151,8 +151,8 @@ update_and_draw_active_pane :: proc() {
 
     p.size_of_gutter = draw_gutter(p)
 
-    sections := make(
-        [dynamic]Buffer_Section, 0, len(p.buffer.cursors), context.temp_allocator,
+    selections := make(
+        [dynamic]Range, 0, len(p.buffer.cursors), context.temp_allocator,
     )
     for cursor in p.buffer.cursors {
         // If there's currently no selection, or if the cursor offset,
@@ -162,19 +162,13 @@ update_and_draw_active_pane :: proc() {
             (cursor.pos < start_offset || cursor.pos > end_offset) &&
             (cursor.sel < start_offset || cursor.sel > end_offset) { continue }
 
-        append(&sections, Buffer_Section{
+        append(&selections, Range{
             start = min(cursor.pos, cursor.sel),
             end = max(cursor.pos, cursor.sel),
-            kind = .region,
         })
     }
 
-    for s in p.buffer.sections {
-        if s.start < start_offset || s.end > end_offset { continue }
-        append(&sections, s)
-    }
-
-    is_colored := p.buffer.major_mode != .Fundamental
+    is_colored := len(p.buffer.tokens) > 0
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
     pen := get_pen_for_panes()
     pen.x += p.size_of_gutter
@@ -185,11 +179,14 @@ update_and_draw_active_pane :: proc() {
         start, end := get_line_boundaries(lines, line_number)
         code_line.start_offset = start
         code_line.line = p.buffer.str[start:end]
+        code_line.line_is_wrapped = is_line_wrapped(p, start)
         if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
         code_lines[index] = code_line
     }
 
-    draw_code(font_editor, pen, code_lines[:], sections[:], is_colored)
+    draw_code(
+        font_editor, pen, code_lines[:], selections[:], p.last_cursor_pos, is_colored,
+    )
 
     if p.cursor_showing {
         if p.buffer.interactive_mode {
@@ -263,16 +260,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
 
     p.size_of_gutter = draw_gutter(p)
 
-    sections := make(
-        [dynamic]Buffer_Section, 0, len(p.buffer.cursors), context.temp_allocator,
-    )
-    for s in p.buffer.sections {
-        if s.start < start_offset || s.end > end_offset { continue }
-        append(&sections, s)
-    }
-
-
-    is_colored := p.buffer.major_mode != .Fundamental
+    is_colored := len(p.buffer.tokens) > 0
     code_lines := make([]Code_Line, last_line - first_line, context.temp_allocator)
     pen := get_pen_for_panes()
     pen.x += p.size_of_gutter
@@ -283,11 +271,12 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
         start, end := get_line_boundaries(lines, line_number)
         code_line.start_offset = start
         code_line.line = p.buffer.str[start:end]
+        code_line.line_is_wrapped = is_line_wrapped(p, start)
         if is_colored { code_line.tokens = p.buffer.tokens[start:end] }
         code_lines[index] = code_line
     }
 
-    draw_code(font_editor, pen, code_lines[:], sections[:], is_colored)
+    draw_code(font_editor, pen, code_lines[:], {}, p.last_cursor_pos, is_colored)
 
     _, rect, _ := prepare_cursor_for_drawing(p, font_editor, p.last_cursor_pos)
     draw_cursor(font_editor, pen, rect, false, ' ', .cursor)
@@ -532,4 +521,27 @@ translate_cursor :: proc(
 should_use_wrapped_lines :: proc(p: ^Pane) -> bool {
     // TODO: Change bragi.settings.line_wrap_by_default for language specific ones
     return bragi.settings.line_wrap_by_default && p.visible_columns > 45
+}
+
+is_line_wrapped :: proc(p: ^Pane, test_offset: int) -> bool {
+    if should_use_wrapped_lines(p) {
+        lines := get_lines_array(p)
+        test_buffer_line := get_line_index(p.buffer.lines[:], test_offset)
+        return get_line_size(p, test_buffer_line) != 1
+    }
+    return false
+}
+
+get_line_size :: proc(p: ^Pane, test_buffer_line: int) -> int {
+    if should_use_wrapped_lines(p) {
+        lines := get_lines_array(p)
+        start_offset_buffer := p.buffer.lines[test_buffer_line]
+        next_start_offset_buffer := p.buffer.lines[test_buffer_line + 1]
+        line_match_wrapped := get_line_index(lines, start_offset_buffer)
+        next_line_match_wrapped := get_line_index(lines, next_start_offset_buffer)
+        return next_line_match_wrapped - line_match_wrapped
+    }
+
+    // Line size is always 1 when not wrapping lines
+    return 1
 }

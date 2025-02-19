@@ -113,18 +113,6 @@ tokenize_odin :: proc(b: ^Buffer, start := -1, end := -1) -> []Buffer_Section {
             save_token(b, prev1.start, prev1.length, prev1.kind)
         }
 
-        if bragi.settings.show_trailing_whitespaces {
-            if token.v == .newline && tokenizer.whitespace_to_left {
-                start := prev1.start + prev1.length
-
-                append(&result, Buffer_Section{
-                    start = start,
-                    end = token.start,
-                    kind = .trailing_whitespace,
-                })
-            }
-        }
-
         if token.kind == .invalid {
             fmt.println(
                 "INVALID TOKEN", token,
@@ -169,26 +157,26 @@ get_next_token :: proc(t: ^Odin_Tokenizer) -> (token: Token) {
         parse_number(t, &token)
     } else {
         switch get_char_at(t) {
-        case '/':  parse_slash    (t, &token)
+        case '!':  parse_bang     (t, &token)
         case '#':  parse_directive(t, &token)
-        case '=':  parse_equal    (t, &token)
-        case ':':  parse_colon    (t, &token)
+        case '%':  parse_percent  (t, &token)
+        case '&':  parse_ampersand(t, &token)
+        case '*':  parse_star     (t, &token)
+        case '+':  parse_plus     (t, &token)
         case '-':  parse_dash     (t, &token)
         case '.':  parse_period   (t, &token)
-        case '+':  parse_plus     (t, &token)
-        case '*':  parse_star     (t, &token)
+        case '/':  parse_slash    (t, &token)
+        case ':':  parse_colon    (t, &token)
         case '<':  parse_less     (t, &token)
+        case '=':  parse_equal    (t, &token)
         case '>':  parse_greater  (t, &token)
-        case '!':  parse_bang     (t, &token)
-        case '&':  parse_ampersand(t, &token)
-        case '|':  parse_pipe     (t, &token)
-        case '%':  parse_percent  (t, &token)
-        case '~':  parse_tilde    (t, &token)
         case '\t': parse_tab      (t, &token)
+        case '|':  parse_pipe     (t, &token)
+        case '~':  parse_tilde    (t, &token)
 
         case '\'': fallthrough
         case '`':  fallthrough
-        case '"':  parse_string_literal(t, &token)
+        case '"':  parse_string   (t, &token)
 
         case ';':  token.kind = .punctuation; token.v = .semicolon; t.offset += 1
         case ',':  token.kind = .punctuation; token.v = .comma;     t.offset += 1
@@ -204,7 +192,7 @@ get_next_token :: proc(t: ^Odin_Tokenizer) -> (token: Token) {
         case '@':  token.kind = .punctuation; token.v = .attribute; t.offset += 1
         case '\n': token.kind = .punctuation; token.v = .newline;   t.offset += 1
 
-        case : token.kind = .invalid; t.offset += 1
+        case :     token.kind = .invalid; t.offset += 1
         }
     }
 
@@ -548,7 +536,7 @@ parse_star :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     }
 }
 
-parse_string_literal :: proc(t: ^Odin_Tokenizer, token: ^Token) {
+parse_string :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     delimiter := get_char_at(t)
 
     if is_eof(t) { return }

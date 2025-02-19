@@ -10,9 +10,10 @@ Rect :: sdl.Rect
 Texture :: ^sdl.Texture
 
 Code_Line :: struct {
-    line:         string,
-    start_offset: int,
-    tokens:       []Token_Kind,
+    line:            string,
+    line_is_wrapped: bool, // this line continues on the next line
+    start_offset:    int,
+    tokens:          []Token_Kind,
 }
 
 Cursor_Settings :: struct {
@@ -23,14 +24,6 @@ Cursor_Settings :: struct {
 set_bg :: #force_inline proc(c: Color) {
     if c.a != 0 {
         sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
-    }
-}
-
-set_bg_for_highlight :: #force_inline proc(k: Buffer_Section_Kind) {
-    switch k {
-    case .none:
-    case .region:              set_bg(colorscheme[.region])
-    case .trailing_whitespace: set_bg(colorscheme[.trailing_whitespace])
     }
 }
 
@@ -200,20 +193,6 @@ draw_gutter :: proc(p: ^Pane) -> (gutter_size: i32) {
     GUTTER_PADDING :: 2
     LINE_NUMBER_JUSTIFY :: GUTTER_PADDING / 2
 
-    get_line_size :: proc(p: ^Pane, current_line_buffer: int) -> int {
-        if should_use_wrapped_lines(p) {
-            arr := get_lines_array(p)
-            start_offset_buffer := p.buffer.lines[current_line_buffer]
-            next_start_offset_buffer := p.buffer.lines[current_line_buffer + 1]
-            line_match_wrapped := get_line_index(arr, start_offset_buffer)
-            next_line_match_wrapped := get_line_index(arr, next_start_offset_buffer)
-            return next_line_match_wrapped - line_match_wrapped
-        }
-
-        // Line size is always 1 when not wrapping lines
-        return 1
-    }
-
     if should_show_line_numbers() {
         buffer_lines := p.buffer.lines[:]
 
@@ -342,19 +321,15 @@ draw_code :: proc(
     font: Font,
     pen: [2]i32,
     code_lines: []Code_Line,
-    sections: []Buffer_Section = {},
-    is_colored: bool,
+    selections: []Range = {},
+    cursor_offset: int = 0,
+    is_colored: bool = false,
 ) {
+    char_width  := font.em_width
     line_height := font.line_height
 
-    should_highlight :: proc(sections: []Buffer_Section, offset: int) -> bool {
-        for s in sections {
-            if offset >= s.start && offset < s.end {
-                set_bg_for_highlight(s.kind)
-                return true
-            }
-        }
-
+    is_selected :: proc(selections: []Range, offset: int) -> bool {
+        for s in selections { if offset >= s.start && offset < s.end { return true } }
         return false
     }
 
@@ -383,12 +358,25 @@ draw_code :: proc(
                 set_fg(font.texture, colorscheme[.default])
             }
 
-            if should_highlight(sections, code.start_offset + x_offset) {
+            if is_selected(selections, code.start_offset + x_offset) {
+                set_bg(colorscheme[.region])
                 draw_rect(sx, sy, char_width, line_height, true)
             }
 
             draw_copy(font.texture, &src, &dest)
             sx += g.xadvance
+        }
+
+        if bragi.settings.show_trailing_whitespaces {
+            skip_cursor_in_line := cursor_offset == code.start_offset + len(code.line)
+
+            #reverse for r, x_offset in code.line {
+                if code.line_is_wrapped || skip_cursor_in_line || r != ' ' { break }
+                g := font.glyphs[r]
+                sx -= g.xadvance
+                set_bg(colorscheme[.trailing_whitespace])
+                draw_rect(sx, sy, char_width, line_height, true)
+            }
         }
     }
 }

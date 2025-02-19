@@ -29,6 +29,12 @@ Token_Kind :: enum u8 {
 
     builtin_function,
     builtin_variable,
+
+    header1,
+    header2,
+    header3,
+    header4,
+    header5,
 }
 
 Tokenizer :: struct {

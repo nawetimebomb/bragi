@@ -5,7 +5,6 @@ import "core:log"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
-import "tokenizer"
 
 UPPERCASE_CHARS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -109,7 +108,7 @@ get_punctuations :: proc(m: Major_Mode) -> string {
     switch m {
     case .Fundamental: result = DEFAULT_PUNCTUATIONS
     case .Bragi:
-    case .Odin:        result = tokenizer.odin_punctuations()
+    case .Odin:        result = " ()[]:;,.\n"
     }
 
     return result

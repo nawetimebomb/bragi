@@ -118,10 +118,6 @@ update_and_draw_active_pane :: proc() {
         return
     }
 
-    if should_use_wrapped_lines(p) {
-        recalculate_wrapped_lines(p)
-    }
-
     p.last_cursor_pos = get_last_cursor_pos(p.buffer)
     p.last_time_active = time.tick_now()
     lines := get_lines_array(p)
@@ -238,10 +234,6 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
     if !p.dirty {
         draw_copy(p.texture, nil, &p.rect)
         return
-    }
-
-    if should_use_wrapped_lines(p) {
-        recalculate_wrapped_lines(p)
     }
 
     p.last_cursor_pos = clamp(p.last_cursor_pos, 0, buffer_len(p.buffer))

@@ -207,30 +207,36 @@ get_or_create_buffer :: proc(
 
 buffer_update :: proc(b: ^Buffer) {
     if b.last_update_frame == frame_counter { return }
+    should_update_panes := false
 
     update_buffer_time(b)
 
     if len(b.cursors) == 0 {
         delete_all_cursors(b, make_cursor())
-        report_update_to_panes_using_buffer(b)
+        should_update_panes = true
     }
 
     if b.interactive_mode {
         if len(b.cursors) == 1 {
             b.interactive_mode = false
-            report_update_to_panes_using_buffer(b)
+            should_update_panes = true
         } else {
-            check_overlapping_cursors(b)
+            should_update_panes = check_overlapping_cursors(b) || should_update_panes
         }
     }
 
     if b.dirty {
         b.dirty = false
+        should_update_panes = true
+
         b.status = get_buffer_status(b)
 
         refresh_string_buffer(b)
         recalculate_lines(b)
         maybe_tokenize_buffer(b)
+    }
+
+    if should_update_panes {
         report_update_to_panes_using_buffer(b)
     }
 }
@@ -290,6 +296,17 @@ recalculate_lines :: proc(b: ^Buffer) {
 
     // last line, adding padding for safety
     append(&b.lines, buffer_len(b) + 1)
+
+    // TODO: Actually check by modes
+    if bragi.settings.line_wrap_by_default {
+        for &p in open_panes {
+            if p.buffer.id == b.id {
+                if should_use_wrapped_lines(&p) {
+                    recalculate_wrapped_lines(&p)
+                }
+            }
+        }
+    }
 
     profiling_end()
 }
@@ -563,17 +580,19 @@ has_selection :: #force_inline proc(b: ^Buffer) -> (result: bool) {
     return b.selection_mode || pos != sel
 }
 
-check_overlapping_cursors :: proc(b: ^Buffer) {
+check_overlapping_cursors :: proc(b: ^Buffer) -> (cursors_changed: bool) {
     for i in 0..<len(b.cursors) {
         for j in 1..<len(b.cursors) {
             if i == j { continue }
-            // merge cursors that are actually on the same position, when no selection is happening
+            // merge cursors that are actually on the same position,
+            // when no selection is happening
             if !has_selection(b) {
                 pos1 := b.cursors[i].pos
                 pos2 := b.cursors[j].pos
 
                 if pos1 == pos2 {
                     ordered_remove(&b.cursors, i)
+                    cursors_changed = true
                 }
             } else {
                 hi1 := max(b.cursors[i].pos, b.cursors[i].sel)
@@ -582,10 +601,13 @@ check_overlapping_cursors :: proc(b: ^Buffer) {
 
                 if hi1 >= lo2 && hi1 < hi2 {
                     merge_cursors(b, i, j)
+                    cursors_changed = true
                 }
             }
         }
     }
+
+    return
 }
 
 merge_cursors :: #force_inline proc(b: ^Buffer, i, j: int) {

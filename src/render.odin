@@ -66,7 +66,7 @@ set_fg_for_token :: #force_inline proc(t: ^sdl.Texture, k: Token_Kind) {
 }
 
 draw_modeline :: proc(p: ^Pane, focused: bool) {
-    SMALL_PADDING :: 4
+    SMALL_PADDING :: 2
     MODELINE_H_PADDING :: 10
     MODELINE_V_PADDING :: 3
 
@@ -105,12 +105,20 @@ draw_modeline :: proc(p: ^Pane, focused: bool) {
         sx = draw_text(
             font_ui_bold, p.buffer.name,
             p.buffer.modified ? .highlight : text_face,
-            sx + font_ui.em_width, modeline_y,
+            sx + font_ui.xadvance, modeline_y,
         )
+
+        if p.buffer.crlf {
+            sx = draw_text(
+                font_ui, "(CRLF replaced with LF)", .string,
+                sx + font_ui.xadvance, modeline_y,
+            )
+        }
+
         line_col_number := fmt.tprintf("({0}, {1})", coords.line + 1, coords.column)
         sx = draw_text(
             font_ui, fmt.tprintf("({0}, {1})", coords.line + 1, coords.column), text_face,
-            sx + font_ui.em_width * SMALL_PADDING, modeline_y,
+            sx + font_ui.xadvance * SMALL_PADDING, modeline_y,
         )
 
         if focused {

@@ -183,9 +183,7 @@ create_buffer_from_file :: proc(
     result.filepath = strings.clone(filepath)
     result.major_mode = find_major_mode(extension)
 
-    insert_raw(result, 0, data)
-    result.modified = false
-    result.dirty = true
+    insert_whole_file(result, data)
 
     return result
 }
@@ -474,7 +472,6 @@ check_buffer_history_state :: proc(b: ^Buffer) {
 buffer_save :: proc(b: ^Buffer) {
     if b.modified {
         log.debugf("Saving {0}", b.name)
-        // sanitize_buffer(buffer)
         err := os.write_entire_file_or_err(b.filepath, transmute([]byte)b.str)
 
         if err != nil {
@@ -482,7 +479,7 @@ buffer_save :: proc(b: ^Buffer) {
             return
         }
 
-        // buffer.dirty = changed
+        b.crlf = false
         b.modified = false
     } else {
         log.debugf("Nothing to save in {0}", b.name)
@@ -768,6 +765,24 @@ insert_string :: proc(b: ^Buffer, str: string) {
 buffer_len :: proc(b: ^Buffer) -> int {
     gap := b.gap_end - b.gap_start
     return len(b.data) - gap
+}
+
+@(private="file")
+insert_whole_file :: proc(b: ^Buffer, data: []byte) {
+    processed_data := make([dynamic]byte, 0, len(data), context.temp_allocator)
+
+    for c in data {
+        if c == '\r' {
+            b.crlf = true
+            continue
+        }
+
+        append(&processed_data, c)
+    }
+
+    insert_raw(b, 0, processed_data[:])
+    b.modified = b.crlf
+    b.dirty = true
 }
 
 @(private="file")

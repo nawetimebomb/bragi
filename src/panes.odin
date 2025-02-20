@@ -335,8 +335,9 @@ resize_panes :: proc() {
 
         p.rect = make_rect(x, 0, w, h)
         p.texture = make_texture(p.texture, .RGBA32, .TARGET, p.rect)
-        p.visible_columns = int((p.rect.w - p.size_of_gutter) / char_width)
+        p.visible_columns = int((p.rect.w - p.size_of_gutter) / xadvance) - 1
         p.visible_lines = int(p.rect.h / line_height)
+        recalculate_wrapped_lines(&p)
         p.dirty = true
     }
 }
@@ -380,51 +381,53 @@ get_lines_array :: proc(p: ^Pane) -> []int {
 }
 
 recalculate_wrapped_lines :: #force_inline proc(p: ^Pane) {
-    wrap_needed_line := -1
+    if should_use_wrapped_lines(p) {
+        wrap_needed_line := -1
 
-    delete(p.wrapped_lines)
+        delete(p.wrapped_lines)
 
-    for i := 0; i < len(p.buffer.lines); i += 1 {
-        line_len := get_line_length(p.buffer.lines[:], i)
+        for i := 0; i < len(p.buffer.lines); i += 1 {
+            line_len := get_line_length(p.buffer.lines[:], i)
 
-        if line_len > p.visible_columns {
-            wrap_needed_line = i
-            break
-        }
-    }
-
-    if wrap_needed_line != -1 {
-        p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:wrap_needed_line])
-        start_offset, _ := get_line_boundaries(p.buffer.lines[:], wrap_needed_line)
-        count := 0
-
-        append(&p.wrapped_lines, start_offset)
-
-        for i := start_offset; i < len(p.buffer.str); i += 1 {
-            count += 1
-
-            if p.buffer.str[i] == '\n' {
-                count = 0
-                append(&p.wrapped_lines, i + 1)
-                continue
+            if line_len > p.visible_columns {
+                wrap_needed_line = i
+                break
             }
+        }
 
-            if count > p.visible_columns {
-                if p.buffer.str[i] != ' ' {
-                    for p.buffer.str[i] != ' ' {
-                        i -= 1
-                    }
+        if wrap_needed_line != -1 {
+            p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:wrap_needed_line])
+            start_offset, _ := get_line_boundaries(p.buffer.lines[:], wrap_needed_line)
+            count := 0
+
+            append(&p.wrapped_lines, start_offset)
+
+            for i := start_offset; i < len(p.buffer.str); i += 1 {
+                count += 1
+
+                if p.buffer.str[i] == '\n' {
+                    count = 0
+                    append(&p.wrapped_lines, i + 1)
+                    continue
                 }
 
-                count = 0
-                append(&p.wrapped_lines, i + 1)
-                continue
-            }
-        }
+                if count > p.visible_columns {
+                    if p.buffer.str[i] != ' ' {
+                        for p.buffer.str[i] != ' ' {
+                            i -= 1
+                        }
+                    }
 
-        append(&p.wrapped_lines, len(p.buffer.str) + 1)
-    } else {
-        p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:])
+                    count = 0
+                    append(&p.wrapped_lines, i + 1)
+                    continue
+                }
+            }
+
+            append(&p.wrapped_lines, len(p.buffer.str) + 1)
+        } else {
+            p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:])
+        }
     }
 }
 

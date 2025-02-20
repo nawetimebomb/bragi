@@ -301,9 +301,7 @@ recalculate_lines :: proc(b: ^Buffer) {
     if bragi.settings.line_wrap_by_default {
         for &p in open_panes {
             if p.buffer.id == b.id {
-                if should_use_wrapped_lines(&p) {
-                    recalculate_wrapped_lines(&p)
-                }
+                recalculate_wrapped_lines(&p)
             }
         }
     }

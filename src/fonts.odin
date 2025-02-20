@@ -99,6 +99,8 @@ increase_font_size :: proc() {
         line_height            = font_editor.line_height
         y_offset_for_centering = font_editor.y_offset_for_centering
         xadvance               = font_editor.xadvance
+
+        resize_panes()
     }
 }
 
@@ -114,6 +116,8 @@ decrease_font_size :: proc() {
         line_height            = font_editor.line_height
         y_offset_for_centering = font_editor.y_offset_for_centering
         xadvance               = font_editor.xadvance
+
+        resize_panes()
     }
 }
 
@@ -126,6 +130,9 @@ reset_font_size :: proc() {
     char_width             = font_editor.em_width
     line_height            = font_editor.line_height
     y_offset_for_centering = font_editor.y_offset_for_centering
+    xadvance               = font_editor.xadvance
+
+    resize_panes()
 }
 
 @(private="file")

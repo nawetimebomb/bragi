@@ -154,8 +154,7 @@ update_and_draw_active_pane :: proc() {
         // If there's currently no selection, or if the cursor offset,
         // either position or selection, are outside of the offsets
         // available to be shown on the screen at this moment, skip them.
-        if cursor.pos == cursor.sel ||
-            (cursor.pos < start_offset || cursor.pos > end_offset) &&
+        if (cursor.pos < start_offset || cursor.pos > end_offset) &&
             (cursor.sel < start_offset || cursor.sel > end_offset) { continue }
 
         append(&selections, Range{
@@ -181,7 +180,7 @@ update_and_draw_active_pane :: proc() {
     }
 
     draw_code(
-        font_editor, pen, code_lines[:], selections[:], p.last_cursor_pos, is_colored,
+        font_editor, pen, code_lines[:], selections[:], is_colored,
     )
 
     if p.cursor_showing {
@@ -268,7 +267,7 @@ update_and_draw_dormant_panes :: proc(p: ^Pane) {
         code_lines[index] = code_line
     }
 
-    draw_code(font_editor, pen, code_lines[:], {}, p.last_cursor_pos, is_colored)
+    draw_code(font_editor, pen, code_lines[:], {}, is_colored)
 
     _, rect, _ := prepare_cursor_for_drawing(p, font_editor, p.last_cursor_pos)
     draw_cursor(font_editor, pen, rect, false, ' ', .cursor)

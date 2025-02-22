@@ -37,6 +37,11 @@ Token_Kind :: enum u8 {
     header5,
 }
 
+Indent_Token :: struct {
+    action: enum { close, open },
+    kind: enum { brace, bracket, paren },
+}
+
 Tokenizer :: struct {
     buf:                 string,
     offset, max_offset:  int,

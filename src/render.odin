@@ -330,14 +330,22 @@ draw_code :: proc(
     pen: [2]i32,
     code_lines: []Code_Line,
     selections: []Range = {},
-    cursor_offset: int = 0,
     is_colored: bool = false,
 ) {
     char_width  := font.em_width
     line_height := font.line_height
 
     is_selected :: proc(selections: []Range, offset: int) -> bool {
-        for s in selections { if offset >= s.start && offset < s.end { return true } }
+        for s in selections {
+            if s.start != s.end && offset >= s.start && offset < s.end {
+                return true
+            }
+        }
+        return false
+    }
+
+    is_in_offset :: proc(selections: []Range, offset: int) -> bool {
+        for s in selections { if s.end == offset { return true } }
         return false
     }
 
@@ -376,7 +384,8 @@ draw_code :: proc(
         }
 
         if bragi.settings.show_trailing_whitespaces {
-            skip_cursor_in_line := cursor_offset == code.start_offset + len(code.line)
+            skip_cursor_in_line :=
+                is_in_offset(selections, code.start_offset + len(code.line))
 
             #reverse for r, x_offset in code.line {
                 if code.line_is_wrapped || skip_cursor_in_line || r != ' ' { break }

@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
 import "core:log"
+import "core:math"
 import "core:mem"
 import "core:os"
 import "core:slice"
@@ -346,6 +347,20 @@ maybe_tokenize_buffer :: proc(b: ^Buffer) {
     b.sections = tokenize_proc(b, -1, -1)
 
     profiling_end()
+}
+
+get_indentation_tokens :: proc(b: ^Buffer, start, end: int) -> []Indent_Token {
+    tokenize_indent_proc: #type proc(^Buffer, int, int) -> []Indent_Token
+
+    if b.major_mode == .Fundamental {
+        return {}
+    }
+
+    #partial switch b.major_mode {
+        case .Odin: tokenize_indent_proc = tokenize_odin_indent
+    }
+
+    return tokenize_indent_proc(b, start, end)
 }
 
 is_between_line :: #force_inline proc(lines: []int, line, pos: int) -> bool {
@@ -732,6 +747,59 @@ remove :: proc(b: ^Buffer, count: int) {
     b.cursor_incursion.before = before
     b.cursor_incursion.after = after
     b.cursor_incursion.direction = direction == -1 ? .backward : .forward
+}
+
+// Newline will need to indent, depending on the buffer configuration
+insert_newline :: proc(b: ^Buffer) {
+    check_buffer_history_state(b)
+    before := buffer_len(b)
+    after := 0
+
+    for &cursor, index in b.cursors {
+        before = min(cursor.pos, before)
+
+        line := get_line_index(b.lines[:], cursor.pos)
+        bol, eol := get_line_boundaries(b.lines[:], line)
+        indent_tokens := get_indentation_tokens(b, bol, eol)
+        s := get_line_text(b, b.lines[:], line)
+        indent_level := 0
+
+        if b.indentation.type == .space {
+            space_count : f32 = 0
+            for c in s { if c == ' ' { space_count += 1 } else { break } }
+            indent_level = int(math.ceil(space_count / f32(b.indentation.width)))
+        } else {
+            for c in s { if c == '\t' { indent_level += 1 } else { break } }
+        }
+
+        for t in indent_tokens {
+            if t.action == .open  { indent_level += 1 }
+            if t.action == .close { indent_level -= 1 }
+        }
+
+        indent_char : byte = b.indentation.type == .space ? ' ' : '\t'
+
+        if b.indentation.type == .space {
+            indent_level *= b.indentation.width
+        }
+
+        newline_temp := strings.builder_make(context.temp_allocator)
+        strings.write_byte(&newline_temp, '\n')
+
+        for i in 0..<indent_level {
+            strings.write_byte(&newline_temp, indent_char)
+        }
+
+        result := strings.to_string(newline_temp)
+        insert_raw(b, cursor.pos, result)
+        update_future_cursor_offsets(b, index, len(result))
+
+        after = max(cursor.pos, after)
+    }
+
+    b.cursor_incursion.before = before
+    b.cursor_incursion.after = after
+    b.cursor_incursion.direction = .forward
 }
 
 insert_char :: proc(b: ^Buffer, char: byte) {

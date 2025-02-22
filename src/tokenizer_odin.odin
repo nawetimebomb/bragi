@@ -130,6 +130,36 @@ tokenize_odin :: proc(b: ^Buffer, start := -1, end := -1) -> []Buffer_Section {
     return slice.clone(result[:])
 }
 
+@private
+tokenize_odin_indent :: proc(b: ^Buffer, start, end: int) -> []Indent_Token {
+    tokenizer := start_odin_tokenizer(b, start, end)
+    result := make([dynamic]Indent_Token, 0, 0, context.temp_allocator)
+
+    for {
+        token := get_next_token(&tokenizer)
+        if token.kind == .eof { break }
+
+        it: Indent_Token
+
+        if token.kind == .punctuation {
+            switch token.v {
+            case .brace_l:   it.action = .open; it.kind = .brace
+            case .bracket_l: it.action = .open; it.kind = .bracket
+            case .paren_l:   it.action = .open; it.kind = .paren
+
+            case .brace_r:   it.action = .close; it.kind = .brace
+            case .bracket_r: it.action = .close; it.kind = .bracket
+            case .paren_r:   it.action = .close; it.kind = .paren
+            case : continue
+            }
+
+            append(&result, it)
+        }
+    }
+
+    return result[:]
+}
+
 start_odin_tokenizer :: proc(b: ^Buffer, start, end: int) -> (t: Odin_Tokenizer) {
     result: Odin_Tokenizer
     setup_tokenizer(&result, b, start, end)

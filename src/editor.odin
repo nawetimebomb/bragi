@@ -80,14 +80,14 @@ editor_open_file :: proc(p: ^Pane, filepath: string) {
 
     for &b in open_buffers {
         if b.filepath == filepath {
-            p.buffer = &b
+            pane_set_buffer(p, &b)
             buffer_found = true
             break
         }
     }
 
     if !buffer_found {
-        p.buffer = create_buffer_from_file(filepath)
+        pane_set_buffer(p, create_buffer_from_file(filepath))
     }
 }
 

@@ -309,6 +309,13 @@ is_within_the_screen :: #force_inline proc(
         coords.line < first_visible_line + offset
 }
 
+pane_set_buffer :: proc(p: ^Pane, b: ^Buffer) {
+    p.buffer = b
+    recalculate_wrapped_lines(p)
+    reset_viewport(p)
+    p.dirty = true
+}
+
 find_index_for_pane :: #force_inline proc(test: ^Pane) -> (result: int) {
     result = -1
 

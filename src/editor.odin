@@ -18,7 +18,7 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .switch_buffer:           editor_switch_buffer(p)
         case .search_backward:         editor_search_backward(p)
         case .search_forward:          editor_search_forward(p)
-        case .kill_current_buffer:     kill_current_buffer(p)
+        case .kill_current_buffer:     editor_kill_buffer(p.buffer)
         case .save_buffer:             save_buffer(p)
 
         case .delete_this_pane:        editor_close_panes(p, .CURRENT)
@@ -194,29 +194,31 @@ editor_pop_mark :: proc(p: ^Pane) {
     }
 }
 
-kill_current_buffer :: proc(p: ^Pane) {
+editor_kill_buffer :: proc(b: ^Buffer) {
     if len(open_buffers) > 1 {
         index_of_buffer := -1
-        id_of_buffer := p.buffer.id
         replacement_buffer: ^Buffer
 
-        for &b, index in open_buffers {
-            if b.id == id_of_buffer {
+        for &b2, index in open_buffers {
+            if b2.id == b.id {
                 index_of_buffer = index
+            } else {
+                replacement_buffer = &b2
+            }
+
+            if index_of_buffer != -1 && replacement_buffer != nil {
                 break
+            }
+        }
+
+        for &p in open_panes {
+            if p.buffer.id == b.id {
+                pane_set_buffer(&p, replacement_buffer)
             }
         }
 
         buffer_destroy(&open_buffers[index_of_buffer])
         ordered_remove(&open_buffers, index_of_buffer)
-
-        for &other_pane in open_panes {
-            if other_pane.buffer.id == id_of_buffer {
-                other_pane.buffer = &open_buffers[len(open_buffers) - 1]
-            }
-        }
-
-        reset_viewport(p)
     }
 }
 

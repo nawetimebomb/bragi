@@ -97,7 +97,7 @@ widgets_update_draw :: proc() {
     case .BUFFERS:
         item := widgets_pane.results[widgets_pane.selection]
         if !item.invalid {
-            widgets_pane.target.buffer = item.value.(Result_Buffer_Pointer)
+            pane_set_buffer(widgets_pane.target, item.value.(Result_Buffer_Pointer))
         }
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
@@ -227,7 +227,7 @@ rollback_to_prev_value :: proc() {
     switch widgets_pane.action {
     case .NONE:
     case .BUFFERS:
-        widgets_pane.target.buffer = widgets_pane.prev_state.buffer
+        pane_set_buffer(widgets_pane.target, widgets_pane.prev_state.buffer)
     case .FILES:
     case .SEARCH_IN_BUFFER, .SEARCH_REVERSE_IN_BUFFER:
         buffer := widgets_pane.target.buffer
@@ -535,14 +535,14 @@ ui_select :: proc() {
     case .NONE:
     case .BUFFERS:
         if item.invalid {
-            widgets_pane.target.buffer = add(buffer_init(query, 0))
+            pane_set_buffer(widgets_pane.target, add(buffer_init(query, 0)))
         }
 
         widgets_hide()
     case .FILES:
         if item.invalid {
             _, filename := get_dir_and_filename_from_fullpath(query)
-            widgets_pane.target.buffer = add(buffer_init(filename, 0))
+            pane_set_buffer(widgets_pane.target, add(buffer_init(filename, 0)))
         } else {
             f := item.value.(Result_File_Info)
 

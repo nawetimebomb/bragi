@@ -277,12 +277,10 @@ recalculate_lines :: proc(b: ^Buffer) {
     start := 0
 
     if len(b.lines) > 1 {
-        first_modified_offset: int
+        first_modified_offset := b.cursor_incursion.before
 
         if b.cursor_incursion.direction == .backward {
             first_modified_offset = b.cursor_incursion.after
-        } else {
-            first_modified_offset = b.cursor_incursion.before
         }
 
         modified_line := get_line_index(b.lines[:], first_modified_offset)
@@ -755,10 +753,15 @@ insert_newline :: proc(b: ^Buffer) {
     before := buffer_len(b)
     after := 0
 
+    // Because we haven't update the lines at this point, we need to keep track of the
+    // added offset per operation, so we can ensure we get the right line when trying to
+    // add a newline and indenting with multiple cursors.
+    accumulated_added_offset := 0
+
     for &cursor, index in b.cursors {
         before = min(cursor.pos, before)
 
-        line := get_line_index(b.lines[:], cursor.pos)
+        line := get_line_index(b.lines[:], cursor.pos - accumulated_added_offset)
         bol, eol := get_line_boundaries(b.lines[:], line)
         indent_tokens := get_indentation_tokens(b, bol, eol)
         s := get_line_text(b, b.lines[:], line)
@@ -793,6 +796,7 @@ insert_newline :: proc(b: ^Buffer) {
         result := strings.to_string(newline_temp)
         insert_raw(b, cursor.pos, result)
         update_future_cursor_offsets(b, index, len(result))
+        accumulated_added_offset += len(result)
 
         after = max(cursor.pos, after)
     }

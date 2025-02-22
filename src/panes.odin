@@ -388,7 +388,7 @@ get_lines_array :: proc(p: ^Pane) -> []int {
 
 recalculate_wrapped_lines :: #force_inline proc(p: ^Pane) {
     if should_use_wrapped_lines(p) {
-        wrap_needed_line := -1
+        line_needs_wrapping := -1
 
         delete(p.wrapped_lines)
 
@@ -396,14 +396,14 @@ recalculate_wrapped_lines :: #force_inline proc(p: ^Pane) {
             line_len := get_line_length(p.buffer.lines[:], i)
 
             if line_len > p.visible_columns {
-                wrap_needed_line = i
+                line_needs_wrapping = i
                 break
             }
         }
 
-        if wrap_needed_line != -1 {
-            p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:wrap_needed_line])
-            start_offset, _ := get_line_boundaries(p.buffer.lines[:], wrap_needed_line)
+        if line_needs_wrapping != -1 {
+            p.wrapped_lines = slice.clone_to_dynamic(p.buffer.lines[:line_needs_wrapping])
+            start_offset, _ := get_line_boundaries(p.buffer.lines[:], line_needs_wrapping)
             count := 0
 
             append(&p.wrapped_lines, start_offset)
@@ -418,10 +418,8 @@ recalculate_wrapped_lines :: #force_inline proc(p: ^Pane) {
                 }
 
                 if count > p.visible_columns {
-                    if p.buffer.str[i] != ' ' {
-                        for p.buffer.str[i] != ' ' {
-                            i -= 1
-                        }
+                    for p.buffer.str[i] != ' ' {
+                        i -= 1
                     }
 
                     count = 0

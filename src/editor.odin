@@ -327,7 +327,15 @@ editor_yank :: proc(p: ^Pane) {
 }
 
 editor_newline_and_indent :: proc(p: ^Pane) {
-    editor_self_insert(p, '\n')
+    newline := strings.builder_make(context.temp_allocator)
+
+    strings.write_byte(&newline, '\n')
+
+    for i in 0..<p.buffer.indentation.width {
+        strings.write_byte(&newline, ' ')
+    }
+
+    editor_self_insert(p, strings.to_string(newline))
 }
 
 editor_self_insert :: proc(p: ^Pane, v: union { string, byte }) {

@@ -75,6 +75,11 @@ Buffer :: struct {
         direction: enum { backward, forward },
     },
 
+    indentation: struct {
+        type: enum { space, tab },
+        width: int,
+    },
+
     data:                []byte,
     tokens:              [dynamic]Token_Kind,
     dirty:               bool,
@@ -182,6 +187,7 @@ create_buffer_from_file :: proc(
     result := create_buffer(name, len(data), undo_timeout, allocator)
     result.filepath = strings.clone(filepath)
     result.major_mode = find_major_mode(extension)
+    result.indentation.width = 4
 
     insert_whole_file(result, data)
 

@@ -10,6 +10,8 @@ increase_font_size              <C-S-=>
 decrease_font_size              <C-->
 reset_font_size                 <C-0>
 
+indent_region                   <TAB>
+
 quit_mode                       <C-g> <ESC>
 
 find_file                       <C-x-C-f>
@@ -46,7 +48,6 @@ mark_whole_buffer               <C-x-C-p>
 
 set_mark                        <C-SPACE>
 pop_mark                        <C-x-C-SPACE>
-
 
 delete_backward_char            <BACKSPACE>
 delete_backward_word            <C-BACKSPACE> <M-BACKSPACE>

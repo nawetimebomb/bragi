@@ -46,7 +46,6 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .set_mark:                editor_set_mark(p)
         case .pop_mark:                editor_pop_mark(p)
 
-
         case .delete_backward_char:    editor_delete_to(p, .LEFT)
         case .delete_backward_word:    editor_delete_to(p, .WORD_START)
         case .delete_forward_char:     editor_delete_to(p, .RIGHT)
@@ -70,7 +69,8 @@ editor_do_command :: proc(cmd: Command, p: ^Pane, data: any) {
         case .switch_cursor:           editor_manage_cursors(p, .SWITCH)
         case .toggle_cursor_group:     editor_manage_cursors(p, .TOGGLE_GROUP)
 
-        case .newline:                 editor_newline_and_indent(p)
+        case .newline_and_indent:      editor_newline_and_indent(p)
+        case .indent_region:           editor_indent_region(p)
         case .self_insert:             editor_self_insert(p, data.(string))
     }
 }
@@ -334,6 +334,10 @@ editor_newline_and_indent :: proc(p: ^Pane) {
     }
 
     insert_newline(p.buffer)
+}
+
+editor_indent_region :: proc(p: ^Pane) {
+    insert_indent(p.buffer)
 }
 
 editor_self_insert :: proc(p: ^Pane, v: union { string, byte }) {

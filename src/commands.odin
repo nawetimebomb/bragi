@@ -73,7 +73,8 @@ Command :: enum {
     switch_cursor,
     toggle_cursor_group,
 
-    newline,
+    newline_and_indent,
+    indent_region,
     self_insert,
 }
 
@@ -90,7 +91,7 @@ do_command :: proc(cmd: Command, p: ^Pane, data: any) -> (handled: bool) {
         ui_do_command(cmd, p, data)
         return true
     case :
-        processed_cmd : Command = cmd == .ui_select ? .newline : cmd
+        processed_cmd : Command = cmd == .ui_select ? .newline_and_indent : cmd
         editor_do_command(processed_cmd, p, data)
         return true
     }

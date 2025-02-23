@@ -679,6 +679,36 @@ dwim_last_cursor_col_offset :: proc(cursor: ^Cursor, new_offset: int) -> (offset
     return cursor.col_offset
 }
 
+get_line_indent_level :: proc(b: ^Buffer, line: int) -> (level: int) {
+    bol, eol := get_line_boundaries(b.lines[:], line)
+    indent_tokens := get_indentation_tokens(b, bol, eol)
+    s := get_line_text(b, b.lines[:], line)
+    level = 0
+
+    if b.indentation.type == .space {
+        space_count: f32 = 0
+        for c in s { if c == ' ' { space_count += 1 } else { break } }
+        level = int(math.ceil(space_count / f32(b.indentation.width)))
+    } else {
+        for c in s { if c == '\t' { level += 1 } else { break } }
+    }
+
+    for t in indent_tokens {
+        if t.action == .open  { level += 1 }
+        if t.action == .close { level -= 1 }
+    }
+
+    if b.indentation.type == .space {
+        level *= b.indentation.width
+    }
+
+    return
+}
+
+get_indent_char :: #force_inline proc(b: ^Buffer) -> (char: byte) {
+    return b.indentation.type == .space ? ' ' : '\t'
+}
+
 update_future_cursor_offsets :: proc(b: ^Buffer, starting_cursor, offset: int) {
     for i in starting_cursor..<len(b.cursors) {
         cursor := &b.cursors[i]
@@ -728,7 +758,7 @@ remove :: proc(b: ^Buffer, count: int) {
 
         if count < 0 {
             update_future_cursor_offsets(b, index, chars_to_delete)
-            after = max(cursor.pos, after)
+            after = min(cursor.pos, after)
             direction = -1
         } else {
             // Since we're deleting forward from the position, we don't want to update
@@ -740,6 +770,75 @@ remove :: proc(b: ^Buffer, count: int) {
             after = max(cursor.pos, after)
             direction = 1
         }
+    }
+
+    b.cursor_incursion.before = before
+    b.cursor_incursion.after = after
+    b.cursor_incursion.direction = direction == -1 ? .backward : .forward
+}
+
+insert_indent :: proc(b: ^Buffer) {
+    before := buffer_len(b)
+    after := 0
+    direction: i8
+
+    if !has_selection(b) && len(b.cursors) == 1 {
+        // If there's only one cursor, and there's no selection happening, we handle
+        // it separatedly because we don't need to update the lines to figure out what's
+        // the best indentation.
+        cursor := use_last_cursor(b)
+        before = min(cursor.pos, before)
+        line := get_line_index(b.lines[:], cursor.pos)
+        previous_line := line - 1
+        indent_level := get_line_indent_level(b, line - 1)
+        bol, eol := get_line_boundaries(b.lines[:], line)
+        s := get_line_text(b, b.lines[:], line)
+        cut_count := 0
+
+        for {
+            if s[cut_count] == ' ' || s[cut_count] == '\t' {
+                cut_count += 1
+            } else {
+                break
+            }
+        }
+
+        if cut_count == indent_level {
+            return
+        }
+
+        check_buffer_history_state(b)
+
+        update_offset := indent_level - cut_count
+
+        if update_offset > 0 {
+            indent_temp := strings.builder_make(context.temp_allocator)
+
+            for i in 0..<update_offset  {
+                strings.write_byte(&indent_temp, get_indent_char(b))
+            }
+
+            insert_raw(b, bol, strings.to_string(indent_temp))
+        } else {
+            remove_raw(b, bol, abs(update_offset))
+        }
+
+        if cursor.pos < bol + indent_level {
+            cursor.pos = bol + indent_level
+        } else {
+            cursor.pos += update_offset
+        }
+
+        cursor.sel = cursor.pos
+        cursor.col_offset = -1
+
+        direction = update_offset >= 0 ? 1 : -1
+        after = max(cursor.pos, after)
+    } else {
+        // If there's more than one cursor or a selection is happening, we need to
+        // keep track of the line changes to figure out the indentation, which makes
+        // this a little bit more difficult to manage
+        // TODO: Support region and multicursor
     }
 
     b.cursor_incursion.before = before
@@ -760,37 +859,14 @@ insert_newline :: proc(b: ^Buffer) {
 
     for &cursor, index in b.cursors {
         before = min(cursor.pos, before)
-
         line := get_line_index(b.lines[:], cursor.pos - accumulated_added_offset)
-        bol, eol := get_line_boundaries(b.lines[:], line)
-        indent_tokens := get_indentation_tokens(b, bol, eol)
-        s := get_line_text(b, b.lines[:], line)
-        indent_level := 0
-
-        if b.indentation.type == .space {
-            space_count : f32 = 0
-            for c in s { if c == ' ' { space_count += 1 } else { break } }
-            indent_level = int(math.ceil(space_count / f32(b.indentation.width)))
-        } else {
-            for c in s { if c == '\t' { indent_level += 1 } else { break } }
-        }
-
-        for t in indent_tokens {
-            if t.action == .open  { indent_level += 1 }
-            if t.action == .close { indent_level -= 1 }
-        }
-
-        indent_char : byte = b.indentation.type == .space ? ' ' : '\t'
-
-        if b.indentation.type == .space {
-            indent_level *= b.indentation.width
-        }
+        indent_level := get_line_indent_level(b, line)
 
         newline_temp := strings.builder_make(context.temp_allocator)
         strings.write_byte(&newline_temp, '\n')
 
         for i in 0..<indent_level {
-            strings.write_byte(&newline_temp, indent_char)
+            strings.write_byte(&newline_temp, get_indent_char(b))
         }
 
         result := strings.to_string(newline_temp)

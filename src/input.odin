@@ -252,6 +252,12 @@ handle_copy :: proc(str: string) {
 }
 
 handle_paste :: proc() -> string {
-    result := sdl.GetClipboardText()
-    return string(result)
+    pasted := string(sdl.GetClipboardText())
+    result := strings.builder_make(context.temp_allocator)
+    for i in 0..<len(pasted) {
+        if pasted[i] != '\r' {
+            strings.write_byte(&result, pasted[i])
+        }
+    }
+    return strings.to_string(result)
 }

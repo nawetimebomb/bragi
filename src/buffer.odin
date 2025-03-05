@@ -54,8 +54,7 @@ Buffer_Section :: struct {
 
 History_State :: struct {
     cursors_pos: []int,
-    length:      int,
-    data:        []byte,
+    data:        string,
 }
 
 Buffer :: struct {
@@ -84,7 +83,6 @@ Buffer :: struct {
     tokens:              [dynamic]Token_Kind,
     dirty:               bool,
     lines:               [dynamic]int,
-
     str:                 string,
 
     enable_history:      bool,
@@ -438,7 +436,9 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
         for pos in item.cursors_pos { append(&b.cursors, make_cursor(pos)) }
         delete(item.cursors_pos)
 
-        // TODO: This should only work by type of edit
+        clear(&b.buf)
+        insert_raw_string(b, 0, item.data)
+        delete(item.data)
 
         b.dirty = true
         b.modified = true
@@ -448,6 +448,7 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
 push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.Allocator_Error {
     item := History_State{
         cursors_pos = make([]int, len(b.cursors)),
+        data        = strings.clone(string(b.buf[:])),
     }
 
     for cursor, index in b.cursors { item.cursors_pos[index] = cursor.pos }
@@ -457,10 +458,7 @@ push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.
     return nil
 }
 
-DISABLED :: true
-
 check_buffer_history_state :: proc(b: ^Buffer) {
-    if DISABLED { return }
     if b.enable_history {
         clear_history(&b.redo)
 

@@ -54,9 +54,8 @@ Buffer_Section :: struct {
 
 History_State :: struct {
     cursors_pos: []int,
+    length:      int,
     data:        []byte,
-    gap_end:     int,
-    gap_start:   int,
 }
 
 Buffer :: struct {
@@ -81,11 +80,9 @@ Buffer :: struct {
         width: int,
     },
 
-    data:                []byte,
+    buf:                 [dynamic]byte,
     tokens:              [dynamic]Token_Kind,
     dirty:               bool,
-    gap_end:             int,
-    gap_start:           int,
     lines:               [dynamic]int,
 
     str:                 string,
@@ -119,11 +116,8 @@ buffer_init :: proc(
         allocator      = allocator,
         id             = uuid.generate_v7(),
 
-        data           = make([]byte, bytes, allocator),
         str            = "",
         dirty          = false,
-        gap_start      = 0,
-        gap_end        = bytes,
         lines          = make([dynamic]int, 0, 16),
 
         enable_history = true,
@@ -147,11 +141,8 @@ create_buffer :: proc(
     append(&open_buffers, Buffer{
         allocator      = allocator,
         id             = uuid.generate_v7(),
-        data           = make([]byte, bytes, allocator),
         dirty          = false,
         enable_history = true,
-        gap_start      = 0,
-        gap_end        = bytes,
         lines          = make([dynamic]int, 0, 16),
         major_mode     = .Fundamental,
         name           = strings.clone(name),
@@ -249,14 +240,13 @@ buffer_update :: proc(b: ^Buffer) {
 buffer_destroy :: proc(b: ^Buffer) {
     clear_history(&b.undo)
     clear_history(&b.redo)
+    delete(b.buf)
     delete(b.cursors)
-    delete(b.data)
     delete(b.filepath)
     delete(b.lines)
     delete(b.name)
     delete(b.redo)
     delete(b.sections)
-    delete(b.str)
     delete(b.tokens)
     delete(b.undo)
 }
@@ -444,16 +434,11 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
         push_history_state(b, redo)
         item := pop(undo)
 
-        b.gap_end   = item.gap_end
-        b.gap_start = item.gap_start
-
         clear(&b.cursors)
         for pos in item.cursors_pos { append(&b.cursors, make_cursor(pos)) }
         delete(item.cursors_pos)
 
-        delete(b.data)
-        b.data = slice.clone(item.data, b.allocator)
-        delete(item.data)
+        // TODO: This should only work by type of edit
 
         b.dirty = true
         b.modified = true
@@ -463,9 +448,6 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
 push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.Allocator_Error {
     item := History_State{
         cursors_pos = make([]int, len(b.cursors)),
-        data        = slice.clone(b.data, b.allocator),
-        gap_end     = b.gap_end,
-        gap_start   = b.gap_start,
     }
 
     for cursor, index in b.cursors { item.cursors_pos[index] = cursor.pos }
@@ -475,7 +457,10 @@ push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.
     return nil
 }
 
+DISABLED :: true
+
 check_buffer_history_state :: proc(b: ^Buffer) {
+    if DISABLED { return }
     if b.enable_history {
         clear_history(&b.redo)
 
@@ -505,43 +490,17 @@ buffer_save :: proc(b: ^Buffer) {
     }
 }
 
-buffer_get_strings :: proc(buffer: ^Buffer) -> (left, right: string) {
-    left  = string(buffer.data[:buffer.gap_start])
-    right = string(buffer.data[buffer.gap_end:])
-    return
-}
-
 refresh_string_buffer :: proc(b: ^Buffer) {
     profiling_start("buffer.odin:refresh_string_buffer")
     builder := strings.builder_make(context.temp_allocator)
     start := 0
     end := buffer_len(b)
-    left, right := buffer_get_strings(b)
-
-    left_len := len(left)
-
-    if end <= left_len {
-        strings.write_string(&builder, left[start:end])
-    } else if start >= left_len {
-        strings.write_string(&builder, right[start - left_len:end - left_len])
-    } else {
-        strings.write_string(&builder, left[start:])
-        strings.write_string(&builder, right[:end - left_len])
-    }
-
-    delete(b.str)
-    b.str = strings.clone(strings.to_string(builder))
+    b.str = string(b.buf[:])
     profiling_end()
 }
 
 get_byte_at :: #force_inline proc(b: ^Buffer, pos: int) -> byte {
-    left, right := buffer_get_strings(b)
-
-    if pos < len(left) {
-        return left[pos]
-    } else {
-        return right[pos - len(left)]
-    }
+    return b.buf[pos]
 }
 
 delete_all_cursors :: proc(b: ^Buffer, new_cursor: Cursor = {}) {
@@ -917,8 +876,7 @@ insert_string :: proc(b: ^Buffer, str: string) {
 }
 
 buffer_len :: proc(b: ^Buffer) -> int {
-    gap := b.gap_end - b.gap_start
-    return len(b.data) - gap
+    return len(b.buf)
 }
 
 @(private="file")
@@ -934,22 +892,17 @@ insert_whole_file :: proc(b: ^Buffer, data: []byte) {
         append(&processed_data, c)
     }
 
-    insert_raw(b, 0, processed_data[:])
+    insert_raw(b, 0, string(processed_data[:]))
     b.modified = b.crlf
     b.dirty = true
 }
 
 @(private="file")
 remove_raw :: proc(b: ^Buffer, pos: int, count: int) {
-    chars_to_remove := abs(count)
-    effective_pos := pos
-
-    if count < 0 {
-        effective_pos = max(0, effective_pos - chars_to_remove)
-    }
-
-    move_gap(b, effective_pos)
-    b.gap_end = min(b.gap_end + chars_to_remove, len(b.data))
+    pos1 := pos + count
+    lo := min(pos, pos1)
+    hi := max(pos, pos1)
+    remove_range(&b.buf, lo, hi)
     b.dirty = true
     b.modified = true
 }
@@ -958,76 +911,27 @@ remove_raw :: proc(b: ^Buffer, pos: int, count: int) {
 insert_raw :: proc{
     insert_raw_char,
     insert_raw_rune,
-    insert_raw_array,
     insert_raw_string,
 }
 
 @(private="file")
 insert_raw_char :: proc(b: ^Buffer, pos: int, char: byte) {
     assert(pos >= 0 && pos <= buffer_len(b))
-    conditionally_grow_buffer(b, 1)
-    move_gap(b, pos)
-    b.data[b.gap_start] = char
-    b.gap_start += 1
+    inject_at(&b.buf, pos, char)
     b.dirty = true
     b.modified = true
 }
 
 @(private="file")
-insert_raw_array :: proc(b: ^Buffer, pos: int, array: []byte) {
+insert_raw_string :: proc(b: ^Buffer, pos: int, str: string) {
     assert(pos >= 0 && pos <= buffer_len(b))
-    conditionally_grow_buffer(b, len(array))
-    move_gap(b, pos)
-    copy_slice(b.data[b.gap_start:], array)
-    b.gap_start += len(array)
+    inject_at(&b.buf, pos, str)
     b.dirty = true
     b.modified = true
 }
 
 @(private="file")
 insert_raw_rune :: proc(b: ^Buffer, pos: int, r: rune) {
-    bytes, _ := utf8.encode_rune(r)
-    insert_raw_array(b, pos, bytes[:])
-}
-
-@(private="file")
-insert_raw_string :: proc(b: ^Buffer, pos: int, str: string) {
-    insert_raw_array(b, pos, transmute([]byte)str)
-}
-
-@(private="file")
-move_gap :: proc(b: ^Buffer, pos: int) {
-    pos := clamp(pos, 0, buffer_len(b))
-
-    if pos == b.gap_start { return }
-
-    if b.gap_start < pos {
-        delta := pos - b.gap_start
-        mem.copy(&b.data[b.gap_start], &b.data[b.gap_end], delta)
-        b.gap_start += delta
-        b.gap_end += delta
-    } else {
-        delta := b.gap_start - pos
-        mem.copy(&b.data[b.gap_end - delta],
-                 &b.data[b.gap_start - delta], delta)
-        b.gap_start -= delta
-        b.gap_end -= delta
-    }
-}
-
-@(private="file")
-conditionally_grow_buffer :: proc(b: ^Buffer, count: int) {
-    gap_len := b.gap_end - b.gap_start
-
-    if gap_len < count {
-        required_new_data_array_size := count + len(b.data) - gap_len
-        new_data_len := max(2 * len(b.data), required_new_data_array_size)
-
-        move_gap(b, len(b.data) - gap_len)
-        new_data_array := make([]byte, new_data_len, b.allocator)
-        copy_slice(new_data_array, b.data[:b.gap_end])
-        delete(b.data)
-        b.data = new_data_array
-        b.gap_end = len(b.data)
-    }
+    bytes, width := utf8.encode_rune(r)
+    insert_raw_string(b, pos, string(bytes[:width]))
 }

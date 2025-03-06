@@ -79,7 +79,7 @@ Buffer :: struct {
         width: int,
     },
 
-    buf:                 [dynamic]byte,
+    data:                [dynamic]byte,
     tokens:              [dynamic]Token_Kind,
     dirty:               bool,
     lines:               [dynamic]int,
@@ -238,7 +238,7 @@ buffer_update :: proc(b: ^Buffer) {
 buffer_destroy :: proc(b: ^Buffer) {
     clear_history(&b.undo)
     clear_history(&b.redo)
-    delete(b.buf)
+    delete(b.data)
     delete(b.cursors)
     delete(b.filepath)
     delete(b.lines)
@@ -436,7 +436,7 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
         for pos in item.cursors_pos { append(&b.cursors, make_cursor(pos)) }
         delete(item.cursors_pos)
 
-        clear(&b.buf)
+        clear(&b.data)
         insert_raw_string(b, 0, item.data)
         delete(item.data)
 
@@ -448,7 +448,7 @@ undo_redo :: proc(b: ^Buffer, undo, redo: ^[dynamic]History_State) {
 push_history_state :: proc(b: ^Buffer, history: ^[dynamic]History_State) -> mem.Allocator_Error {
     item := History_State{
         cursors_pos = make([]int, len(b.cursors)),
-        data        = strings.clone(string(b.buf[:])),
+        data        = strings.clone(string(b.data[:])),
     }
 
     for cursor, index in b.cursors { item.cursors_pos[index] = cursor.pos }
@@ -493,12 +493,12 @@ refresh_string_buffer :: proc(b: ^Buffer) {
     builder := strings.builder_make(context.temp_allocator)
     start := 0
     end := buffer_len(b)
-    b.str = string(b.buf[:])
+    b.str = string(b.data[:])
     profiling_end()
 }
 
 get_byte_at :: #force_inline proc(b: ^Buffer, pos: int) -> byte {
-    return b.buf[pos]
+    return b.data[pos]
 }
 
 delete_all_cursors :: proc(b: ^Buffer, new_cursor: Cursor = {}) {
@@ -874,7 +874,7 @@ insert_string :: proc(b: ^Buffer, str: string) {
 }
 
 buffer_len :: proc(b: ^Buffer) -> int {
-    return len(b.buf)
+    return len(b.data)
 }
 
 @(private="file")
@@ -900,7 +900,7 @@ remove_raw :: proc(b: ^Buffer, pos: int, count: int) {
     pos1 := pos + count
     lo := min(pos, pos1)
     hi := max(pos, pos1)
-    remove_range(&b.buf, lo, hi)
+    remove_range(&b.data, lo, hi)
     b.dirty = true
     b.modified = true
 }
@@ -915,7 +915,7 @@ insert_raw :: proc{
 @(private="file")
 insert_raw_char :: proc(b: ^Buffer, pos: int, char: byte) {
     assert(pos >= 0 && pos <= buffer_len(b))
-    inject_at(&b.buf, pos, char)
+    inject_at(&b.data, pos, char)
     b.dirty = true
     b.modified = true
 }
@@ -923,7 +923,7 @@ insert_raw_char :: proc(b: ^Buffer, pos: int, char: byte) {
 @(private="file")
 insert_raw_string :: proc(b: ^Buffer, pos: int, str: string) {
     assert(pos >= 0 && pos <= buffer_len(b))
-    inject_at(&b.buf, pos, str)
+    inject_at(&b.data, pos, str)
     b.dirty = true
     b.modified = true
 }

@@ -152,7 +152,7 @@ generate_font_bitmap_texture :: proc(result: ^Font) {
     full_bitmap := make([]byte, texture_size * texture_size)
     pos_x, pos_y: i32
 
-    for i: u32 = 0; i < NUM_GLYPHS; i += 1 {
+    for i: u64 = 0; i < NUM_GLYPHS; i += 1 {
         ft.load_char(result.face, i, {.Render, .Force_Autohint})
         char_bitmap := &result.face.glyph.bitmap
 
@@ -213,7 +213,7 @@ generate_font_bitmap_texture :: proc(result: ^Font) {
 prepare_font :: proc(font_data: []byte, size: u32) -> Font {
     result: Font
 
-    assert(ft.new_memory_face(library, raw_data(font_data), i32(len(font_data)), 0, &result.face) == .Ok, "Can't load font")
+    assert(ft.new_memory_face(library, raw_data(font_data), i64(len(font_data)), 0, &result.face) == .Ok, "Can't load font")
     assert(ft.set_pixel_sizes(result.face, 0, size) == .Ok, "Can't set pixel size")
     generate_font_bitmap_texture(&result)
     return result

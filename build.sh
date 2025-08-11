@@ -17,12 +17,8 @@ cd $DEST_FOLDER
 
 odin build ../src -show-timings -use-separate-modules -out:$BIN_NAME -strict-style -vet-using-stmt -vet-using-param -vet-style -vet-semicolon -debug
 
-if [ "$COMMAND" = 'run' ]; then
-    if [ "$CONFIG" = 'nvidia' ]; then
-        __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia ./${BIN_NAME}
-    else
-        ./${BIN_NAME}
-    fi
+if [[ "$?" = 0 ]] && [[ "$COMMAND" = "run" ]]; then
+    ./${BIN_NAME}
 fi
 
 cd ..

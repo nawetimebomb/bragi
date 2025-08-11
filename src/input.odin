@@ -1,263 +1,143 @@
 package main
 
-import     "core:fmt"
-import     "core:log"
-import     "core:slice"
-import     "core:strings"
-import     "core:time"
-import sdl "vendor:sdl2"
+import "core:log"
+import "core:time"
 
-Copy_Proc  :: #type proc(string)
-Paste_Proc :: #type proc() -> string
+// NOTE(nawe) Not good right now, because I'm basically remapping SDL
+// that already knows all this, but it will be good in the future when
+// I handroll the platform code, and I will need a standardized event
+// system for all platforms.
 
-Keybinds :: struct {
-    modifiers: [dynamic]string,
+Key_Code :: enum u32 {
+    Undefined   = 0,
+
+    // Following page 0x07 (USB keyboard)
+    // https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf
+
+    // * Alphanumerics and symbols are in rune_pressed
+    // * Mod keys are in modifiers bit set.
+
+    Enter       = 40,
+    Escape      = 41,
+    Backspace   = 42,
+    Tab         = 43,
+    Spacebar    = 44,
+    Minus       = 45,
+    Equals      = 46,
+
+    F1          = 58,
+    F2          = 59,
+    F3          = 60,
+    F4          = 61,
+    F5          = 62,
+    F6          = 63,
+    F7          = 64,
+    F8          = 65,
+    F9          = 66,
+    F10         = 67,
+    F11         = 68,
+    F12         = 69,
+
+    Home        = 74,
+    Page_Up     = 75,
+    Delete      = 76,
+    End         = 77,
+    Page_Down   = 78,
+    Arrow_Right = 79,
+    Arrow_Left  = 80,
+    Arrow_Down  = 81,
+    Arrow_Up    = 82,
+
+    F13         = 104,
+    F14         = 105,
+    F15         = 106,
+    F16         = 107,
+    F17         = 108,
+    F18         = 109,
+    F19         = 110,
+    F20         = 111,
+    F21         = 112,
+    F22         = 113,
+    F23         = 114,
+    F24         = 115,
 }
 
-KMod :: sdl.KeymodFlag
-
-check_alt :: proc(mod: sdl.Keymod) -> bool {
-    return KMod.LALT in mod || KMod.RALT in mod
+Key_Mod :: enum u8 {
+    Alt       = 0,
+    Ctrl      = 1,
+    Shift     = 2,
+    Super     = 3,
+    Cmd       = 4,
+    Caps_Lock = 5,
 }
 
-check_ctrl :: proc(mod: sdl.Keymod) -> bool {
-    return KMod.LCTRL in mod || KMod.RCTRL in mod
+Event :: struct {
+    // Warn that this event wasn't handled properly, helpful during
+    // development to make sure inputs are being accounted for.
+    handled: bool,
+    time:    time.Tick,
+    variant: Event_Variant,
 }
 
-check_shift :: proc(mod: sdl.Keymod) -> bool {
-    return KMod.LSHIFT in mod || KMod.RSHIFT in mod
+Event_Variant :: union {
+    Event_Keyboard,
+    Event_Mouse,
+    Event_Quit,
+    Event_Window,
 }
 
-load_keybinds :: proc() {
-    bragi.keybinds.modifiers = make([dynamic]string, 0, 1)
+Event_Keyboard :: struct {
+    is_text_input: bool,
+    // if is_text_input, the rune pressed should be treated as text
+    // input event, otherwise, the key was pressed as part of a
+    // regular keyboard event.
+    rune_pressed:  rune,
+    // for keys that are not runes.
+    key_pressed:   Key_Code,
+    modifiers:     bit_set[Key_Mod; u8],
+    repeat:        bool,
 }
 
-get_key_representation :: proc(k: sdl.Keycode) -> string {
-    #partial switch k {
-        case .BACKSPACE:        return "BACKSPACE"
-        case .DELETE:           return "DEL"
-        case .ESCAPE:           return "ESC"
-        case .RETURN:           return "RET"
-        case .SPACE:            return "SPACE"
-        case .TAB:              return "TAB"
-
-        case .COMMA:            return ","
-        case .EQUALS:           return "="
-        case .GREATER:          return ">"
-        case .LESS:             return "<"
-        case .MINUS:            return "-"
-        case .PERIOD:           return "."
-        case .SLASH:            return "/"
-
-        case .DOWN:             return "Down"
-        case .LEFT:             return "Left"
-        case .RIGHT:            return "Right"
-        case .UP:               return "Up"
-
-	    case .A:                return "a"
-	    case .B:                return "b"
-	    case .C:                return "c"
-	    case .D:                return "d"
-	    case .E:                return "e"
-	    case .F:                return "f"
-	    case .G:                return "g"
-	    case .H:                return "h"
-	    case .I:                return "i"
-	    case .J:                return "j"
-	    case .K:                return "k"
-	    case .L:                return "l"
-	    case .M:                return "m"
-	    case .N:                return "n"
-	    case .O:                return "o"
-	    case .P:                return "p"
-	    case .Q:                return "q"
-	    case .R:                return "r"
-	    case .S:                return "s"
-	    case .T:                return "t"
-	    case .U:                return "u"
-	    case .V:                return "v"
-	    case .W:                return "w"
-	    case .X:                return "x"
-	    case .Y:                return "y"
-	    case .Z:                return "z"
-
-	    case .NUM0:             return "0"
-	    case .NUM1:             return "1"
-	    case .NUM2:             return "2"
-	    case .NUM3:             return "3"
-	    case .NUM4:             return "4"
-	    case .NUM5:             return "5"
-	    case .NUM6:             return "6"
-	    case .NUM7:             return "7"
-	    case .NUM8:             return "8"
-	    case .NUM9:             return "9"
-    }
-
-    return ""
+Event_Mouse :: struct {
+    mouse_x:       i32,
+    mouse_y:       i32,
+    wheel_y:       i32,
+    wheel_pressed: bool,
 }
 
-handle_keydown :: proc(p: ^Pane, key: sdl.Keysym) -> (handled: bool) {
-    // NOTE: Disallow mod keys as keystrokes
-    disallowed_keystrokes := [?]sdl.Keycode{
-            .LCTRL, .RCTRL, .LSHIFT, .RSHIFT, .LALT, .RALT, .LGUI, .RGUI,
-    }
+Event_Quit :: struct {}
 
-    if slice.contains(disallowed_keystrokes[:], key.sym) {
-        return
-    }
+Event_Window :: struct {
+    // active resizing, as in the user hasn't yet completed their resize
+    resizing:       bool,
+    moving:         bool,
+    window_x:       i32,
+    window_y:       i32,
+    window_height:  i32,
+    window_width:   i32,
+    window_focused: bool,
+}
 
-    if key.sym == .F3 {
-        if bragi.ctx.profiling {
-            destroy_profiling()
-        } else {
-            initialize_profiling()
+events_this_frame: [dynamic]Event
+
+input_update_and_prepare :: proc() {
+    for event in events_this_frame {
+        if !event.handled {
+            log.warnf("event wasn't handled properly {}", event)
         }
     }
 
-    keydown := strings.builder_make(context.temp_allocator)
-
-    for len(bragi.keybinds.modifiers) > 0 {
-        s := pop(&bragi.keybinds.modifiers)
-        strings.write_string(&keydown, s)
-        delete(s)
-    }
-
-    if check_ctrl(key.mod)  {
-        strings.write_string(&keydown, "C-")
-    }
-
-    if check_alt(key.mod)   {
-        strings.write_string(&keydown, "M-")
-    }
-
-    if check_shift(key.mod) {
-        strings.write_string(&keydown, "S-")
-    }
-
-    strings.write_string(&keydown, get_key_representation(key.sym))
-    match := strings.to_string(keydown)
-
-    command, exists := bragi.settings.keybindings_table[match]
-
-    if exists && command != .noop {
-        handled = do_command(command, p, match)
-        p.dirty = true
-    }
-
-    return
+    clear(&events_this_frame)
 }
 
-process_inputs :: proc() {
-    e: sdl.Event
-    input_handled := false
-
-    for sdl.PollEvent(&e) {
-        #partial switch e.type {
-            case .QUIT: {
-                bragi_is_running = false
-                return
-            }
-            case .WINDOWEVENT: {
-                w := e.window
-
-                #partial switch w.event {
-                    case .FOCUS_LOST: {
-                        window_in_focus = false
-                        return
-                    }
-                    case .FOCUS_GAINED: {
-                        window_in_focus = true
-                        return
-                    }
-                    case .RESIZED: {
-                        new_window_size_is_invalid :=
-                            w.data1 <= MINIMUM_WINDOW_SIZE ||
-                            w.data2 <= MINIMUM_WINDOW_SIZE
-
-                        if new_window_size_is_invalid {
-                            sdl.SetWindowSize(
-                                window, MINIMUM_WINDOW_SIZE, MINIMUM_WINDOW_SIZE,
-                            )
-                        }
-
-                        sdl.GetWindowPosition(window, &window_x, &window_y)
-                        sdl.GetWindowSize(window, &window_width, &window_height)
-                        resize_panes()
-                        return
-                    }
-                }
-            }
-            case .DROPFILE: {
-                sdl.RaiseWindow(window)
-                filepath := string(e.drop.file)
-                editor_open_file(current_pane, filepath)
-                delete(e.drop.file)
-                return
-            }
-            case .MOUSEMOTION: {
-                mouse_x = e.motion.x
-                mouse_y = e.motion.y
-            }
-            case .MOUSEBUTTONDOWN: {
-                mouse := e.button
-
-                if mouse.button == 1 {
-                    switch mouse.clicks {
-                    case 1:
-                        editor_switch_to_pane_on_click(mouse.x, mouse.y)
-                    case 2:
-                        mouse_drag_word(current_pane, mouse.x, mouse.y)
-                    case 3:
-                        mouse_drag_line(current_pane, mouse.x, mouse.y)
-                    }
-                }
-
-                return
-            }
-            case .MOUSEWHEEL: {
-                wheel := e.wheel
-                found, _ := find_pane_in_window_coords(mouse_x, mouse_y)
-
-                if found == nil {
-                    log.errorf("Couldn't find Pane at {0}, {1}", mouse_x, mouse_y)
-                    return
-                }
-
-                editor_scroll(found, int(wheel.y * -1 * 5))
-                return
-            }
-            case .KEYDOWN: {
-                input_handled = handle_keydown(current_pane, e.key.keysym)
-            }
-            case .TEXTINPUT: {
-                if input_handled { return }
-
-                input_char := cstring(raw_data(e.text.text[:]))
-                str := string(input_char)
-                test_chars := transmute([]byte)str
-                if len(test_chars) > 1 {
-                    log.errorf("Can't handle multi-byte character {0}", str)
-                    return
-                }
-                do_command(.self_insert, current_pane, str)
-                current_pane.dirty = true
-            }
-        }
-    }
+input_register :: proc(variant: Event_Variant) {
+    append(&events_this_frame, Event{
+        time    = time.tick_now(),
+        variant = variant,
+    })
 }
 
-handle_copy :: proc(str: string) {
-    result := strings.clone_to_cstring(str, context.temp_allocator)
-    sdl.SetClipboardText(result)
-}
-
-handle_paste :: proc() -> string {
-    pasted := string(sdl.GetClipboardText())
-    result := strings.builder_make(context.temp_allocator)
-    for i in 0..<len(pasted) {
-        if pasted[i] != '\r' {
-            strings.write_byte(&result, pasted[i])
-        }
-    }
-    return strings.to_string(result)
+input_destroy :: proc() {
+    input_update_and_prepare()
+    delete(events_this_frame)
 }

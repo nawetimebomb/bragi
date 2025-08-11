@@ -12,56 +12,18 @@ make_texture :: #force_inline proc(access: sdl.TextureAccess, w, h: i32) -> ^Tex
     return sdl.CreateTexture(renderer, .RGBA32, access, w, h)
 }
 
-make_surface_for_text :: #force_inline proc(w, h: i32, format: sdl.PixelFormat) -> ^Surface {
-    result := sdl.CreateSurface(w, h, format)
-    sdl.SetSurfaceColorKey(result, true, sdl.MapSurfaceRGBA(result, 0, 0, 0, 0))
-    return result
-}
-
-lock_texture :: #force_inline proc(texture: ^Texture, surface: ^^Surface) {
-    if !sdl.LockTextureToSurface(texture, nil, surface) {
-        log.fatal("couldn't lock texture", sdl.GetError())
-    }
-}
-
-blit_surface :: #force_inline proc(r: rune, surface: ^Surface, x, y, w, h: i32) {
-    rect := sdl.Rect{x, y, w, h}
-    str_from_rune := utf8.runes_to_string([]rune{r}, context.temp_allocator)
-    cstr := cstring(raw_data(str_from_rune))
-    // blit_surface(cs, nil, surface, &rect)
-}
-
-unlock_texture :: #force_inline proc(texture: ^Texture) {
-    sdl.UnlockTexture(texture)
-}
-
-prepare_texture_from_bitmap :: proc(texture: ^Texture, bitmap: ^[]byte, w, h: int) -> ^Texture {
-    sdl.DestroyTexture(texture)
-    result := sdl.CreateTexture(renderer, .RGBA32, .STATIC, i32(w), i32(h))
-    pixels := make([]u32, w * h, context.temp_allocator)
-    format := sdl.GetPixelFormatDetails(.RGBA32)
-    sdl.SetTextureBlendMode(result, {.BLEND})
-
-    for i := 0; i < w * h; i += 1 {
-        pixels[i] = sdl.MapRGBA(format, nil, 255, 255, 255, bitmap[i])
-    }
-
-    sdl.UpdateTexture(texture, nil, raw_data(pixels), i32(w) * size_of(u32))
-    return result
-}
-
 draw_frame :: proc() {
     sdl.SetRenderDrawColor(renderer, 0, 0, 0, 255)
     sdl.RenderClear(renderer)
 
-    text := "Bragi Editor"
+    text := "Bragi Editor B̶͗͑̔̂͝"
     sx, sy: f32
     font := fonts_map[.Editor]
 
     for r in text {
-        glyph, ok := font.glyphs_map[r]
+        glyph := find_or_create_glyph(font, r)
 
-        if !ok {
+        if glyph == nil {
             log.fatalf("cannot render glyph '{}'", r)
             continue
         }

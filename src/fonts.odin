@@ -1,12 +1,12 @@
 package main
 
-import    "core:log"
-import    "core:math"
-import    "core:strings"
+import     "core:log"
+import     "core:math"
+import     "core:strings"
+import     "core:unicode/utf8"
 
-import "core:os"
-
-import ft "freetype"
+import sdl "vendor:sdl3"
+import ttf "vendor:sdl3/ttf"
 
 Font_Face :: enum {
     Editor,
@@ -24,7 +24,7 @@ Glyph_Data :: struct {
 
 Font :: struct {
     name:                    string,
-    face:                    ft.Face,
+    face:                    ^ttf.Font,
     glyphs_map:              map[rune]^Glyph_Data,
     texture:                 ^Texture,
     last_packed_glyph:       ^Glyph_Data,
@@ -38,33 +38,20 @@ Font :: struct {
     typical_descender:       i32,
     xadvance:                i32,
     y_offset_for_centering:  f32,
-    missing_character:       rune,
+    replacement_character:   rune,
 }
 
 // NOTE(nawe) maximum number of glyphs we can cache. This should be
 // sufficient for when working with code and editing text, but it
 // might need to grow according to experience in using the editor.
 MAX_SAFE_GLYPHS   :: 400
-// NOTE(nawe) I'm basically guessing this number below, but from
-// experience, I would want to do something like `MAX_SAFE_GLYPHS *
-// math.ceil(math.sqrt(FONT_SIZE))`, this should more than enough to
-// store the amount of characters in MAX_SAFE_GLYPHS. Because it is
-// more than enough, I'm not changing it with the font size and
-// instead just using DEFAULT_EDITOR_FONT_SIZE.
-BASE_TEXTURE_SIZE :: MAX_SAFE_GLYPHS
+BASE_TEXTURE_SIZE :: MAX_SAFE_GLYPHS * 2
 
-FONT_CHAR_PADDING :: 1
+CHAR_PADDING :: 1
 
-@(private="file")
-ft_library: ft.Library
 @(private="file")
 fonts_initialized := false
-// NOTE(nawe) used only internally to keep track of the loaded fonts
-// (and different sizes). The reason why I load fonts again when
-// changing size is because I'm very used to increase the size when
-// working on some files or sharing screen, and since the font rarely
-// changes on a text editor, we have sufficient space to cache all the
-// sizes we need.
+
 @(private="file")
 fonts_cache: [dynamic]^Font
 
@@ -72,7 +59,8 @@ fonts_map:   map[Font_Face]^Font
 
 fonts_init :: proc() {
     log.debug("initializing fonts")
-    ft.init_free_type(&ft_library)
+    success := ttf.Init()
+    assert(success)
     fonts_initialized = true
 }
 
@@ -86,18 +74,29 @@ fonts_destroy :: proc() {
 
         delete(font.name)
         delete(font.glyphs_map)
-        ft.done_face(font.face)
+        ttf.CloseFont(font.face)
         free(font)
     }
 
     delete(fonts_cache)
     delete(fonts_map)
-
-    ft.done_free_type(ft_library)
+    ttf.Quit()
 }
 
 ensure_fonts_are_initialized :: #force_inline proc() {
     if !fonts_initialized do fonts_init()
+}
+
+initialize_font_related_stuff :: proc() {
+    COMMON_CHARACTERS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789~!@#$%^&*()-|\"':;_+={}[]\\/`,.<>? "
+
+    fonts_map[.Editor]  = get_font_with_size(FONT_EDITOR_NAME,  FONT_EDITOR,  font_editor_size)
+    fonts_map[.UI]      = get_font_with_size(FONT_UI_NAME,      FONT_UI,      font_ui_size)
+    fonts_map[.UI_Bold] = get_font_with_size(FONT_UI_BOLD_NAME, FONT_UI_BOLD, font_ui_size)
+
+    prepare_text(fonts_map[.Editor],  COMMON_CHARACTERS)
+    prepare_text(fonts_map[.UI],      COMMON_CHARACTERS)
+    prepare_text(fonts_map[.UI_Bold], COMMON_CHARACTERS)
 }
 
 get_font_with_size :: proc(name: string, data: []byte, character_height: i32) -> ^Font {
@@ -109,11 +108,8 @@ get_font_with_size :: proc(name: string, data: []byte, character_height: i32) ->
         return font
     }
 
-    face: ft.Face
-    if ft.new_memory_face(ft_library, raw_data(data), i64(len(data)), 0, &face) != .Ok {
-        log.fatalf("failed to load font")
-        return nil
-    }
+    font_data := sdl.IOFromMem(raw_data(data), len(data))
+    face := ttf.OpenFontIO(font_data, true, f32(character_height))
 
     result := new(Font, bragi_allocator)
     // TODO(nawe) maybe I don't need to clone this but I would guess,
@@ -122,177 +118,100 @@ get_font_with_size :: proc(name: string, data: []byte, character_height: i32) ->
     // string though.
     result.name = strings.clone(name)
     result.face = face
-    result.character_height = character_height
-    result.missing_character = 0xFFFD
+    result.replacement_character = 0xFFFD
 
-    success := ft.set_pixel_sizes(result.face, 0, u32(character_height))
-    assert(success == .Ok)
+    result.character_height =  ttf.GetFontHeight(result.face)
+    result.max_ascender =  ttf.GetFontAscent(result.face)
+    result.max_descender =  -ttf.GetFontDescent(result.face)
 
-    y_scale_font_to_pixels := f32(face.size.metrics.y_scale/(64.0*65536.0))
-
-    result.default_line_spacing = i32(math.floor(y_scale_font_to_pixels * f32(face.height) + 0.5))
-    result.max_ascender  = i32(math.floor(y_scale_font_to_pixels * f32(face.bbox.y_max) + 0.5))
-    result.max_descender = i32(math.floor(y_scale_font_to_pixels * f32(face.bbox.y_min) + 0.5))
-
-    glyph_index := ft.get_char_index(face, 'm')
-    ft.load_glyph(face, glyph_index, {})
-    result.y_offset_for_centering = 0.5 * f32(ft.round(result.face.glyph.metrics.hori_bearing_y)) + 0.5
-
-    glyph_index = ft.get_char_index(face, 'M')
-    ft.load_glyph(face, glyph_index, {})
-    result.em_width = i32(ft.round(result.face.glyph.bitmap.width))
-    result.xadvance = i32(ft.round(result.face.glyph.advance.x))
-
-    glyph_index = ft.get_char_index(face, 'T')
-    ft.load_glyph(face, glyph_index, {})
-    result.typical_ascender = i32(ft.round(face.glyph.metrics.hori_bearing_y))
-
-    glyph_index = ft.get_char_index(face, 'g')
-    result.typical_descender = i32(ft.round(face.glyph.metrics.hori_bearing_y - face.glyph.metrics.height))
-
-    // making sure the default missing character exists
-    glyph_index = ft.get_char_index(face, u64(result.missing_character))
-    if glyph_index == 0 {
-        result.missing_character = '?'
-    }
-
-    success = ft.select_charmap(face, .Unicode)
-    if success != .Ok {
-        log.fatalf("couldn't select unicode charmap for font {}", result.name)
+    // NOTE(nawe) I read somewhere that SDL_ttf sometimes has a bug
+    // with some fonts where it cannot calculate the character height
+    // correctly. Sadly I didn't capture the link for it but I had
+    // this code around from before.
+    if result.character_height < result.max_ascender - result.max_descender {
+        result.character_height = result.max_ascender - result.max_descender
     }
 
     result.texture = make_texture(.STREAMING, BASE_TEXTURE_SIZE, BASE_TEXTURE_SIZE)
+
+    minx, maxx, xadvance: i32
+    _ = ttf.GetGlyphMetrics(result.face, u32('M'), &minx, &maxx, nil, nil, &xadvance)
+    result.xadvance = xadvance
+    result.em_width = minx + maxx
+
+    if !ttf.FontHasGlyph(face, u32(result.replacement_character)) {
+        result.replacement_character = 0x2022
+
+        if !ttf.FontHasGlyph(face, u32(result.replacement_character)) {
+            result.replacement_character = '?'
+        }
+    }
 
     append(&fonts_cache, result)
     return result
 }
 
-initialize_font_related_stuff :: proc() {
-    fonts_map[.Editor]  = get_font_with_size(FONT_EDITOR_NAME, FONT_EDITOR, font_editor_size)
-    prepare_font(fonts_map[.Editor])
+prepare_text :: proc(font: ^Font, text: string) -> (width_in_pixels: i32) {
+    for r in text {
+        glyph := find_or_create_glyph(font, r)
+        if glyph == nil do continue
+        width_in_pixels += glyph.xadvance
+    }
 
-    fonts_map[.UI] = get_font_with_size(FONT_UI_NAME, FONT_UI, font_ui_size)
-    prepare_font(fonts_map[.UI])
-
-    fonts_map[.UI_Bold] = get_font_with_size(FONT_UI_BOLD_NAME, FONT_UI_BOLD, font_ui_size)
-    prepare_font(fonts_map[.UI_Bold])
+    return
 }
 
 find_or_create_glyph :: proc(font: ^Font, r: rune) -> ^Glyph_Data {
-    result, ok := font.glyphs_map[r]
-    if ok do return result
+    glyph, ok := font.glyphs_map[r]
+    if ok do return glyph
 
-    ft.load_char(font.face, u64(r), {.Force_Autohint, .Render})
-    char_bitmap := &font.face.glyph.bitmap
-    xadvance := i32(char_bitmap.width)
-    x, y: i32
+    if !ttf.FontHasGlyph(font.face, u32(r)) {
+        return find_or_create_glyph(font, font.replacement_character)
+    }
+
+    x, y, width, height: i32
 
     if font.last_packed_glyph != nil {
-        xadvance = font.last_packed_glyph.xadvance
-        x = font.last_packed_glyph.x + xadvance + FONT_CHAR_PADDING
-        y = font.last_packed_glyph.y
+        x, y = font.last_packed_glyph.x, font.last_packed_glyph.y
+        width, height = font.last_packed_glyph.w, font.last_packed_glyph.h
+        x += width
     }
 
-    // bitmap := make([]byte, char_bitmap.width * char_bitmap.height, context.temp_allocator)
+    result := new(Glyph_Data, bragi_allocator)
 
-    // for row := 0; row < char_bitmap.rows; row += 1 {
-    //     for col := 0; col < char_bitmap.width; col += 1 {
-    //         bitmap[row * char_bitmap.width + col] = char_bitmap.buffer[row * char_bitmap.pitch + col]
-    //     }
-    // }
+    surface := sdl.CreateSurface(BASE_TEXTURE_SIZE, BASE_TEXTURE_SIZE, .RGBA32)
+    sdl.SetSurfaceColorKey(surface, true, sdl.MapSurfaceRGBA(surface, 0, 0, 0, 0))
 
-    surface := make_surface_for_text(font.texture.w, font.texture.h, .RGBA32)
-    lock_texture(font.texture, &surface)
+    sdl.LockTextureToSurface(font.texture, nil, &surface)
 
-    if x + xadvance + FONT_CHAR_PADDING >= font.texture.w {
+    str_from_rune := utf8.runes_to_string([]rune{r}, context.temp_allocator)
+    cstr := cstring(raw_data(str_from_rune))
+
+    if x + width + CHAR_PADDING >= BASE_TEXTURE_SIZE {
         x = 0
-        y += font.character_height + FONT_CHAR_PADDING
+        y += height + CHAR_PADDING
 
-        if y + i32(char_bitmap.rows) >= font.texture.h {
-            log.fatalf("there's no more space in texture for {}", r)
+        if y + height >= BASE_TEXTURE_SIZE {
+            log.fatalf("there's no space in texture to store rune '{}'", r)
         }
     }
 
-    glyph := new(Glyph_Data)
-    glyph.x = x
-    glyph.y = y
-    glyph.w = i32(char_bitmap.width)
-    glyph.h = i32(char_bitmap.rows)
-    glyph.xoffset  = font.face.glyph.bitmap_left
-    glyph.yoffset  = font.character_height - font.face.glyph.bitmap_top
-    glyph.xadvance = i32(ft.round(font.face.glyph.advance.x))
+    rect := sdl.Rect{x, y, width, height}
 
-    blit_surface(r, surface, glyph.x, glyph.y, glyph.w, glyph.h)
-    unlock_texture(font.texture)
+    _ = ttf.GetGlyphMetrics(font.face, u32(r), nil, nil, nil, nil, &result.xadvance)
+    _ = ttf.GetStringSize(font.face, cstr, len(cstr), &rect.w, &rect.h)
 
-    font.glyphs_map[r] = glyph
-    font.last_packed_glyph = glyph
-    return glyph
+    blended_text := ttf.RenderGlyph_Blended(font.face, u32(r), {255, 255, 255, 255})
+    sdl.BlitSurface(blended_text, nil, surface, &rect)
+
+    result.x = rect.x
+    result.y = rect.y
+    result.w = rect.w
+    result.h = rect.h
+
+    sdl.UnlockTexture(font.texture)
+
+    font.glyphs_map[r] = result
+    font.last_packed_glyph = result
+    return result
 }
-
-prepare_font :: proc(font: ^Font) {
-    COMMON_CHARACTERS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789~!@#$%^&*()-|\"':;_+={}[]\\/`,.<>? "
-
-    full_bitmap := make([]byte, BASE_TEXTURE_SIZE * BASE_TEXTURE_SIZE, context.temp_allocator)
-    x, y: i32
-    count := 0
-
-    for r in COMMON_CHARACTERS {
-        _, ok := font.glyphs_map[r]
-        if ok do continue
-
-        ft.load_char(font.face, u64(r), {.Force_Autohint, .Render})
-        char_bitmap := &font.face.glyph.bitmap
-
-        if x + i32(char_bitmap.width) + FONT_CHAR_PADDING >= BASE_TEXTURE_SIZE {
-            x = 0
-            y += font.character_height + FONT_CHAR_PADDING
-
-            if y + font.character_height + FONT_CHAR_PADDING >= BASE_TEXTURE_SIZE {
-                log.fatalf("no space to prepare font {}", font.name)
-            }
-        }
-
-        for row: i32 = 0; row < i32(char_bitmap.rows); row += 1 {
-            for col: i32 = 0; col < i32(char_bitmap.width); col += 1 {
-                x1 := x + col
-                y1 := y + row
-                full_bitmap[y1 * BASE_TEXTURE_SIZE + x1] =
-                    char_bitmap.buffer[row * char_bitmap.pitch + col]
-            }
-        }
-
-        glyph := new(Glyph_Data)
-        glyph.x = x
-        glyph.y = y
-        glyph.w = i32(char_bitmap.width)
-        glyph.h = i32(char_bitmap.rows)
-        glyph.xoffset  = font.face.glyph.bitmap_left
-        glyph.yoffset  = font.character_height - font.face.glyph.bitmap_top
-        glyph.xadvance = i32(ft.round(font.face.glyph.advance.x))
-
-        font.glyphs_map[r] = glyph
-
-        x += i32(char_bitmap.width) + FONT_CHAR_PADDING
-    }
-
-    font.texture = prepare_texture_from_bitmap(
-        font.texture, &full_bitmap, BASE_TEXTURE_SIZE, BASE_TEXTURE_SIZE,
-    )
-}
-
-// prepare_text :: proc(font: ^Font, text: string) -> (width_in_pixels: i32) {
-//     if len(text) == 0 {
-//         return 0
-//     }
-
-//     for r in text {
-//         glyph := find_or_create_glyph(font, r)
-
-//         if glyph != nil {
-//             width_in_pixels += glyph.xadvance
-//         }
-//     }
-
-//     return
-// }

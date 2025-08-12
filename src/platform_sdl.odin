@@ -8,6 +8,7 @@ package main
 
 import     "core:fmt"
 import     "core:log"
+import     "core:reflect"
 
 import sdl "vendor:sdl3"
 
@@ -94,15 +95,48 @@ platform_update_window_title :: proc() {
 platform_update_events :: proc() {
     input_update_and_prepare()
 
-    e: sdl.Event
-
-    for sdl.PollEvent(&e) {
-        #partial switch e.type {
+    event: sdl.Event
+    for sdl.PollEvent(&event) {
+        #partial switch event.type {
             case .QUIT: input_register(Event_Quit{})
+            case .KEY_DOWN: {
+                key_code := Key_Code(event.key.scancode)
+
+                if reflect.enum_value_has_name(key_code) {
+                    // NOTE(nawe) we only want to register the
+                    // following keys below if they are pressed
+                    // together with a modifier key, the rest of the
+                    // keys that are not below will always be
+                    // registered.
+                    last_alphanumeric_key: Key_Code = .Num_0
+                    first_symbol_key, last_symbol_key: Key_Code = .Minus, .Slash
+                    should_register := key_code > last_alphanumeric_key &&
+                        key_code < first_symbol_key || key_code > last_symbol_key
+                    mods := event.key.mod
+
+                    // maybe alphanumeric or symbol, check for modifier key or leave
+                    if !should_register && mods - sdl.KMOD_SHIFT == {} do continue
+
+                    kb_event := Event_Keyboard{}
+                    kb_event.key_pressed = key_code
+                    kb_event.repeat = event.key.repeat
+
+                    if .LCTRL  in mods  || .RCTRL  in mods  do kb_event.modifiers += {.Ctrl}
+                    if .LALT   in mods  || .RALT   in mods  do kb_event.modifiers += {.Alt}
+                    if .LGUI   in mods  || .RGUI   in mods  do kb_event.modifiers += {.Super}
+                    if .LSHIFT in mods  || .RSHIFT in mods  do kb_event.modifiers += {.Shift}
+
+                    input_register(kb_event)
+                }
+            }
+            case .TEXT_INPUT: input_register(Event_Keyboard{
+                is_text_input = true,
+                text = string(event.text.text),
+            })
         }
     }
 }
 
-platform_resize_window :: proc(w, h: i32) {
+platform_resize_window :: #force_inline proc(w, h: i32) {
     sdl.SetWindowSize(window, w, h)
 }

@@ -2,7 +2,7 @@ package main
 
 import "base:runtime"
 
-import "core:encoding/uuid"
+import "core:log"
 import "core:mem"
 import "core:slice"
 import "core:strings"
@@ -30,7 +30,6 @@ Source_Buffer :: enum {
 
 Buffer :: struct {
     allocator:        runtime.Allocator,
-    uuid:             uuid.Identifier,
 
     cursors:          [dynamic]Cursor,
     cursor_modes:     bit_set[Cursor_Mode; u8],
@@ -85,15 +84,31 @@ Major_Mode :: union {
 
 Major_Mode_Odin :: struct {}
 
+// TODO(nawe) maybe this should create it's own allocator
+buffer_create :: proc(filepath := "", allocator := context.allocator) -> ^Buffer {
+    result := new(Buffer)
+
+    if filepath == "" {
+        log.debug("creating empty buffer")
+        buffer_init(result, "", allocator)
+    } else {
+        log.debugf("creating buffer for '{}'", filepath)
+        buffer_init(result, "", allocator)
+    }
+
+    append(&open_buffers, result)
+    return result
+}
+
 buffer_init :: proc(b: ^Buffer, contents := "", allocator := context.allocator) {
     contents_length := len(contents)
 
     b.allocator = allocator
-    b.uuid = uuid.generate_v7()
     b.original_buffer = strings.builder_make_len(contents_length)
     b.add_buffer = strings.builder_make()
     b.history_enabled = true
     b.length_of_buffer = contents_length
+    b.flags += {.Dirty}
 
     if contents_length > 0 {
         strings.write_string(&b.original_buffer, contents)
@@ -111,10 +126,10 @@ buffer_destroy :: proc(b: ^Buffer) {
     strings.builder_destroy(&b.add_buffer)
     undo_clear(b, &b.undo)
     undo_clear(b, &b.redo)
+    delete(b.cursors)
     delete(b.pieces)
     delete(b.undo)
     delete(b.redo)
-
     free(b)
 }
 
@@ -128,7 +143,7 @@ buffer_update :: proc(b: ^Buffer, builder: ^strings.Builder) -> (changed: bool) 
 
     if .Dirty in b.flags {
         changed = true
-        b.flags = b.flags - {.Dirty}
+        b.flags -= {.Dirty}
         total_length := 0
         strings.builder_reset(builder)
 
@@ -206,9 +221,10 @@ update_forward_cursors :: proc(b: ^Buffer, starting_cursor, offset: int) {
 
 // This is usually the entry point for inserting since it's the one handling the multi-cursor insert.
 insert_at_points :: proc(b: ^Buffer, text: string) -> (total_length_of_inserted_characters: int) {
-    for cursor, cursor_index in b.cursors {
+    for &cursor, cursor_index in b.cursors {
         offset := insert_at(b, cursor.pos, text)
         total_length_of_inserted_characters += offset
+        cursor.pos += offset
         update_forward_cursors(b, cursor_index + 1, offset)
     }
 
@@ -349,9 +365,9 @@ locate_piece :: proc(b: ^Buffer, pos: int) -> (piece_index, new_offset: int) {
     assert(pos >= 0)
     remaining := pos
 
-    for piece, piece_index in b.pieces {
+    for piece, index in b.pieces {
         if remaining <= piece.length {
-            return piece_index, piece.start + remaining
+            return index, piece.start + remaining
         }
         remaining -= piece.length
     }

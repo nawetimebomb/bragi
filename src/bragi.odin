@@ -53,6 +53,10 @@ current_widget: Global_Widget
 DEFAULT_SETTINGS_DATA :: #load("../res/settings.bragi")
 SETTINGS_FILENAME     :: "settings.bragi"
 
+active_pane:  ^Pane
+open_buffers: [dynamic]^Buffer
+open_panes:   [dynamic]^Pane
+
 bragi_allocator: runtime.Allocator
 bragi_context:   runtime.Context
 bragi_running:   bool
@@ -90,6 +94,7 @@ main :: proc() {
     platform_init()
 
     initialize_font_related_stuff()
+    active_pane = pane_create()
 
     UPDATE_TIMEOUT :: 500 * time.Millisecond
     last_update_time := time.tick_now()
@@ -103,6 +108,24 @@ main :: proc() {
         for &event in events_this_frame {
             switch v in event.variant {
             case Event_Keyboard:
+                if v.is_text_input {
+                    num_of_inserted_characters := insert_at_points(active_pane.buffer, v.text)
+
+                    if num_of_inserted_characters > 0 {
+                        event.handled = true
+                        continue
+                    }
+                } else {
+                    if v.key_pressed == .Enter {
+                        num_of_inserted_characters := insert_at_points(active_pane.buffer, "\n")
+
+                        if num_of_inserted_characters > 0 {
+                            event.handled = true
+                            continue
+                        }
+                    }
+                }
+
             case Event_Mouse:
             case Event_Quit:
                 bragi_running = false
@@ -139,7 +162,9 @@ main :: proc() {
             }
         }
 
+        update_and_draw_panes()
         draw_frame()
+
         free_all(context.temp_allocator)
         frame_delta_time = time.tick_lap_time(&previous_frame_time)
 
@@ -154,6 +179,15 @@ main :: proc() {
 
     input_destroy()
     fonts_destroy()
+
+    active_pane = nil
+
+    for pane   in open_panes   do pane_destroy(pane)
+    for buffer in open_buffers do buffer_destroy(buffer)
+
+    delete(open_buffers)
+    delete(open_panes)
+
     platform_destroy()
 
     when ODIN_DEBUG {

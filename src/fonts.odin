@@ -1,7 +1,6 @@
 package main
 
 import     "core:log"
-import     "core:math"
 import     "core:strings"
 import     "core:unicode/utf8"
 
@@ -31,7 +30,7 @@ Font :: struct {
 
     em_width:                i32,
     character_height:        i32,
-    default_line_spacing:    i32,
+    line_spacing:            i32,
     max_ascender:            i32,
     typical_ascender:        i32,
     max_descender:           i32,
@@ -132,7 +131,7 @@ get_font_with_size :: proc(name: string, data: []byte, character_height: i32) ->
         result.character_height = result.max_ascender - result.max_descender
     }
 
-    result.texture = make_texture(.STREAMING, BASE_TEXTURE_SIZE, BASE_TEXTURE_SIZE)
+    result.texture = texture_create(.STREAMING, BASE_TEXTURE_SIZE, BASE_TEXTURE_SIZE)
 
     minx, maxx, xadvance: i32
     _ = ttf.GetGlyphMetrics(result.face, u32('M'), &minx, &maxx, nil, nil, &xadvance)
@@ -214,4 +213,8 @@ find_or_create_glyph :: proc(font: ^Font, r: rune) -> ^Glyph_Data {
     font.glyphs_map[r] = result
     font.last_packed_glyph = result
     return result
+}
+
+get_line_height :: #force_inline proc(font: ^Font) -> i32 {
+    return font.character_height + font.line_spacing
 }

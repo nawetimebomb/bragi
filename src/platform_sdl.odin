@@ -109,7 +109,7 @@ platform_update_events :: proc() {
                     // keys that are not below will always be
                     // registered.
                     last_alphanumeric_key: Key_Code = .Num_0
-                    first_symbol_key, last_symbol_key: Key_Code = .Minus, .Slash
+                    first_symbol_key, last_symbol_key: Key_Code = .Spacebar, .Slash
                     should_register := key_code > last_alphanumeric_key &&
                         key_code < first_symbol_key || key_code > last_symbol_key
                     mods := event.key.mod

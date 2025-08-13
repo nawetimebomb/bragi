@@ -153,7 +153,6 @@ get_font_with_size :: proc(name: string, data: []byte, character_height: i32) ->
 prepare_text :: proc(font: ^Font, text: string) -> (width_in_pixels: i32) {
     for r in text {
         glyph := find_or_create_glyph(font, r)
-        if glyph == nil do continue
         width_in_pixels += glyph.xadvance
     }
 

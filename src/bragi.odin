@@ -13,11 +13,17 @@ AUTHOR  :: "Nahuel J. Sacchetti"
 URL     :: "https://github.com/nawetimebomb/bragi"
 VERSION :: "0.01"
 
-Global_Widget :: enum {
-    None,
-    Find_File,
-    Search,
+Global_Mode :: union #no_nil {
+    Global_Mode_Edit,
+    Global_Mode_Find_File,
+    Global_Mode_Search,
 }
+
+Global_Mode_Edit :: struct {}
+
+Global_Mode_Find_File :: struct {}
+
+Global_Mode_Search :: struct {}
 
 DEFAULT_FONT_EDITOR_SIZE :: 20
 DEFAULT_FONT_UI_SIZE     :: 20
@@ -37,8 +43,6 @@ font_ui_size     : i32 = DEFAULT_FONT_UI_SIZE
 MINIMUM_WINDOW_SIZE :: 800
 DEFAULT_WINDOW_SIZE :: 1080
 
-window_x:        i32
-window_y:        i32
 window_height:   i32  = DEFAULT_WINDOW_SIZE
 window_width:    i32  = DEFAULT_WINDOW_SIZE
 window_in_focus: bool = true
@@ -48,14 +52,16 @@ mouse_y: i32
 
 frame_delta_time: time.Duration
 
-current_widget: Global_Widget
-
 DEFAULT_SETTINGS_DATA :: #load("../res/settings.bragi")
 SETTINGS_FILENAME     :: "settings.bragi"
 
 active_pane:  ^Pane
+global_mode:  Global_Mode
 open_buffers: [dynamic]^Buffer
 open_panes:   [dynamic]^Pane
+
+events_this_frame: [dynamic]Event
+modifiers_queue:   [dynamic]string
 
 bragi_allocator: runtime.Allocator
 bragi_context:   runtime.Context
@@ -108,24 +114,11 @@ main :: proc() {
         for &event in events_this_frame {
             switch v in event.variant {
             case Event_Keyboard:
-                if v.is_text_input {
-                    num_of_inserted_characters := insert_at_points(active_pane.buffer, v.text)
-
-                    if num_of_inserted_characters > 0 {
-                        event.handled = true
-                        continue
-                    }
-                } else {
-                    if v.key_pressed == .Enter {
-                        num_of_inserted_characters := insert_at_points(active_pane.buffer, "\n")
-
-                        if num_of_inserted_characters > 0 {
-                            event.handled = true
-                            continue
-                        }
-                    }
+                switch mode in global_mode {
+                case Global_Mode_Edit:       event.handled = edit_mode_keyboard_event_handler(v)
+                case Global_Mode_Find_File:  event.handled = false; unimplemented()
+                case Global_Mode_Search:     event.handled = false; unimplemented()
                 }
-
             case Event_Mouse:
             case Event_Quit:
                 bragi_running = false
@@ -141,21 +134,23 @@ main :: proc() {
                     continue
                 }
 
-                window_x = v.window_x
-                window_y = v.window_y
+                should_resize_window_to_mininum := false
                 window_in_focus = v.window_focused
 
-                should_resize_window_to_mininum := false
+                if window_width != v.window_width || window_height != v.window_height {
+                    if v.window_width < MINIMUM_WINDOW_SIZE || v.window_height < MINIMUM_WINDOW_SIZE {
+                        should_resize_window_to_mininum = true
+                    }
 
-                if v.window_width < MINIMUM_WINDOW_SIZE || v.window_height < MINIMUM_WINDOW_SIZE {
-                    should_resize_window_to_mininum = true
-                }
+                    window_width = v.window_width if v.window_width > MINIMUM_WINDOW_SIZE else MINIMUM_WINDOW_SIZE
+                    window_height = v.window_height if v.window_height > MINIMUM_WINDOW_SIZE else MINIMUM_WINDOW_SIZE
 
-                window_width = v.window_width if v.window_width >= MINIMUM_WINDOW_SIZE else MINIMUM_WINDOW_SIZE
-                window_height = v.window_height if v.window_height >= MINIMUM_WINDOW_SIZE else MINIMUM_WINDOW_SIZE
+                    if should_resize_window_to_mininum {
+                        platform_resize_window(window_width, window_height)
+                    }
 
-                if should_resize_window_to_mininum {
-                    platform_resize_window(window_width, window_height)
+                    log.debug("updating pane textures due to resizing")
+                    update_all_pane_textures()
                 }
 
                 event.handled = true

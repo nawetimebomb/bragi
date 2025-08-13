@@ -13,7 +13,7 @@ Pane_Mode :: enum u8 {
 }
 
 Pane_Flag :: enum u8 {
-    Need_Full_Redraw,
+    Need_Full_Repaint,
 }
 
 Pane :: struct {
@@ -76,14 +76,14 @@ update_and_draw_panes :: proc() {
         assert(pane.texture != nil)
 
         if buffer_update(pane.buffer, &pane.contents) {
-            pane.flags += {.Need_Full_Redraw}
+            pane.flags += {.Need_Full_Repaint}
         }
 
         if time.tick_diff(pane.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
             pane.cursor_showing = true
             pane.cursor_blink_count = 0
             pane.cursor_blink_timer = time.tick_now()
-            pane.flags += {.Need_Full_Redraw}
+            pane.flags += {.Need_Full_Repaint}
         }
 
         if should_cursor_blink(pane) {
@@ -95,15 +95,16 @@ update_and_draw_panes :: proc() {
                 pane.cursor_showing = true
             }
 
-            pane.flags += {.Need_Full_Redraw}
+            pane.flags += {.Need_Full_Repaint}
         }
 
-        if .Need_Full_Redraw not_in pane.flags {
+        if .Need_Full_Repaint not_in pane.flags {
             draw_texture(pane.texture, nil, &pane.rect)
             continue
         }
 
         set_target(pane.texture)
+        set_background(0, 0, 0)
         prepare_for_drawing()
 
         font := fonts_map[.Editor]
@@ -120,18 +121,29 @@ update_and_draw_panes :: proc() {
 
             src := Rect{f32(glyph.x), f32(glyph.y), f32(glyph.w), f32(glyph.h)}
             dest := Rect{sx, sy, src.w, src.h}
-            set_foreground(font.texture, 255, 255, 255)
+            set_foreground(font.texture, 160, 133, 99)
             draw_texture(font.texture, &src, &dest)
             sx += f32(glyph.xadvance)
         }
 
+        // TODO(nawe) only send cursors that are visible
+        visible_cursors := get_cursors_for_drawing(pane.buffer)
+        for vcursor in visible_cursors {
+            line_start := pane.buffer.line_starts[vcursor.pos.y]
+            text := strings.to_string(pane.contents)
+            y := f32(vcursor.pos.y * font.character_height)
+            x := f32(prepare_text(font, text[line_start:line_start + int(vcursor.pos.x)]))
+            draw_rect(font, x, y, pane.cursor_showing)
+        }
+        // draw_cursors(visible_cursors)
+
         set_target()
 
-        pane.flags -= {.Need_Full_Redraw}
+        pane.flags -= {.Need_Full_Repaint}
     }
 }
 
-update_all_pane_textures :: #force_inline proc() {
+update_all_pane_textures :: proc() {
     // NOTE(nawe) should be safe to clean up textures here since we're probably recreating them due to the change in size
     default_font := fonts_map[.Editor]
 
@@ -149,6 +161,8 @@ update_all_pane_textures :: #force_inline proc() {
         if .Line_Wrappings in pane.modes {
             recalculate_line_wrappings(pane)
         }
+
+        pane.flags += {.Need_Full_Repaint}
     }
 }
 

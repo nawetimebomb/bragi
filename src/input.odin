@@ -1,6 +1,7 @@
 package main
 
 import "core:log"
+import "core:reflect"
 import "core:time"
 
 // NOTE(nawe) Not good right now, because I'm basically remapping SDL
@@ -55,7 +56,7 @@ Key_Code :: enum u32 {
     Tab           = 43,
     Spacebar      = 44,
     Minus         = 45,
-    Equals        = 46,
+    Equal         = 46,
     Left_Bracket  = 47,
     Right_Bracket = 48,
     Backslash     = 49,
@@ -116,10 +117,12 @@ Key_Mod :: enum u8 {
     Alt       = 0,
     Ctrl      = 1,
     Shift     = 2,
-    Super     = 3,
-    Cmd       = 4,
+    Command   = 3,
+    Super     = 4,
     Caps_Lock = 5,
 }
+
+Modifiers_Set :: bit_set[Key_Mod; u8]
 
 Event :: struct {
     // Warn that this event wasn't handled properly, helpful during
@@ -141,7 +144,7 @@ Event_Keyboard :: struct {
     // if 'is_text_input', check 'text', otherwise check 'key_pressed'
     text:          string,
     key_pressed:   Key_Code,
-    modifiers:     bit_set[Key_Mod; u8],
+    modifiers:     Modifiers_Set,
     repeat:        bool,
 }
 
@@ -156,22 +159,21 @@ Event_Quit :: struct {}
 
 Event_Window :: struct {
     // active resizing, as in the user hasn't yet completed their resize
-    resizing:       bool,
-    moving:         bool,
-    window_x:       i32,
-    window_y:       i32,
-    window_height:  i32,
-    window_width:   i32,
-    window_focused: bool,
+    resizing:         bool,
+    moving:           bool,
+    window_height:    i32,
+    window_width:     i32,
+    window_focused:   bool,
 }
 
-events_this_frame: [dynamic]Event
+input_key_code_to_string :: #force_inline proc(key_code: Key_Code) -> string {
+    if key_code == .Undefined do unreachable()
+    return reflect.enum_string(key_code)
+}
 
 input_update_and_prepare :: proc() {
     for event in events_this_frame {
-        if !event.handled {
-            log.warnf("event wasn't handled properly {}", event)
-        }
+        if !event.handled do log.warnf("event wasn't handled properly {}", event)
     }
 
     clear(&events_this_frame)

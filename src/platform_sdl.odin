@@ -99,6 +99,18 @@ platform_update_events :: proc() {
     for sdl.PollEvent(&event) {
         #partial switch event.type {
             case .QUIT: input_register(Event_Quit{})
+            case .WINDOW_FOCUS_GAINED, .WINDOW_FOCUS_LOST, .WINDOW_MOVED, .WINDOW_RESIZED: {
+                // NOTE(nawe) Performance: it might be just better to
+                // keep these resizes in a different list of events so
+                // they can all be handled once the resizing is
+                // done. The way to do it would be to register every
+                // resize, once we get a list of not resizing on a
+                // frame, we would process the last resizing.
+                wevent := Event_Window{}
+                sdl.GetWindowSize(window, &wevent.window_width, &wevent.window_height)
+                wevent.window_focused = event.type != .WINDOW_FOCUS_LOST
+                input_register(wevent)
+            }
             case .KEY_DOWN: {
                 key_code := Key_Code(event.key.scancode)
 

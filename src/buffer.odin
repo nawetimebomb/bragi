@@ -37,6 +37,7 @@ Buffer :: struct {
     add_buffer:       strings.Builder,
     pieces:           [dynamic]Piece,
     length_of_buffer: int,
+    line_starts:      [dynamic]int,
 
     indentation: struct {
         type:  enum { Space, Tab },
@@ -45,7 +46,6 @@ Buffer :: struct {
 
     history_enabled:  bool,
     redo, undo:       [dynamic]^History_State,
-    history_limit:    int,
 
     name:             string,
     status:           string,
@@ -68,9 +68,10 @@ Cursor :: struct {
 }
 
 Piece :: struct {
-    source: Source_Buffer,
-    start:  int,
-    length: int,
+    source:      Source_Buffer,
+    start:       int,
+    length:      int,
+    line_starts: [dynamic]int,
 }
 
 History_State :: struct {
@@ -110,15 +111,18 @@ buffer_init :: proc(b: ^Buffer, contents := "", allocator := context.allocator) 
     b.length_of_buffer = contents_length
     b.flags += {.Dirty}
 
-    if contents_length > 0 {
-        strings.write_string(&b.original_buffer, contents)
-    }
-
-    append(&b.pieces, Piece{
+    original_piece := Piece{
         source = .original_buffer,
         start  = 0,
         length = contents_length,
-    })
+    }
+
+    if contents_length > 0 {
+        strings.write_string(&b.original_buffer, contents)
+        recalculate_line_starts(b, &original_piece)
+    }
+
+    append(&b.pieces, original_piece)
 }
 
 buffer_destroy :: proc(b: ^Buffer) {
@@ -126,8 +130,14 @@ buffer_destroy :: proc(b: ^Buffer) {
     strings.builder_destroy(&b.add_buffer)
     undo_clear(b, &b.undo)
     undo_clear(b, &b.redo)
+
+    for piece in b.pieces {
+        delete(piece.line_starts)
+    }
+
     delete(b.cursors)
     delete(b.pieces)
+    delete(b.line_starts)
     delete(b.undo)
     delete(b.redo)
     free(b)
@@ -146,6 +156,8 @@ buffer_update :: proc(b: ^Buffer, builder: ^strings.Builder) -> (changed: bool) 
         b.flags -= {.Dirty}
         total_length := 0
         strings.builder_reset(builder)
+        clear(&b.line_starts)
+        append(&b.line_starts, 0)
 
         for piece in b.pieces {
             buffer := &b.original_buffer.buf
@@ -156,6 +168,7 @@ buffer_update :: proc(b: ^Buffer, builder: ^strings.Builder) -> (changed: bool) 
             }
 
             strings.write_string(builder, string(buffer[piece.start:piece.start + piece.length]))
+            append(&b.line_starts, ..piece.line_starts[:])
         }
 
         b.length_of_buffer = total_length
@@ -210,6 +223,35 @@ clone_cursor :: proc(b: ^Buffer, cursor_to_clone: Cursor) -> ^Cursor {
     return &b.cursors[len(b.cursors) - 1]
 }
 
+cursor_has_selection :: proc(cursor: Cursor) -> bool {
+    return cursor.pos != cursor.sel
+}
+
+get_cursors_for_drawing :: proc(b: ^Buffer) -> []Visible_Cursor {
+    visible_cursors := make([]Visible_Cursor, len(b.cursors), context.temp_allocator)
+
+    for &vcursor, vcursor_index in visible_cursors {
+        buffer_cursor := b.cursors[vcursor_index]
+        vcursor.has_selection = cursor_has_selection(buffer_cursor)
+
+        for line_start, line_start_index in b.line_starts {
+            if line_start_index == len(b.line_starts) - 1 {
+                vcursor.pos.y = i32(line_start_index)
+                vcursor.pos.x = i32(buffer_cursor.pos - line_start)
+            } else {
+                line_end := b.line_starts[line_start_index + 1]
+
+                if buffer_cursor.pos >= line_start && buffer_cursor.pos < line_end {
+                    vcursor.pos.y = i32(line_start_index)
+                    vcursor.pos.x = i32(buffer_cursor.pos - line_start)
+                }
+            }
+        }
+    }
+
+    return visible_cursors
+}
+
 update_forward_cursors :: proc(b: ^Buffer, starting_cursor, offset: int) {
     for cursor_index in starting_cursor..<len(b.cursors) {
         cursor := &b.cursors[cursor_index]
@@ -231,18 +273,39 @@ insert_at_points :: proc(b: ^Buffer, text: string) -> (total_length_of_inserted_
     return
 }
 
+insert_newlines_and_indent :: proc(b: ^Buffer) -> (total_length_of_inserted_characters: int) {
+    for &cursor, cursor_index in b.cursors {
+        // TODO(nawe) add indentation
+        offset := insert_at(b, cursor.pos, "\n")
+        total_length_of_inserted_characters += offset
+        cursor.pos += offset
+        update_forward_cursors(b, cursor_index + 1, offset)
+    }
+
+    return
+}
+
 // The entry point for removing, with multi-cursor support.
 // TODO(nawe) make sure we don't go below 0 when removing.
 remove_at_points :: proc(b: ^Buffer, amount: int) -> (total_amount_of_removed_characters: int) {
-    for cursor, cursor_index in b.cursors {
-        total_amount_of_removed_characters += abs(amount)
-        remove_at(b, cursor.pos, amount)
+    for &cursor, cursor_index in b.cursors {
+        characters_to_remove := amount
 
-        if amount < 0 {
-            update_forward_cursors(b, cursor_index, amount)
+        if cursor.pos == 0 && amount < 0 {
+            continue
+        } else if amount < 0 {
+            characters_to_remove = max(amount, -cursor.pos)
+
+            remove_at(b, cursor.pos, characters_to_remove)
+            update_forward_cursors(b, cursor_index, characters_to_remove)
         } else {
-            update_forward_cursors(b, cursor_index + 1, amount * -1)
+            characters_to_remove = min(amount, b.length_of_buffer)
+
+            remove_at(b, cursor.pos, characters_to_remove)
+            update_forward_cursors(b, cursor_index + 1, characters_to_remove * -1)
         }
+
+        total_amount_of_removed_characters += characters_to_remove
     }
 
     return
@@ -264,6 +327,7 @@ insert_at :: proc(b: ^Buffer, pos: int, text: string) -> (length_of_text: int) {
     // the most common operation while entering text in sequence.
     if piece.source == .add_buffer && new_offset == end_of_piece && add_buffer_length == end_of_piece {
         piece.length += length_of_text
+        recalculate_line_starts(b, piece)
         return
     }
 
@@ -294,6 +358,11 @@ insert_at :: proc(b: ^Buffer, pos: int, text: string) -> (length_of_text: int) {
         undo_state_push(b, &b.undo)
     }
 
+    for &new_piece in new_pieces {
+        recalculate_line_starts(b, &new_piece)
+    }
+
+    delete(b.pieces[piece_index].line_starts)
     ordered_remove(&b.pieces, piece_index)
     inject_at(&b.pieces, piece_index, ..new_pieces)
     b.last_edit_time = time.tick_now()
@@ -326,9 +395,11 @@ remove_at :: proc(b: ^Buffer, pos: int, amount: int) {
         if first_offset == piece.start {
             piece.start += amount
             piece.length -= amount
+            recalculate_line_starts(b, piece)
             return
         } else if last_offset == piece.start + piece.length {
             piece.length -= amount
+            recalculate_line_starts(b, piece)
             return
         }
     }
@@ -355,6 +426,11 @@ remove_at :: proc(b: ^Buffer, pos: int, amount: int) {
         undo_state_push(b, &b.undo)
     }
 
+    for &new_piece in new_pieces {
+        recalculate_line_starts(b, &new_piece)
+    }
+
+    for temp_index in first_piece_index..<last_piece_index - first_piece_index + 1 do delete(b.pieces[temp_index].line_starts)
     remove_range(&b.pieces, first_piece_index, last_piece_index - first_piece_index + 1)
     inject_at(&b.pieces, first_piece_index, ..new_pieces)
     b.last_edit_time = time.tick_now()
@@ -373,4 +449,20 @@ locate_piece :: proc(b: ^Buffer, pos: int) -> (piece_index, new_offset: int) {
     }
 
     unreachable()
+}
+
+@(private="file")
+recalculate_line_starts :: proc(b: ^Buffer, piece: ^Piece) {
+    str: string
+
+    switch piece.source {
+    case .original_buffer: str = strings.to_string(b.original_buffer)
+    case .add_buffer:      str = strings.to_string(b.add_buffer)
+    }
+
+    clear(&piece.line_starts)
+
+    for r, index in str[piece.start:piece.start + piece.length] {
+        if r == '\n' do append(&piece.line_starts, index + 1)
+    }
 }

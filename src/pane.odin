@@ -226,7 +226,7 @@ prepare_cursor_for_drawing :: #force_inline proc(
     }
 
     line := get_line_text(pane, coords.row, lines)
-    pen.x = f32(prepare_text(font, line[:coords.column]))
+    pen.x = 0 if coords.column == 0 else f32(prepare_text(font, line[:coords.column]))
     pen.y = f32(coords.row) * f32(font.character_height)
     rune_behind_cursor = ' '
 
@@ -234,7 +234,7 @@ prepare_cursor_for_drawing :: #force_inline proc(
         rune_behind_cursor = rune(pane.contents.buf[cursor.pos])
     }
 
-    return false, pen, ' '
+    return false, pen, rune_behind_cursor
 }
 
 is_within_viewport :: #force_inline proc(pane: ^Pane, coords: Coords) -> bool {

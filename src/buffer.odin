@@ -126,6 +126,7 @@ buffer_destroy :: proc(b: ^Buffer) {
 buffer_update :: proc(buffer: ^Buffer, pane: ^Pane, force_update := false) -> (changed: bool) {
     profiling_start("buffer_update")
     if .Dirty in buffer.flags || force_update {
+        buffer.cursors = pane.cursors[:]
         buffer.flags -= {.Dirty}
         total_length := 0
         strings.builder_reset(&pane.contents)
@@ -163,6 +164,7 @@ undo_clear :: proc(b: ^Buffer, undo: ^[dynamic]^History_State) {
 }
 
 undo_state_push :: proc(b: ^Buffer, undo: ^[dynamic]^History_State) -> mem.Allocator_Error {
+    log.debug("pushing new undo state")
     item := (^History_State)(
         // safe to use b.cursors here because we should always have a copy at hand when doing this
         mem.alloc(size_of(History_State) + len(b.cursors) + len(b.pieces),
@@ -176,19 +178,20 @@ undo_state_push :: proc(b: ^Buffer, undo: ^[dynamic]^History_State) -> mem.Alloc
     return nil
 }
 
-undo :: proc(b: ^Buffer, undo, redo: ^[dynamic]^History_State) -> bool {
+undo :: proc(b: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: bool, cursors: []Cursor, pieces: []Piece) {
     if len(undo) > 0 {
         undo_state_push(b, redo)
         item := pop(undo)
-        delete(b.cursors)
-        delete(b.pieces)
-        b.cursors = slice.clone(item.cursors)
-        b.pieces  = slice.clone_to_dynamic(item.pieces)
+        cursors = slice.clone(item.cursors, context.temp_allocator)
+        pieces = slice.clone(item.pieces, context.temp_allocator)
+        delete(item.cursors)
+        delete(item.pieces)
         free(item, b.allocator)
-        return true
+        b.flags += {.Dirty}
+        return true, cursors, pieces
     }
 
-    return false
+    return false, {}, {}
 }
 
 cursor_has_selection :: proc(cursor: Cursor) -> bool {
@@ -204,78 +207,53 @@ update_forward_cursors :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, starting_c
     }
 }
 
-// This is usually the entry point for inserting since it's the one handling the multi-cursor insert.
-insert_at_points :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, text: string) -> (total_length_of_inserted_characters: int) {
-    profiling_start("taking input")
-    b.cursors = cursors[:]
-    for &cursor, cursor_index in cursors {
-        offset := insert_at(b, cursor.pos, text)
-        total_length_of_inserted_characters += offset
-        cursor.pos += offset
-        update_forward_cursors(b, cursors, cursor_index + 1, offset)
-    }
-    profiling_end()
-
-    return
-}
-
-insert_newlines_and_indent :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor) -> (total_length_of_inserted_characters: int) {
-    b.cursors = cursors[:]
-    for &cursor, cursor_index in cursors {
-        // TODO(nawe) add indentation
-        offset := insert_at(b, cursor.pos, "\n")
-        total_length_of_inserted_characters += offset
-        cursor.pos += offset
-        update_forward_cursors(b, cursors, cursor_index + 1, offset)
-    }
-
-    return
-}
-
 // The entry point for removing, with multi-cursor support.
 // TODO(nawe) make sure we don't go below 0 when removing.
-remove_at_points :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, amount: int) -> (total_amount_of_removed_characters: int) {
-    b.cursors = cursors[:]
-    for &cursor, cursor_index in cursors {
-        characters_to_remove := amount
+// remove_at_points :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, amount: int) -> (total_amount_of_removed_characters: int) {
+//     b.cursors = cursors[:]
+//     for &cursor, cursor_index in cursors {
+//         characters_to_remove := amount
 
-        if cursor.pos == 0 && amount < 0 {
-            continue
-        } else if amount < 0 {
-            characters_to_remove = max(amount, -cursor.pos)
+//         if cursor.pos == 0 && amount < 0 {
+//             continue
+//         } else if amount < 0 {
+//             characters_to_remove = max(amount, -cursor.pos)
 
-            remove_at(b, cursor.pos, characters_to_remove)
-            update_forward_cursors(b, cursors, cursor_index, characters_to_remove)
-        } else {
-            characters_to_remove = min(amount, b.length_of_buffer)
+//             remove_at(b, cursor.pos, characters_to_remove)
+//             update_forward_cursors(b, cursors, cursor_index, characters_to_remove)
+//         } else {
+//             characters_to_remove = min(amount, b.length_of_buffer)
 
-            remove_at(b, cursor.pos, characters_to_remove)
-            update_forward_cursors(b, cursors, cursor_index + 1, characters_to_remove * -1)
-        }
+//             remove_at(b, cursor.pos, characters_to_remove)
+//             update_forward_cursors(b, cursors, cursor_index + 1, characters_to_remove * -1)
+//         }
 
-        total_amount_of_removed_characters += abs(characters_to_remove)
-    }
+//         total_amount_of_removed_characters += abs(characters_to_remove)
+//     }
 
-    return
+//     return
+// }
+
+is_continuation_byte :: proc(b: byte) -> bool {
+	return b >= 0x80 && b < 0xc0
 }
 
-@(private="file")
-insert_at :: proc(b: ^Buffer, pos: int, text: string) -> (length_of_text: int) {
-    add_source_length := len(b.add_source.buf)
+insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text: int) {
+    add_source_length := len(buffer.add_source.buf)
     length_of_text = len(text)
-    piece_index, new_offset := locate_piece(b, pos)
-    piece := &b.pieces[piece_index]
+    piece_index, new_offset := locate_piece(buffer, offset)
+    piece := &buffer.pieces[piece_index]
     end_of_piece := piece.start + piece.length
-    b.flags += {.Dirty}
+    buffer.flags += {.Dirty}
 
-    strings.write_string(&b.add_source, text)
+    strings.write_string(&buffer.add_source, text)
 
     // If the cursor is at the end of a piece, and that also points to the end
     // of the add buffer, we just need to grow the length of that piece. This is
     // the most common operation while entering text in sequence.
     if piece.source == .add && new_offset == end_of_piece && add_source_length == end_of_piece {
         piece.length += length_of_text
-        recalculate_piece_line_starts(b, piece)
+        recalculate_piece_line_starts(buffer, piece)
         return
     }
 
@@ -302,55 +280,53 @@ insert_at :: proc(b: ^Buffer, pos: int, text: string) -> (length_of_text: int) {
         return new_piece.length > 0
     }, context.temp_allocator)
 
-    if time.tick_diff(b.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(b, &b.undo)
+    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
+    for &new_piece in new_pieces do recalculate_piece_line_starts(buffer, &new_piece)
 
-    for &new_piece in new_pieces do recalculate_piece_line_starts(b, &new_piece)
-
-    delete(b.pieces[piece_index].line_starts)
-    ordered_remove(&b.pieces, piece_index)
-    inject_at(&b.pieces, piece_index, ..new_pieces)
-    b.last_edit_time = time.tick_now()
+    delete(buffer.pieces[piece_index].line_starts)
+    ordered_remove(&buffer.pieces, piece_index)
+    inject_at(&buffer.pieces, piece_index, ..new_pieces)
+    buffer.last_edit_time = time.tick_now()
 
     return
 }
 
-@(private="file")
-remove_at :: proc(b: ^Buffer, pos: int, amount: int) {
-    assert(pos >= 0)
+remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
+    assert(offset >= 0)
 
     if amount == 0 {
         return
     }
 
     if amount < 0 {
-        remove_at(b, pos + amount, -amount)
+        remove_at(buffer, offset + amount, -amount)
         return
     }
 
     // Remove may affect multiple pieces.
-    first_piece_index, first_offset := locate_piece(b, pos)
-    last_piece_index, last_offset := locate_piece(b, pos + amount)
-    b.flags += {.Dirty}
+    first_piece_index, first_offset := locate_piece(buffer, offset)
+    last_piece_index, last_offset := locate_piece(buffer, offset + amount)
+    buffer.flags += {.Dirty}
 
     // Only one piece was affected, either at the beginning of the piece or at the end.
     if first_piece_index == last_piece_index {
-        piece := &b.pieces[first_piece_index]
+        piece := &buffer.pieces[first_piece_index]
 
         if first_offset == piece.start {
             piece.start += amount
             piece.length -= amount
-            recalculate_piece_line_starts(b, piece)
+            recalculate_piece_line_starts(buffer, piece)
             return
         } else if last_offset == piece.start + piece.length {
             piece.length -= amount
-            recalculate_piece_line_starts(b, piece)
+            recalculate_piece_line_starts(buffer, piece)
             return
         }
     }
 
     // Multiple pieces were affected, we need to correct them.
-    first_piece := b.pieces[first_piece_index]
-    last_piece := b.pieces[last_piece_index]
+    first_piece := buffer.pieces[first_piece_index]
+    last_piece := buffer.pieces[last_piece_index]
 
     left := Piece{
         source = first_piece.source,
@@ -366,22 +342,22 @@ remove_at :: proc(b: ^Buffer, pos: int, amount: int) {
         return new_piece.length > 0
     }, context.temp_allocator)
 
-    if time.tick_diff(b.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(b, &b.undo)
-    for &new_piece in new_pieces do recalculate_piece_line_starts(b, &new_piece)
+    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
+    for &new_piece in new_pieces do recalculate_piece_line_starts(buffer, &new_piece)
 
     for delete_piece_index in first_piece_index..<last_piece_index - first_piece_index + 1 {
-        delete(b.pieces[delete_piece_index].line_starts)
+        delete(buffer.pieces[delete_piece_index].line_starts)
     }
 
-    remove_range(&b.pieces, first_piece_index, last_piece_index - first_piece_index + 1)
-    inject_at(&b.pieces, first_piece_index, ..new_pieces)
-    b.last_edit_time = time.tick_now()
+    remove_range(&buffer.pieces, first_piece_index, last_piece_index - first_piece_index + 1)
+    inject_at(&buffer.pieces, first_piece_index, ..new_pieces)
+    buffer.last_edit_time = time.tick_now()
 }
 
 @(private="file")
-locate_piece :: proc(b: ^Buffer, pos: int) -> (piece_index, new_offset: int) {
-    assert(pos >= 0)
-    remaining := pos
+locate_piece :: proc(b: ^Buffer, offset: int) -> (piece_index, new_offset: int) {
+    assert(offset >= 0)
+    remaining := offset
 
     for piece, index in b.pieces {
         if remaining <= piece.length {

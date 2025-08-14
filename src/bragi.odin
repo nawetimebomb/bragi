@@ -98,6 +98,7 @@ main :: proc() {
     bragi_allocator = context.allocator
 
     platform_init()
+    commands_init()
 
     initialize_font_related_stuff()
     active_pane = pane_create()
@@ -188,6 +189,7 @@ main :: proc() {
 
     input_destroy()
     fonts_destroy()
+    commands_destroy()
 
     active_pane = nil
 

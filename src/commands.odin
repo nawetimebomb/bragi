@@ -34,8 +34,29 @@ Command :: enum u32 {
     cut_region,
     cut_line,
     copy_region,
+    copy_line,
     paste,
     paste_from_history,
+}
+
+// NOTE(nawe) the string is the keys to press in <>. For example, in <Ctrl-c> it would be "Ctrl-c".
+commands_map: map[string]Command
+
+commands_init :: proc() {
+    log.warn("setting default commands, this should be replaced for commands in settings.bragi")
+    commands_map["Ctrl-Z"]       = .undo
+    commands_map["Ctrl-Shift-Z"] = .redo
+
+    commands_map["Ctrl-C"]       = .copy_region
+    commands_map["Ctrl-Shift-C"] = .copy_line
+    commands_map["Ctrl-X"]       = .cut_region
+    commands_map["Ctrl-Shift-X"] = .cut_line
+    commands_map["Ctrl-V"]       = .paste
+    commands_map["Ctrl-Shift-V"] = .paste_from_history
+}
+
+commands_destroy :: proc() {
+    delete(commands_map)
 }
 
 map_keystroke_to_command :: proc(key: Key_Code, modifiers: Modifiers_Set) -> Command {
@@ -49,8 +70,10 @@ map_keystroke_to_command :: proc(key: Key_Code, modifiers: Modifiers_Set) -> Com
 
     strings.write_string(&key_combination, input_key_code_to_string(key))
 
-    log.debug(strings.to_string(key_combination))
+    cmd, ok := commands_map[strings.to_string(key_combination)]
 
-    log.fatalf("could not find command for key '{}' with modifiers '{}'", key, modifiers)
+    if ok do return cmd
+
+    log.fatalf("could not find command for key combination '{}'", strings.to_string(key_combination))
     return .noop
 }

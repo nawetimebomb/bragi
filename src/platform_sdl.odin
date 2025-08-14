@@ -93,6 +93,7 @@ platform_update_window_title :: proc() {
 }
 
 platform_update_events :: proc() {
+    profiling_start("capture platform events")
     input_update_and_prepare()
 
     event: sdl.Event
@@ -147,6 +148,7 @@ platform_update_events :: proc() {
             })
         }
     }
+    profiling_end()
 }
 
 platform_resize_window :: #force_inline proc(w, h: i32) {

@@ -9,10 +9,9 @@ Surface :: sdl.Surface
 Texture :: sdl.Texture
 Vector2 :: distinct [2]i32
 
-Visible_Cursor :: struct {
-    pos:           Vector2,
-    sel:           Vector2,
-    has_selection: bool,
+Coords :: struct {
+    row: int,
+    column: int,
 }
 
 texture_create :: #force_inline proc(access: sdl.TextureAccess, w, h: i32) -> ^Texture {
@@ -31,9 +30,9 @@ draw_frame :: #force_inline proc() {
     sdl.RenderPresent(renderer)
 }
 
-draw_rect :: #force_inline proc(font: ^Font, x, y: f32, fill: bool) {
+draw_rect :: #force_inline proc(font: ^Font, pen: [2]f32, fill: bool) {
     if fill {
-        rect := Rect{x, y, 2, f32(font.character_height)}
+        rect := Rect{pen.x, pen.y, 2, f32(font.character_height)}
         set_background(205, 149, 12)
         sdl.RenderFillRect(renderer, &rect)
     }

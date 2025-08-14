@@ -111,9 +111,20 @@ main :: proc() {
     for bragi_running {
         platform_update_events()
 
+        profiling_start("parsing events")
         for &event in events_this_frame {
             switch v in event.variant {
             case Event_Keyboard:
+                if v.key_pressed == .F2 {
+                    if debug.profiling {
+                        profiling_destroy()
+                    } else {
+                        profiling_init()
+                    }
+                    event.handled = true
+                    continue
+                }
+
                 switch mode in global_mode {
                 case Global_Mode_Edit:       event.handled = edit_mode_keyboard_event_handler(v)
                 case Global_Mode_Find_File:  event.handled = false; unimplemented()
@@ -156,7 +167,10 @@ main :: proc() {
                 event.handled = true
             }
         }
+        profiling_end()
 
+        set_background(0, 0, 0)
+        prepare_for_drawing()
         update_and_draw_panes()
         draw_frame()
 

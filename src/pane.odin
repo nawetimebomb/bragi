@@ -22,6 +22,12 @@ Cursor_Mode :: enum u8 {
     Selection   = 2, // doing selection, play with multiple cursors
 }
 
+Translation :: enum u16 {
+    start, end,
+    down, left, right, up,
+    left_word, right_word,
+}
+
 Pane :: struct {
     cursors:             [dynamic]Cursor,
     cursor_modes:        bit_set[Cursor_Mode; u8],
@@ -43,15 +49,16 @@ Pane :: struct {
     rect:                Rect,
     texture:             ^Texture,
     size_of_gutter:      int,
-    y_offset:            int,
-    visible_rows:        int,
     x_offset:            int,
     visible_columns:     int,
+    y_offset:            int,
+    visible_rows:        int,
 }
 
 Cursor :: struct {
-    pos:         int,
-    sel:         int,
+    pos: int,
+    sel: int,
+
     // NOTE(nawe) like Emacs, I want to align the cursor to the last
     // largest offset if possible, this is very helpful when
     // navigating up and down a buffer. If the current row is larger
@@ -60,7 +67,6 @@ Cursor :: struct {
     // row. Some commands will reset this value to -1.
     last_column: int,
 }
-
 
 pane_create :: proc(buffer: ^Buffer = nil, allocator := context.allocator) -> ^Pane {
     log.debug("creating new pane")
@@ -162,15 +168,6 @@ update_and_draw_panes :: proc() {
                 draw_rect(font, pen, pane.cursor_showing)
             }
         }
-        // visible_cursors := get_cursors_for_drawing(pane.buffer, pane.cursors[:])
-        // for vcursor in visible_cursors {
-        //     line_start := pane.buffer.line_starts[vcursor.pos.y]
-        //     text := strings.to_string(pane.contents)
-        //     y := f32(vcursor.pos.y * font.character_height)
-        //     x := f32(prepare_text(font, text[line_start:line_start + int(vcursor.pos.x)]))
-        //     draw_rect(font, x, y, pane.cursor_showing)
-        // }
-        // draw_cursors(visible_cursors)
 
         set_target()
         draw_texture(pane.texture, nil, &pane.rect)
@@ -219,7 +216,7 @@ prepare_cursor_for_drawing :: #force_inline proc(
     pane: ^Pane, font: ^Font, cursor: Cursor,
 ) -> (out_of_screen: bool, pen: [2]f32, rune_behind_cursor: rune) {
     lines := get_lines_array(pane)
-    coords := cursor_offset_to_coords(pane, lines, cursor)
+    coords := cursor_offset_to_coords(pane, lines, cursor.pos)
 
     if !is_within_viewport(pane, coords) {
         return true, {}, ' '
@@ -244,10 +241,10 @@ is_within_viewport :: #force_inline proc(pane: ^Pane, coords: Coords) -> bool {
         coords.row >= pane.y_offset && coords.row < last_row
 }
 
-cursor_offset_to_coords :: #force_inline proc(pane: ^Pane, lines: []int, cursor: Cursor) -> (result: Coords) {
-    result.row = get_line_index(cursor.pos, lines)
+cursor_offset_to_coords :: #force_inline proc(pane: ^Pane, lines: []int, offset: int) -> (result: Coords) {
+    result.row = get_line_index(offset, lines)
     start, _ := get_line_boundaries(result.row, lines)
-    result.column = cursor.pos - start
+    result.column = offset - start
     return
 }
 
@@ -290,4 +287,73 @@ get_lines_array :: #force_inline proc(pane: ^Pane) -> []int {
     } else {
         return pane.line_starts[:]
     }
+}
+
+has_selection :: #force_inline proc(cursor: Cursor) -> bool {
+    return cursor.pos != cursor.sel
+}
+
+sorted_cursor :: #force_inline proc(cursor: Cursor) -> (low, high: int) {
+    low  = min(cursor.pos, cursor.sel)
+    high = max(cursor.pos, cursor.sel)
+    return
+}
+
+translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := -1) -> (result, last_column: int) {
+    is_space :: proc(b: byte) -> bool {
+        return b == ' ' || b == '\t' || b == '\n'
+    }
+
+    buf := strings.to_string(pane.contents)
+    result = clamp(pos, 0, len(buf))
+    lines := get_lines_array(pane)
+
+    switch t {
+    case .start: result = 0
+    case .end:   result = len(buf)
+
+    case .down:
+        coords := cursor_offset_to_coords(pane, lines, result)
+        coords.row = min(coords.row + 1, len(lines))
+        start, end := get_line_boundaries(coords.row, lines)
+        column_length := end - start
+        if coords.column == 0 do coords.column = max(0, max_column)
+        coords.column = min(coords.column, column_length)
+        result = cursor_coords_to_offset(pane, lines, coords)
+    case .left:
+        result -= 1
+        for result >= 0 && is_continuation_byte(buf[result]) do result -= 1
+    case .right:
+        result += 1
+        for result < len(buf) && is_continuation_byte(buf[result]) do result += 1
+    case .up:
+        coords := cursor_offset_to_coords(pane, lines, result)
+
+        if coords.row > 0 {
+            coords.row -= 1
+            start, end := get_line_boundaries(coords.row, lines)
+            column_length := end - start
+            if coords.column == 0 do coords.column = max(0, max_column)
+            coords.column = min(coords.column, column_length)
+            result = cursor_coords_to_offset(pane, lines, coords)
+        } else {
+            result = 0
+            last_column = -1
+            return
+        }
+    case .left_word:
+        for result > 0 && is_space(buf[result-1])  do result -= 1
+        for result > 0 && !is_space(buf[result-1]) do result -= 1
+    case .right_word:
+        for result < len(buf) && !is_space(buf[result]) do result += 1
+        for result < len(buf) && is_space(buf[result])  do result += 1
+    }
+
+    result = clamp(result, 0, len(buf))
+    if max_column != - 1 {
+        result_coords := cursor_offset_to_coords(pane, lines, result)
+        last_column = max(max_column, result_coords.column)
+    }
+
+    return
 }

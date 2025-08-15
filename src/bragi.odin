@@ -99,6 +99,7 @@ main :: proc() {
 
     platform_init()
     commands_init()
+    debug_init()
 
     initialize_font_related_stuff()
     active_pane = pane_create()
@@ -122,6 +123,12 @@ main :: proc() {
                     } else {
                         profiling_init()
                     }
+                    event.handled = true
+                    continue
+                }
+
+                if v.key_pressed == .F3 {
+                    debug.show_debug_info = !debug.show_debug_info
                     event.handled = true
                     continue
                 }
@@ -173,6 +180,7 @@ main :: proc() {
         set_background(0, 0, 0)
         prepare_for_drawing()
         update_and_draw_panes()
+        debug_draw()
         draw_frame()
 
         free_all(context.temp_allocator)
@@ -190,6 +198,7 @@ main :: proc() {
     input_destroy()
     fonts_destroy()
     commands_destroy()
+    debug_destroy()
 
     active_pane = nil
 

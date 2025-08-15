@@ -57,7 +57,6 @@ Piece :: struct {
     source:      Source_Buffer,
     start:       int,
     length:      int,
-    line_starts: [dynamic]int,
 }
 
 History_State :: struct {
@@ -103,7 +102,6 @@ buffer_init :: proc(b: ^Buffer, contents := "", allocator := context.allocator) 
         start  = 0,
         length = contents_length,
     }
-    recalculate_piece_line_starts(b, &original_piece)
     append(&b.pieces, original_piece)
 }
 
@@ -112,11 +110,6 @@ buffer_destroy :: proc(b: ^Buffer) {
     strings.builder_destroy(&b.add_source)
     undo_clear(b, &b.undo)
     undo_clear(b, &b.redo)
-
-    for piece in b.pieces {
-        delete(piece.line_starts)
-    }
-
     delete(b.pieces)
     delete(b.undo)
     delete(b.redo)
@@ -130,8 +123,6 @@ buffer_update :: proc(buffer: ^Buffer, pane: ^Pane, force_update := false) -> (c
         buffer.flags -= {.Dirty}
         total_length := 0
         strings.builder_reset(&pane.contents)
-        clear(&pane.line_starts)
-        append(&pane.line_starts, 0)
 
         for piece in buffer.pieces {
             data := &buffer.original_source.buf
@@ -141,13 +132,17 @@ buffer_update :: proc(buffer: ^Buffer, pane: ^Pane, force_update := false) -> (c
                 data = &buffer.add_source.buf
             }
 
-            append(&pane.line_starts, ..piece.line_starts[:])
             strings.write_string(&pane.contents, string(data[piece.start:piece.start + piece.length]))
         }
 
-        // adding an extra line to make line searching easier
-        append(&pane.line_starts, total_length + 1)
         buffer.length_of_buffer = total_length
+
+        clear(&pane.line_starts)
+        append(&pane.line_starts, 0)
+        for r, index in pane.contents.buf {
+            if r == '\n' do append(&pane.line_starts, index + 1)
+        }
+        append(&pane.line_starts, total_length + 1)
     }
     profiling_end()
 
@@ -207,33 +202,6 @@ update_forward_cursors :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, starting_c
     }
 }
 
-// The entry point for removing, with multi-cursor support.
-// TODO(nawe) make sure we don't go below 0 when removing.
-// remove_at_points :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, amount: int) -> (total_amount_of_removed_characters: int) {
-//     b.cursors = cursors[:]
-//     for &cursor, cursor_index in cursors {
-//         characters_to_remove := amount
-
-//         if cursor.pos == 0 && amount < 0 {
-//             continue
-//         } else if amount < 0 {
-//             characters_to_remove = max(amount, -cursor.pos)
-
-//             remove_at(b, cursor.pos, characters_to_remove)
-//             update_forward_cursors(b, cursors, cursor_index, characters_to_remove)
-//         } else {
-//             characters_to_remove = min(amount, b.length_of_buffer)
-
-//             remove_at(b, cursor.pos, characters_to_remove)
-//             update_forward_cursors(b, cursors, cursor_index + 1, characters_to_remove * -1)
-//         }
-
-//         total_amount_of_removed_characters += abs(characters_to_remove)
-//     }
-
-//     return
-// }
-
 is_continuation_byte :: proc(b: byte) -> bool {
 	return b >= 0x80 && b < 0xc0
 }
@@ -253,7 +221,6 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     // the most common operation while entering text in sequence.
     if piece.source == .add && new_offset == end_of_piece && add_source_length == end_of_piece {
         piece.length += length_of_text
-        recalculate_piece_line_starts(buffer, piece)
         return
     }
 
@@ -281,9 +248,7 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     }, context.temp_allocator)
 
     if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
-    for &new_piece in new_pieces do recalculate_piece_line_starts(buffer, &new_piece)
 
-    delete(buffer.pieces[piece_index].line_starts)
     ordered_remove(&buffer.pieces, piece_index)
     inject_at(&buffer.pieces, piece_index, ..new_pieces)
     buffer.last_edit_time = time.tick_now()
@@ -293,10 +258,7 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
 
 remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
     assert(offset >= 0)
-
-    if amount == 0 {
-        return
-    }
+    if amount == 0 do return
 
     if amount < 0 {
         remove_at(buffer, offset + amount, -amount)
@@ -315,11 +277,9 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
         if first_offset == piece.start {
             piece.start += amount
             piece.length -= amount
-            recalculate_piece_line_starts(buffer, piece)
             return
         } else if last_offset == piece.start + piece.length {
             piece.length -= amount
-            recalculate_piece_line_starts(buffer, piece)
             return
         }
     }
@@ -343,18 +303,12 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
     }, context.temp_allocator)
 
     if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
-    for &new_piece in new_pieces do recalculate_piece_line_starts(buffer, &new_piece)
 
-    for delete_piece_index in first_piece_index..<last_piece_index - first_piece_index + 1 {
-        delete(buffer.pieces[delete_piece_index].line_starts)
-    }
-
-    remove_range(&buffer.pieces, first_piece_index, last_piece_index - first_piece_index + 1)
+    remove_range(&buffer.pieces, first_piece_index, last_piece_index + 1)
     inject_at(&buffer.pieces, first_piece_index, ..new_pieces)
     buffer.last_edit_time = time.tick_now()
 }
 
-@(private="file")
 locate_piece :: proc(b: ^Buffer, offset: int) -> (piece_index, new_offset: int) {
     assert(offset >= 0)
     remaining := offset
@@ -367,21 +321,4 @@ locate_piece :: proc(b: ^Buffer, offset: int) -> (piece_index, new_offset: int) 
     }
 
     unreachable()
-}
-
-@(private="file")
-recalculate_piece_line_starts :: proc(b: ^Buffer, piece: ^Piece) {
-    profiling_start("recalculating piece line starts")
-    clear(&piece.line_starts)
-    text: string
-
-    switch piece.source {
-    case .original: text = strings.to_string(b.original_source)
-    case .add:      text = strings.to_string(b.add_source)
-    }
-
-    for r, index in text[piece.start:piece.start + piece.length] {
-        if r == '\n' do append(&piece.line_starts, index + 1)
-    }
-    profiling_end()
 }

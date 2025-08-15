@@ -5,6 +5,7 @@ import "base:runtime"
 import "core:crypto"
 import "core:log"
 import "core:mem"
+import "core:os"
 import "core:time"
 
 NAME    :: "Bragi"
@@ -25,8 +26,8 @@ Global_Mode_Find_File :: struct {}
 
 Global_Mode_Search :: struct {}
 
-DEFAULT_FONT_EDITOR_SIZE :: 20
-DEFAULT_FONT_UI_SIZE     :: 20
+DEFAULT_FONT_EDITOR_SIZE :: 24
+DEFAULT_FONT_UI_SIZE     :: 24
 
 FONT_EDITOR_NAME      :: "chivo-mono.ttf"
 FONT_UI_NAME          :: "chivo-mono.ttf"
@@ -46,6 +47,7 @@ DEFAULT_WINDOW_SIZE :: 1080
 window_height:   i32  = DEFAULT_WINDOW_SIZE
 window_width:    i32  = DEFAULT_WINDOW_SIZE
 window_in_focus: bool = true
+dpi_scale:       f32  = 1.0
 
 mouse_x: i32
 mouse_y: i32
@@ -54,6 +56,9 @@ frame_delta_time: time.Duration
 
 DEFAULT_SETTINGS_DATA :: #load("../res/settings.bragi")
 SETTINGS_FILENAME     :: "settings.bragi"
+
+settings_file: os.Handle
+settings:      Settings
 
 active_pane:  ^Pane
 global_mode:  Global_Mode
@@ -97,6 +102,7 @@ main :: proc() {
 
     bragi_allocator = context.allocator
 
+    settings_init()
     platform_init()
     commands_init()
     debug_init()
@@ -104,8 +110,6 @@ main :: proc() {
     initialize_font_related_stuff()
     active_pane = pane_create()
 
-    UPDATE_TIMEOUT :: 500 * time.Millisecond
-    last_update_time := time.tick_now()
     previous_frame_time := time.tick_now()
 
     bragi_running = true
@@ -116,6 +120,10 @@ main :: proc() {
         profiling_start("parsing events")
         for &event in events_this_frame {
             switch v in event.variant {
+            case Event_Drop_File:
+                buffer := buffer_create_from_file(v.filepath, v.data)
+                switch_to_buffer(active_pane, buffer)
+                event.handled = true
             case Event_Keyboard:
                 if v.key_pressed == .F2 {
                     if debug.profiling {
@@ -172,6 +180,11 @@ main :: proc() {
                     update_all_pane_textures()
                 }
 
+                if v.dpi_scale != dpi_scale {
+                    dpi_scale = v.dpi_scale
+                    initialize_font_related_stuff()
+                }
+
                 event.handled = true
             }
         }
@@ -185,14 +198,6 @@ main :: proc() {
 
         free_all(context.temp_allocator)
         frame_delta_time = time.tick_lap_time(&previous_frame_time)
-
-        if time.tick_diff(last_update_time, time.tick_now()) > UPDATE_TIMEOUT {
-            last_update_time = time.tick_now()
-
-            when ODIN_DEBUG {
-                platform_update_window_title()
-            }
-        }
     }
 
     input_destroy()

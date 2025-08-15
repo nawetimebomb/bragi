@@ -6,9 +6,10 @@ package main
 // works. So in the meantime, I leverage all the power of SDL, but I
 // want to make this from scratch instead.
 
-import     "core:fmt"
 import     "core:log"
+import     "core:os"
 import     "core:reflect"
+import     "core:strings"
 
 import sdl "vendor:sdl3"
 
@@ -65,6 +66,23 @@ platform_init :: proc() {
 
     sdl.SetWindowMinimumSize(window, MINIMUM_WINDOW_SIZE, MINIMUM_WINDOW_SIZE)
     sdl.RaiseWindow(window)
+
+    if settings.maximize_window_on_start {
+        sdl.MaximizeWindow(window)
+    }
+
+    base_width, base_height: i32
+    sdl.GetWindowSize(window, &base_width, &base_height)
+    sdl.GetWindowSizeInPixels(window, &window_width, &window_height)
+
+    if base_width == window_width && base_height == window_height {
+        dpi_scale = 1.0
+    } else {
+        dpi_scale = min(
+            f32(window_width) / f32(base_width),
+            f32(window_height) / f32(base_height),
+        )
+    }
 }
 
 platform_destroy :: proc() {
@@ -83,15 +101,6 @@ platform_sdl_debug_log :: proc "c" (
     log.errorf("SDL {} [{}]: {}", category, priority, message)
 }
 
-platform_update_window_title :: proc() {
-    window_title := fmt.ctprintf(
-        "{} v{} | frametime: {} | memory: {}kb",
-        NAME, VERSION, frame_delta_time,
-        tracking_allocator.current_memory_allocated / 1024,
-    )
-    sdl.SetWindowTitle(window, window_title)
-}
-
 platform_update_events :: proc() {
     profiling_start("capture platform events")
     input_update_and_prepare()
@@ -100,6 +109,19 @@ platform_update_events :: proc() {
     for sdl.PollEvent(&event) {
         #partial switch event.type {
             case .QUIT: input_register(Event_Quit{})
+            case .DROP_FILE: {
+                filepath := string(event.drop.data)
+                data, success := os.read_entire_file(filepath)
+                if !success {
+                    log.errorf("failed to open file '{}'", filepath)
+                    continue
+                }
+
+                input_register(Event_Drop_File{
+                    filepath = strings.clone(filepath),
+                    data = data,
+                })
+            }
             case .WINDOW_FOCUS_GAINED, .WINDOW_FOCUS_LOST, .WINDOW_MOVED, .WINDOW_RESIZED: {
                 // NOTE(nawe) Performance: it might be just better to
                 // keep these resizes in a different list of events so
@@ -108,8 +130,21 @@ platform_update_events :: proc() {
                 // resize, once we get a list of not resizing on a
                 // frame, we would process the last resizing.
                 wevent := Event_Window{}
-                sdl.GetWindowSize(window, &wevent.window_width, &wevent.window_height)
+                base_width, base_height: i32
+                sdl.GetWindowSize(window, &base_width, &base_height)
+                sdl.GetWindowSizeInPixels(window, &wevent.window_width, &wevent.window_height)
                 wevent.window_focused = event.type != .WINDOW_FOCUS_LOST
+
+                if base_width == wevent.window_width && base_height == wevent.window_height {
+                    wevent.dpi_scale = 1.0
+                } else {
+                    wevent.dpi_scale = min(
+                        f32(wevent.window_width) / f32(base_width),
+                        f32(wevent.window_height) / f32(base_height),
+                    )
+                }
+
+
                 input_register(wevent)
             }
             case .KEY_DOWN: {
@@ -128,7 +163,7 @@ platform_update_events :: proc() {
                     mods := event.key.mod
 
                     // maybe alphanumeric or symbol, check for modifier key or leave
-                    if !should_register && mods - sdl.KMOD_SHIFT == {} do continue
+                    if !should_register && mods - sdl.KMOD_SHIFT - sdl.KMOD_MODE == {} do continue
 
                     kb_event := Event_Keyboard{}
                     kb_event.key_pressed = key_code

@@ -1,12 +1,25 @@
 package main
 
+Tab_Character :: enum {
+    space, tab,
+}
 
 // The settings fat struct
 Settings :: struct {
-    global_wrap_lines: bool,
+    always_wrap_lines:        bool,
+
+    cursor_is_a_block:        bool,
+    cursor_width:             int,
+
+    default_tab_size:         int,
+    default_tab_character:    Tab_Character,
+
+    show_line_numbers:        bool,
+    maximize_window_on_start: bool,
 }
 
-// NOTE(nawe) the local settings apply to the current active pane
-Local_Settings :: struct {
-    wrap_lines: bool,
+settings_init :: proc() {
+    settings.cursor_is_a_block = true
+    settings.cursor_width = 2
+    settings.show_line_numbers = true
 }

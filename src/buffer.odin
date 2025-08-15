@@ -4,11 +4,12 @@ import "base:runtime"
 
 import "core:log"
 import "core:mem"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:time"
 
-UNDO_TIMEOUT :: 1 * time.Second
+UNDO_TIMEOUT :: 300 * time.Millisecond
 
 Buffer_Flag :: enum u8 {
     Dirty     = 0, // change in the buffer state, needs to redraw
@@ -37,8 +38,8 @@ Buffer :: struct {
     pieces:           [dynamic]Piece,
     length_of_buffer: int,
 
-    indentation: struct {
-        type:  enum { Space, Tab },
+    indent: struct {
+        char:  Tab_Character,
         width: int,
     },
 
@@ -47,16 +48,16 @@ Buffer :: struct {
 
     name:             string,
     status:           string,
-    filepath:         string,
+    file:             string,
     major_mode:       Major_Mode,
     flags:            bit_set[Buffer_Flag; u8],
     last_edit_time:   time.Tick,
 }
 
 Piece :: struct {
-    source:      Source_Buffer,
-    start:       int,
-    length:      int,
+    source: Source_Buffer,
+    start:  int,
+    length: int,
 }
 
 History_State :: struct {
@@ -71,49 +72,63 @@ Major_Mode :: union {
 Major_Mode_Odin :: struct {}
 
 // TODO(nawe) maybe this should create it's own allocator
-buffer_create :: proc(filepath := "", allocator := context.allocator) -> ^Buffer {
+buffer_create_empty :: proc(allocator := context.allocator) -> ^Buffer {
+    log.debug("creating empty buffer")
     result := new(Buffer)
-
-    if filepath == "" {
-        log.debug("creating empty buffer")
-        buffer_init(result, "", allocator)
-    } else {
-        log.debugf("creating buffer for '{}'", filepath)
-        buffer_init(result, "", allocator)
-    }
-
+    buffer_init(result, {}, allocator)
+    result.name = "*empty*"
     append(&open_buffers, result)
     return result
 }
 
-buffer_init :: proc(b: ^Buffer, contents := "", allocator := context.allocator) {
+buffer_create_from_file :: proc(file: string, contents: []byte, allocator := context.allocator) -> ^Buffer {
+    log.debugf("creating buffer for file '{}'", file)
+    result := new(Buffer)
+    buffer_init(result, contents, allocator)
+    result.file = strings.clone(file)
+    result.name = filepath.base(result.file)
+    append(&open_buffers, result)
+    return result
+}
+
+buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allocator) {
     contents_length := len(contents)
 
-    b.allocator = allocator
-    b.original_source = strings.builder_make_len(contents_length)
-    b.add_source = strings.builder_make()
-    b.history_enabled = true
-    b.length_of_buffer = contents_length
-    b.flags += {.Dirty}
+    buffer.allocator = allocator
+    buffer.original_source = strings.builder_make_len_cap(0, contents_length)
+    buffer.add_source = strings.builder_make()
+    buffer.history_enabled = true
+    buffer.length_of_buffer = contents_length
+    buffer.flags += {.Dirty}
 
-    strings.write_string(&b.original_source, contents)
+    for b in contents {
+        if b == '\r' {
+            // remove carriage returns
+            buffer.flags += {.CRLF}
+            continue
+        }
+
+        strings.write_byte(&buffer.original_source, b)
+    }
+
     original_piece := Piece{
         source = .original,
         start  = 0,
         length = contents_length,
     }
-    append(&b.pieces, original_piece)
+    append(&buffer.pieces, original_piece)
 }
 
-buffer_destroy :: proc(b: ^Buffer) {
-    strings.builder_destroy(&b.original_source)
-    strings.builder_destroy(&b.add_source)
-    undo_clear(b, &b.undo)
-    undo_clear(b, &b.redo)
-    delete(b.pieces)
-    delete(b.undo)
-    delete(b.redo)
-    free(b)
+buffer_destroy :: proc(buffer: ^Buffer) {
+    strings.builder_destroy(&buffer.original_source)
+    strings.builder_destroy(&buffer.add_source)
+    undo_clear(buffer, &buffer.undo)
+    undo_clear(buffer, &buffer.redo)
+    delete(buffer.pieces)
+    delete(buffer.undo)
+    delete(buffer.redo)
+    if buffer.file != "" do delete(buffer.file)
+    free(buffer)
 }
 
 buffer_update :: proc(buffer: ^Buffer, pane: ^Pane, force_update := false) -> (changed: bool) {

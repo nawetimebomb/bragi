@@ -94,6 +94,8 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
         case .delete_this_pane:
         case .delete_other_pane:
         case .new_pane_to_the_right:
+            active_pane = pane_create()
+            return true
         case .other_pane:
 
         case .undo:
@@ -217,49 +219,3 @@ remove_to :: proc(pane: ^Pane, buffer: ^Buffer, t: Translation) -> (total_amount
     profiling_end()
     return
 }
-
-// remove_at_points :: proc(pane: ^Pane, buffer: ^Buffer, amount: int) -> (total_amount_of_removed_characters: int) {
-//     profiling_start("removing text")
-//     buffer.cursors = pane.cursors[:]
-
-//     for cursor, cursor_index in pane.cursors {
-//         characters_to_remove := amount
-//         current_buffer_value := strings.to_string(pane.contents)
-
-//         if cursor.pos == 0 && amount < 0 || cursor.pos == len(current_buffer_value) && amount > 0 {
-//             continue
-//         } else if amount < 0 {
-//             // make sure we stop at 0
-//             safe_characters_to_remove := max(amount, -cursor.pos)
-
-//             // NOTE(nawe) because we support unicode, we want to check
-//             // the length of the rune and add to the total amount of
-//             // characters to remove.
-//             substring := current_buffer_value[cursor.pos + safe_characters_to_remove:cursor.pos]
-//             characters_to_remove = 0
-//             for index := 0; index < len(substring); index += 1 {
-//                 characters_to_remove += 1
-//                 if is_continuation_byte(substring[index]) do characters_to_remove += 1
-//             }
-
-//             remove_at(buffer, cursor.pos, -characters_to_remove)
-//             move_all_cursors_from_index(pane, cursor_index, -characters_to_remove)
-//         } else {
-//             safe_characters_to_remove := min(amount, len(current_buffer_value))
-
-//             substring := current_buffer_value[cursor.pos:safe_characters_to_remove + cursor.pos]
-//             characters_to_remove = 0
-//             for index := 0; index < len(substring); index += 1 {
-//                 characters_to_remove += 1
-//                 if is_continuation_byte(substring[index]) do characters_to_remove += 1
-//             }
-
-//             remove_at(buffer, cursor.pos, characters_to_remove)
-//             move_all_cursors_from_index(pane, cursor_index + 1, -characters_to_remove)
-//         }
-
-//         total_amount_of_removed_characters += abs(characters_to_remove)
-//     }
-//     profiling_end()
-//     return
-// }

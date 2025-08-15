@@ -13,8 +13,6 @@ Command :: enum u32 {
 
     quit_mode, // resets all modes
 
-    select_all,
-
     move_start,
     move_end,
     move_left,
@@ -24,6 +22,7 @@ Command :: enum u32 {
     move_down,
     move_up,
 
+    select_all,
     select_left,
     select_right,
 
@@ -58,7 +57,6 @@ commands_map: map[string]Command
 
 commands_init :: proc() {
     log.warn("setting default commands, this should be replaced for commands in settings.bragi")
-    commands_map["Ctrl-A"]            = .select_all
 
     commands_map["Home"]              = .move_start
     commands_map["End"]               = .move_end
@@ -69,9 +67,14 @@ commands_init :: proc() {
     commands_map["Arrow_Down"]        = .move_down
     commands_map["Arrow_Up"]          = .move_up
 
-
+    commands_map["Ctrl-A"]            = .select_all
     commands_map["Shift-Arrow_Left"]  = .select_left
     commands_map["Shift-Arrow_Right"] = .select_right
+
+    commands_map["Ctrl-B"]            = .switch_buffer
+    commands_map["Ctrl-W"]            = .kill_current_buffer
+
+    commands_map["Ctrl-Num_3"]        = .new_pane_to_the_right
 
     commands_map["Ctrl-Z"]            = .undo
     commands_map["Ctrl-Shift-Z"]      = .redo

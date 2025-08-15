@@ -133,10 +133,16 @@ Event :: struct {
 }
 
 Event_Variant :: union {
+    Event_Drop_File,
     Event_Keyboard,
     Event_Mouse,
     Event_Quit,
     Event_Window,
+}
+
+Event_Drop_File :: struct {
+    filepath: string,
+    data:     []byte,
 }
 
 Event_Keyboard :: struct {
@@ -161,6 +167,7 @@ Event_Window :: struct {
     // active resizing, as in the user hasn't yet completed their resize
     resizing:         bool,
     moving:           bool,
+    dpi_scale:        f32,
     window_height:    i32,
     window_width:     i32,
     window_focused:   bool,
@@ -174,6 +181,15 @@ input_key_code_to_string :: #force_inline proc(key_code: Key_Code) -> string {
 input_update_and_prepare :: proc() {
     for event in events_this_frame {
         if !event.handled do log.warnf("event wasn't handled properly {}", event)
+        switch v in event.variant {
+        case Event_Drop_File:
+            delete(v.filepath)
+            delete(v.data)
+        case Event_Keyboard:
+        case Event_Mouse:
+        case Event_Quit:
+        case Event_Window:
+        }
     }
 
     clear(&events_this_frame)

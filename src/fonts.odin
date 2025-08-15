@@ -11,6 +11,7 @@ Font_Face :: enum {
     Editor,
     UI,
     UI_Bold,
+    UI_Small,
 }
 
 Glyph_Data :: struct {
@@ -44,7 +45,7 @@ Font :: struct {
 // sufficient for when working with code and editing text, but it
 // might need to grow according to experience in using the editor.
 MAX_SAFE_GLYPHS   :: 400
-BASE_TEXTURE_SIZE :: MAX_SAFE_GLYPHS * 2
+BASE_TEXTURE_SIZE :: MAX_SAFE_GLYPHS * 3
 
 CHAR_PADDING :: 1
 
@@ -89,9 +90,13 @@ ensure_fonts_are_initialized :: #force_inline proc() {
 initialize_font_related_stuff :: proc() {
     COMMON_CHARACTERS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789~!@#$%^&*()-|\"':;_+={}[]\\/`,.<>? "
 
-    fonts_map[.Editor]  = get_font_with_size(FONT_EDITOR_NAME,  FONT_EDITOR,  font_editor_size)
-    fonts_map[.UI]      = get_font_with_size(FONT_UI_NAME,      FONT_UI,      font_ui_size)
-    fonts_map[.UI_Bold] = get_font_with_size(FONT_UI_BOLD_NAME, FONT_UI_BOLD, font_ui_size)
+    scaled_font_editor_size := i32(f32(font_editor_size) * dpi_scale)
+    scaled_font_ui_size     := i32(f32(font_ui_size) * dpi_scale)
+
+    fonts_map[.Editor]   = get_font_with_size(FONT_EDITOR_NAME,  FONT_EDITOR,  scaled_font_editor_size)
+    fonts_map[.UI]       = get_font_with_size(FONT_UI_NAME,      FONT_UI,      scaled_font_ui_size)
+    fonts_map[.UI_Bold]  = get_font_with_size(FONT_UI_BOLD_NAME, FONT_UI_BOLD, scaled_font_ui_size)
+    fonts_map[.UI_Small] = get_font_with_size(FONT_UI_NAME,      FONT_UI,      scaled_font_ui_size - 6)
 
     prepare_text(fonts_map[.Editor],  COMMON_CHARACTERS)
     prepare_text(fonts_map[.UI],      COMMON_CHARACTERS)

@@ -350,7 +350,7 @@ input_update_and_prepare :: proc() {
         case Event_Keyboard:
             when ODIN_DEBUG {
                 if !event.handled && !v.is_text_input {
-                    if v.key_pressed > 32 && v.key_pressed < 256 {
+                    if v.key_pressed >= 32 && v.key_pressed < 256 {
                         // NOTE(nawe) this was probably handled as text input
                         event.handled = true
                     }

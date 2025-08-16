@@ -26,21 +26,17 @@ Global_Mode_Find_File :: struct {}
 
 Global_Mode_Search :: struct {}
 
-DEFAULT_FONT_EDITOR_SIZE :: 24
-DEFAULT_FONT_UI_SIZE     :: 24
+FONT_EDITOR_NAME    :: "chivo-mono.ttf"
+FONT_EDITOR_DATA    :: #load("../res/fonts/chivo-mono.ttf")
 
-FONT_EDITOR_NAME   :: "chivo-mono.ttf"
-FONT_EDITOR_DATA   :: #load("../res/fonts/chivo-mono.ttf")
+FONT_UI_NAME        :: "roboto-regular.ttf"
+FONT_UI_DATA        :: #load("../res/fonts/roboto-regular.ttf")
 
-FONT_UI_NAME       :: "chivo-mono.ttf"
-FONT_UI_DATA       :: FONT_EDITOR_DATA
+FONT_UI_ITALIC_NAME :: "roboto-italic.ttf"
+FONT_UI_ITALIC_DATA :: #load("../res/fonts/roboto-italic.ttf")
 
-FONT_UI_BOLD_NAME  :: "chivo-mono-bold.ttf"
-FONT_UI_BOLD_DATA  :: #load("../res/fonts/chivo-mono-bold.ttf")
-
-// these font sizes are configured by the user, the rest are derived from these.
-font_editor_size : i32 = DEFAULT_FONT_EDITOR_SIZE
-font_ui_size     : i32 = DEFAULT_FONT_UI_SIZE
+FONT_UI_BOLD_NAME   :: "roboto-semibold.ttf"
+FONT_UI_BOLD_DATA   :: #load("../res/fonts/roboto-semibold.ttf")
 
 MINIMUM_WINDOW_SIZE :: 800
 DEFAULT_WINDOW_SIZE :: 1080
@@ -214,7 +210,7 @@ main :: proc() {
         }
         profiling_end()
 
-        set_background(colorscheme[.background])
+        set_color(.background)
         prepare_for_drawing()
         update_and_draw_panes()
         debug_draw()

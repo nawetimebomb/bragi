@@ -30,7 +30,7 @@ debug_destroy :: proc() {
 debug_draw :: proc() {
     if !debug.show_debug_info do return
     set_target(debug.texture)
-    set_background({16, 16, 16, 170})
+    set_color(.debug_background)
     prepare_for_drawing()
     pane := active_pane
     lines := get_lines_array(pane)
@@ -39,8 +39,7 @@ debug_draw :: proc() {
     pen := Vector2{10, 0}
     piece_index: int
 
-    set_foreground(font_regular.texture, {255, 255, 255, 255})
-    set_foreground(font_bold.texture, {255, 255, 255, 255})
+    set_colors({font_regular.texture, font_bold.texture}, .debug_foreground)
 
     pen = draw_text(font_bold, pen, "-- General information --\n")
 

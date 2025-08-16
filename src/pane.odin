@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:log"
 import "core:slice"
 import "core:strings"
@@ -9,6 +10,9 @@ import "core:unicode/utf8"
 CURSOR_BLINK_MAX_COUNT :: 6
 CURSOR_BLINK_TIMEOUT   :: 500 * time.Millisecond
 CURSOR_RESET_TIMEOUT   :: 100 * time.Millisecond
+
+MINIMUM_GUTTER_PADDING     :: 3
+GUTTER_LINE_NUMBER_JUSTIFY :: 2
 
 Pane_Mode :: enum u8 {
     Line_Wrappings,
@@ -41,6 +45,8 @@ Pane :: struct {
     contents:            strings.Builder,
     line_starts:         [dynamic]int,
     wrapped_line_starts: [dynamic]int,
+    local_font_size:     i32,
+    font:                ^Font,
 
     // TODO(nawe) maybe combine?
     modes:               bit_set[Pane_Mode; u8],
@@ -56,8 +62,9 @@ Pane :: struct {
 }
 
 Cursor :: struct {
-    pos: int,
-    sel: int,
+    active: bool,
+    pos:    int,
+    sel:    int,
 
     // NOTE(nawe) like Emacs, I want to align the cursor to the last
     // largest offset if possible, this is very helpful when
@@ -69,9 +76,10 @@ Cursor :: struct {
 }
 
 Code_Line :: struct {
-    line:            string,
-    line_is_wrapped: bool, // this line continues on the next line
-    start_offset:    int,
+    line:               string,
+    line_is_wrapped:    bool, // this line continues on the next line
+    start_offset:       int,
+    skipped_offsets:    int,
     //tokens:          []Token_Kind,
 }
 
@@ -89,6 +97,8 @@ pane_create :: proc(buffer: ^Buffer = nil, allocator := context.allocator) -> ^P
     } else {
         result.buffer = buffer
     }
+
+    result.local_font_size = i32(settings.editor_font_size)
 
     append(&open_panes, result)
     update_all_pane_textures()
@@ -149,44 +159,98 @@ update_and_draw_panes :: proc() {
             pane.flags += {.Need_Full_Repaint}
         }
 
+        for cursor in pane.cursors {
+            if cursor.active {
+                lines := get_lines_array(pane)
+                coords := cursor_offset_to_coords(pane, lines, cursor.pos)
+                moved := false
+
+                for coords.column < pane.x_offset {
+                    pane.x_offset -= 1
+                    moved = true
+                }
+
+                for coords.column >= pane.visible_columns + pane.x_offset {
+                    pane.x_offset += 1
+                    moved = true
+                }
+
+
+                for coords.row < pane.y_offset {
+                    pane.y_offset -= 1
+                    moved = true
+                }
+
+                for coords.row >= pane.visible_rows + pane.y_offset {
+                    pane.y_offset += 1
+                    moved = true
+                }
+
+                if moved do pane.flags += {.Need_Full_Repaint}
+                break
+            }
+        }
+
         if .Need_Full_Repaint not_in pane.flags {
             draw_texture(pane.texture, nil, &pane.rect)
             continue
         }
 
         set_target(pane.texture)
-        set_background(colorscheme[.background])
+        set_color(.background)
         prepare_for_drawing()
 
-        result_size_of_gutter := draw_gutter(pane)
-        basic_pen := Vector2{result_size_of_gutter, 0}
+        size_of_gutter := get_gutter_size(pane)
+        initial_pen := Vector2{size_of_gutter, 0}
+        if settings.modeline_position == .top do initial_pen.y = get_modeline_height()
 
-        font := fonts_map[.Editor]
         lines := get_lines_array(pane)
         pane_text_content := strings.to_string(pane.contents)
         first_row := pane.y_offset
-        last_row := min(pane.y_offset + pane.visible_rows, len(lines) - 1)
+        last_row := min(pane.y_offset + pane.visible_rows + 1, len(lines) - 1)
+        first_offset, last_offset := lines[first_row], lines[last_row]
         code_lines := make([dynamic]Code_Line, context.temp_allocator)
+        selections := make([dynamic]Range, 0, len(pane.cursors), context.temp_allocator)
+
+        for cursor in pane.cursors {
+            if !has_selection(cursor) do continue
+            if (cursor.pos < first_offset || cursor.pos > last_offset) &&
+                (cursor.sel < first_offset || cursor.sel > last_offset) {
+                    continue
+                }
+
+            low, high := sorted_cursor(cursor)
+            append(&selections, Range{start = low, end = high})
+        }
 
         for line_number in first_row..<last_row {
             code_line := Code_Line{}
             start, end := get_line_boundaries(line_number, lines)
             code_line.start_offset = start
+            code_line.skipped_offsets = pane.x_offset
             code_line.line = pane_text_content[start:end]
             code_line.line_is_wrapped = false
             append(&code_lines, code_line)
         }
 
-        draw_code(font, basic_pen, code_lines[:])
+        draw_code(pane.font, initial_pen, code_lines[:], selections[:])
 
         for cursor in pane.cursors {
-            out_of_bounds, cursor_pen, rune_behind_cursor := prepare_cursor_for_drawing(pane, font, basic_pen, cursor)
+            out_of_bounds, cursor_pen, rune_behind_cursor := prepare_cursor_for_drawing(pane, pane.font, initial_pen, cursor)
             _ = rune_behind_cursor
 
-            if !out_of_bounds {
-                draw_cursor(font, cursor_pen, rune_behind_cursor, pane.cursor_showing, is_focused)
-            }
+            if !out_of_bounds do draw_cursor(
+                pane.font, cursor_pen, rune_behind_cursor, pane.cursor_showing, is_focused,
+            )
         }
+
+        draw_gutter(pane)
+        draw_modeline(pane)
+
+        // NOTE(nawe) after doing redraw, we can recalculate the
+        // amount of columns visible thanks to knowing the gutter
+        // size.
+        pane.visible_columns = (int(pane.rect.w) - int(size_of_gutter)) / int(pane.font.xadvance) - 1
 
         set_target()
         draw_texture(pane.texture, nil, &pane.rect)
@@ -195,21 +259,25 @@ update_and_draw_panes :: proc() {
     profiling_end()
 }
 
+update_pane_font :: #force_inline proc(pane: ^Pane) {
+    scaled_character_height := i32(f32(pane.local_font_size) * dpi_scale)
+    pane.font = get_font_with_size(FONT_EDITOR_NAME, FONT_EDITOR_DATA, scaled_character_height)
+}
+
 update_all_pane_textures :: proc() {
     // NOTE(nawe) should be safe to clean up textures here since we're
     // probably recreating them due to the change in size
-    default_font := fonts_map[.Editor]
-
     pane_width := f32(window_width / i32(len(open_panes)))
     pane_height := f32(window_height)
 
     for &pane, index in open_panes {
+        update_pane_font(pane)
         texture_destroy(pane.texture)
 
         pane.rect = { pane_width * f32(index), 0, pane_width, pane_height }
         pane.texture = texture_create(.TARGET, i32(pane_width), i32(pane_height))
-        pane.visible_columns = int(pane.rect.w) / int(default_font.xadvance) - 1
-        pane.visible_rows = int(pane.rect.h) / int(get_line_height(default_font))
+        pane.visible_columns = int(pane.rect.w) / int(pane.font.xadvance) - 1
+        pane.visible_rows = (int(pane.rect.h) / int(pane.font.line_height)) - 1
 
         if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
 
@@ -222,7 +290,12 @@ recalculate_line_wrappings :: proc(pane: ^Pane) {
 }
 
 add_cursor :: proc(p: ^Pane, pos := 0) {
-    append(&p.cursors, Cursor{ pos, pos, -1 })
+    append(&p.cursors, Cursor{
+        active = true,
+        pos = pos,
+        sel = pos,
+        last_column = -1,
+    })
 }
 
 clone_cursor :: proc(p: ^Pane, cursor_to_clone: Cursor) -> ^Cursor {
@@ -241,8 +314,8 @@ prepare_cursor_for_drawing :: #force_inline proc(
     line := get_line_text(pane, coords.row, lines)
     pen = starting_pen
 
-    if coords.column != 0 do pen.x += prepare_text(font, line[:coords.column])
-    pen.y += i32(coords.row) * font.character_height
+    if coords.column != 0 do pen.x += prepare_text(font, line[:coords.column - pane.x_offset])
+    pen.y += i32(coords.row - pane.y_offset) * font.character_height
     rune_behind_cursor = ' '
 
     if cursor.pos < len(pane.contents.buf) {
@@ -278,11 +351,8 @@ is_in_line :: #force_inline proc(offset: int, lines: []int, line_index: int) -> 
 
 get_line_index :: #force_inline proc(offset: int, lines: []int) -> (line_index: int) {
     for _, index in lines {
-        if is_in_line(offset, lines, index) {
-            return index
-        }
+        if is_in_line(offset, lines, index) do return index
     }
-
     return 0
 }
 
@@ -315,6 +385,25 @@ sorted_cursor :: #force_inline proc(cursor: Cursor) -> (low, high: int) {
     low  = min(cursor.pos, cursor.sel)
     high = max(cursor.pos, cursor.sel)
     return
+}
+
+get_gutter_size :: proc(pane: ^Pane) -> (gutter_size: i32) {
+    font := fonts_map[.UI_Small]
+    gutter_size = font.em_width
+
+    if settings.show_line_numbers {
+        buffer_lines := pane.line_starts[:]
+        size_test_str := fmt.tprintf("{}", len(buffer_lines))
+        gutter_size = prepare_text(font, size_test_str) + MINIMUM_GUTTER_PADDING * font.em_width
+    }
+
+    return
+}
+
+get_modeline_height :: #force_inline proc() -> i32 {
+    MODELINE_PADDING :: 8
+    font := fonts_map[.UI_Regular]
+    return font.line_height + MODELINE_PADDING
 }
 
 switch_to_buffer :: proc(pane: ^Pane, buffer: ^Buffer) {

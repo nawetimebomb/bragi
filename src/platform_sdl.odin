@@ -148,11 +148,23 @@ platform_update_events :: proc() {
             }
             case .KEY_DOWN: {
                 key := u32(sdl.GetKeyFromScancode(event.key.scancode, event.key.mod, false))
+                key_without_shift := u32(sdl.GetKeyFromScancode(event.key.scancode, event.key.mod - sdl.KMOD_SHIFT, false))
                 // this is an uppercase alpha character, make it lowercase for consistency
                 if key >= 65 && key <= 90 do key += 32
                 keycode := Key_Code(key)
                 mods := event.key.mod
                 is_modifier_key := key > 0x400000dd && key < 0x40000102
+
+                // NOTE(nawe) testing if the shift modifier is
+                // basically pushing a different key. If that's the
+                // case, we remove the shift modifier from the bitset,
+                // so when we are making keybindings, we allow for
+                // "Ctrl-+" instead of having to write "Ctrl-Shift-+",
+                // since most likely we already pressed shift to make
+                // the '+' sign.
+                if key_without_shift != key {
+                    mods = mods - sdl.KMOD_SHIFT
+                }
 
                 if reflect.enum_value_has_name(keycode) && !is_modifier_key {
                     kb_event := Event_Keyboard{

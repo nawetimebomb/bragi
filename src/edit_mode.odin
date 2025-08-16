@@ -35,8 +35,26 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
         case .modifier: return true // not handled (for now)
 
         case .increase_font_size:
+            current_index, _ := slice.binary_search(font_sizes, pane.local_font_size)
+            if current_index + 1 < len(font_sizes) {
+                pane.local_font_size = font_sizes[current_index + 1]
+                update_all_pane_textures()
+            }
+            return true
         case .decrease_font_size:
+            current_index, _ := slice.binary_search(font_sizes, pane.local_font_size)
+            if current_index > 0 {
+                pane.local_font_size = font_sizes[current_index - 1]
+                update_all_pane_textures()
+            }
+            return true
         case .reset_font_size:
+            default_font_size := i32(settings.editor_font_size)
+            if pane.local_font_size != default_font_size {
+                pane.local_font_size = default_font_size
+                update_all_pane_textures()
+            }
+            return true
 
         case .quit_mode:
 

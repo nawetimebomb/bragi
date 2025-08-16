@@ -57,6 +57,9 @@ commands_init :: proc() {
 
     commands_map["Ctrl-X"]       = .modifier
     commands_map["Ctrl-X-2"]     = .new_pane_to_the_right
+    commands_map["Ctrl-+"]       = .increase_font_size
+    commands_map["Ctrl--"]       = .decrease_font_size
+    commands_map["Ctrl-0"]       = .reset_font_size
 
     commands_map["Home"]         = .move_start
     commands_map["End"]          = .move_end

@@ -13,8 +13,11 @@ Texture :: sdl.Texture
 Vector2 :: distinct [2]i32
 
 Coords :: struct {
-    row: int,
-    column: int,
+    row, column: int,
+}
+
+Range :: struct {
+    start, end: int,
 }
 
 texture_create :: #force_inline proc(access: sdl.TextureAccess, w, h: i32) -> ^Texture {
@@ -43,50 +46,79 @@ draw_texture :: #force_inline proc(texture: ^Texture, src, dest: ^Rect, loc := #
     }
 }
 
-set_background :: #force_inline proc(c: Color) {
-    sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
+set_color :: proc{
+    set_color_texture,
+    set_color_background,
 }
 
-set_foreground :: #force_inline proc(texture: ^Texture, c: Color) {
+set_color_texture :: #force_inline proc(face: Face_Color, texture: ^Texture) {
+    c := colorscheme[face]
     sdl.SetTextureColorMod(texture, c.r, c.g, c.b)
+}
+
+set_colors :: #force_inline proc(textures: []^Texture, face: Face_Color) {
+    for t in textures do set_color_texture(face, t)
+}
+
+set_color_background :: #force_inline proc(face: Face_Color) {
+    c := colorscheme[face]
+    sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
 }
 
 set_target :: #force_inline proc(target: ^Texture = nil) {
     sdl.SetRenderTarget(renderer, target)
 }
 
-draw_code :: proc(font: ^Font, pen: Vector2, code_lines: []Code_Line) { //, selections: []Range) {
+draw_code :: proc(font: ^Font, pen: Vector2, code_lines: []Code_Line, selections: []Range = {}) {
+    is_selected :: proc(selections: []Range, offset: int) -> bool {
+        for s in selections {
+            if s.start != s.end && offset >= s.start && offset < s.end do return true
+        }
+        return false
+    }
 
     for code, y_offset in code_lines {
         sx := pen.x
-        sy := pen.y + (i32(y_offset) * get_line_height(font))
+        sy := pen.y + (i32(y_offset) * font.line_height)
 
-        for r in code.line {
+        for r, x_offset in code.line {
+            if code.skipped_offsets > x_offset do continue
             glyph := find_or_create_glyph(font, r)
             src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
             dest := make_rect(sx, sy, glyph.w, glyph.h)
-            set_foreground(font.texture, colorscheme[.foreground])
+
+            if is_selected(selections, code.start_offset + x_offset) {
+                set_color(.region)
+                draw_rect(sx, sy, font.em_width, font.character_height, true)
+            }
+
+            set_color(.foreground, font.texture)
             draw_texture(font.texture, &src, &dest)
             sx += glyph.xadvance
+        }
+
+        if is_selected(selections, code.start_offset + len(code.line)) {
+            set_color(.region)
+            draw_rect(sx, sy, window_width - sx, font.line_height, true)
         }
     }
 }
 
 draw_cursor :: proc(font: ^Font, pen: Vector2, rune_behind: rune, visible: bool, active: bool) {
-    cursor_width := font.em_width if settings.cursor_is_a_block else i32(settings.cursor_width)
     cursor_height := font.character_height
+    cursor_width := font.em_width if settings.cursor_is_a_block else i32(settings.cursor_width)
 
-    set_background(colorscheme[.cursor_active])
+    set_color(.cursor_active)
 
     if active {
         if visible {
             draw_rect(pen.x, pen.y, cursor_width, cursor_height, true)
 
-            if settings.cursor_is_a_block && rune_behind != ' ' && rune_behind != '\n' {
+            if settings.cursor_is_a_block && (rune_behind != ' ' && rune_behind != '\n') {
                 glyph := find_or_create_glyph(font, rune_behind)
                 src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
                 dest := make_rect(pen.x, pen.y, glyph.w, glyph.h)
-                set_foreground(font.texture, colorscheme[.foreground])
+                set_color(.background, font.texture)
                 draw_texture(font.texture, &src, &dest)
             }
         }
@@ -95,30 +127,29 @@ draw_cursor :: proc(font: ^Font, pen: Vector2, rune_behind: rune, visible: bool,
     }
 }
 
-draw_gutter :: proc(pane: ^Pane) -> (gutter_size: i32) {
-    MINIMUM_GUTTER_PADDING :: 2
-    LINE_NUMBER_JUSTIFY :: MINIMUM_GUTTER_PADDING/2
+draw_gutter :: proc(pane: ^Pane) {
     pane_height := i32(pane.rect.h)
     font := fonts_map[.UI_Small]
-    regular_character_height := get_line_height(fonts_map[.Editor])
-    line_number_character_height := get_line_height(font)
-    y_offset_for_centering := (regular_character_height - line_number_character_height) - 3
+    regular_character_height := pane.font.line_height
+    line_number_character_height := font.line_height
+    y_offset_for_centering := (regular_character_height - line_number_character_height)/2
+    buffer_lines := pane.line_starts[:]
+    first_visible_row := pane.y_offset
+    last_visible_row := pane.y_offset + pane.visible_rows
+    last_line := len(buffer_lines) - 1
+    gutter_size := get_gutter_size(pane)
+    left_indicator, right_indicator := get_gutter_indicators(font)
+    pen := Vector2{}
+
+    if settings.modeline_position == .top {
+        pen.y = get_modeline_height()
+    }
 
     if settings.show_line_numbers {
-        buffer_lines := pane.line_starts[:]
-
-        // NOTE(nawe) used to figure out how much space we need to
-        // draw the gutter.
         size_test_str := fmt.tprintf("{}", len(buffer_lines))
-        gutter_size = prepare_text(font, size_test_str) + MINIMUM_GUTTER_PADDING * font.em_width
-
-        set_background(colorscheme[.ui_line_number_background])
+        set_color(.ui_line_number_background)
         draw_rect(0, 0, gutter_size, pane_height, true)
-
-        first_visible_row := pane.y_offset
-        last_visible_row := pane.y_offset + pane.visible_rows
-        last_line := len(buffer_lines) - 1
-        pen := Vector2{}
+        draw_rect(i32(pane.rect.w) - font.em_width, 0, font.em_width, pane_height, true)
 
         current_rows := make([dynamic]int, context.temp_allocator)
         for cursor in pane.cursors do append(&current_rows, get_line_index(cursor.pos, buffer_lines))
@@ -127,36 +158,125 @@ draw_gutter :: proc(pane: ^Pane) -> (gutter_size: i32) {
             if line_number >= last_line do break
 
             if slice.contains(current_rows[:], line_number) {
-                set_background(colorscheme[.ui_line_number_current_background])
+                set_color(.ui_line_number_current_background)
                 draw_rect(0, pen.y, gutter_size, regular_character_height)
-                set_foreground(font.texture, colorscheme[.ui_line_number_current_foreground])
+                set_color(.ui_line_number_current_foreground, font.texture)
             } else {
-                set_foreground(font.texture, colorscheme[.ui_line_number_foreground])
+                set_color(.ui_line_number_foreground, font.texture)
             }
+
+            pen.y += y_offset_for_centering
 
             line_number_str := strings.right_justify(
                 fmt.tprintf("{}", line_number + 1),
-                len(size_test_str) + LINE_NUMBER_JUSTIFY,
+                len(size_test_str) + GUTTER_LINE_NUMBER_JUSTIFY,
                 " ", context.temp_allocator,
             )
 
-            pen.y += y_offset_for_centering
+            start, end := get_line_boundaries(line_number, buffer_lines)
             draw_text(font, pen, line_number_str)
-            pen.y += line_number_character_height + 3
+
+            set_color(.ui_line_number_current_foreground, font.texture)
+            if pane.x_offset > 0 {
+                draw_text(font, pen, left_indicator)
+            }
+            if end - start > pane.visible_columns + pane.x_offset {
+                draw_text(font, {i32(pane.rect.w) - font.em_width, pen.y}, right_indicator)
+            }
+
+            pen.y += regular_character_height - y_offset_for_centering
         }
 
     } else {
-        gutter_size = MINIMUM_GUTTER_PADDING
-        set_background(colorscheme[.ui_fringe])
+        set_color(.ui_line_number_background)
         draw_rect(0, 0, gutter_size, pane_height, true)
+        draw_rect(i32(pane.rect.w) - gutter_size, 0, gutter_size, pane_height, true)
+
+        for line_number in first_visible_row..<last_visible_row {
+            if line_number >= last_line do break
+
+            pen.y += y_offset_for_centering
+            start, end := get_line_boundaries(line_number, buffer_lines)
+
+            set_color(.ui_line_number_current_foreground, font.texture)
+            if pane.x_offset > 0 {
+                draw_text(font, pen, left_indicator)
+            }
+            if end - start > pane.visible_columns + pane.x_offset {
+                draw_text(font, {i32(pane.rect.w) - font.em_width, pen.y}, right_indicator)
+            }
+
+            pen.y += regular_character_height - y_offset_for_centering
+        }
     }
 
     if pane.rect.x > 0 {
-        set_background(colorscheme[.ui_border])
+        set_color(.ui_border)
         draw_line(0, 0, 0, pane_height)
     }
 
     return
+}
+
+draw_modeline :: proc(pane: ^Pane) {
+    is_focused := pane == active_pane
+
+    font := fonts_map[.UI_Regular]
+    font_bold := fonts_map[.UI_Bold]
+    font_italic := fonts_map[.UI_Italic]
+
+    modeline_background: Face_Color = is_focused ? .ui_modeline_active_background : .ui_modeline_inactive_background
+    modeline_foreground: Face_Color = is_focused ? .ui_modeline_active_foreground : .ui_modeline_inactive_foreground
+    modeline_highlight:  Face_Color = is_focused ? .ui_modeline_active_highlight  : .ui_modeline_inactive_highlight
+
+    modeline_height := get_modeline_height()
+    modeline_width := i32(pane.rect.w)
+    modeline_y_pos: i32 = settings.modeline_position == .top ? 0 : i32(pane.rect.h) - modeline_height
+    y_offset_for_centering := (modeline_height - font.line_height)/2
+
+    left_pen := Vector2{0, modeline_y_pos  + y_offset_for_centering}
+    right_pen := Vector2{i32(pane.rect.w), left_pen.y}
+    modified := is_modified(pane.buffer)
+
+    set_color(modeline_background)
+    draw_rect(0, modeline_y_pos, modeline_width, modeline_height)
+
+    if modified {
+        set_colors({font.texture, font_bold.texture}, modeline_highlight)
+    } else {
+        set_colors({font.texture, font_bold.texture}, modeline_foreground)
+    }
+
+    status_str := fmt.tprintf(
+        " {} ",
+        modified ? "+" : "-",
+    )
+    left_pen = draw_text(font, left_pen, status_str)
+    left_pen = draw_text(font_bold, left_pen, pane.buffer.name)
+
+    if is_crlf(pane.buffer) {
+        set_color(modeline_highlight, font_italic.texture)
+        left_pen = draw_text(font_italic, left_pen, " [CRLF replaced with LF] ")
+    }
+
+    set_color(modeline_foreground, font.texture)
+    if len(pane.cursors) == 1 {
+        // using the buffer lines for these coords, we want to know the real position of the cursor
+        coords := cursor_offset_to_coords(pane, pane.line_starts[:], pane.cursors[0].pos)
+        left_pen = draw_text(font, left_pen, fmt.tprintf(" ({}, {}) ", coords.row + 1, coords.column))
+    } else {
+        // TODO(nawe) maybe show the position of the active cursor
+        left_pen = draw_text(font, left_pen, fmt.tprintf(" ({} cursors)", len(pane.cursors)))
+    }
+
+    // only show this side if there's space for it. Hopefully this is sufficient.
+    if pane.rect.w > MINIMUM_WINDOW_SIZE * 0.8 {
+        set_color(modeline_foreground, font_bold.texture)
+        major_mode_name := get_major_mode_name(pane.buffer)
+        major_mode_width := prepare_text(font_bold, major_mode_name)
+        right_pen.x -= major_mode_width + font_bold.em_width
+        draw_text(font_bold, right_pen, major_mode_name)
+    }
 }
 
 draw_rect :: #force_inline proc(x, y, w, h: i32, fill := true) {
@@ -184,7 +304,7 @@ draw_text :: proc(font: ^Font, pen: Vector2, text: string) -> (pen2: Vector2) {
 
         if r == '\n' {
             sx = pen.x
-            sy += get_line_height(font)
+            sy += font.line_height
             continue
         }
 

@@ -8,8 +8,8 @@ import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
 Font_Face :: enum {
-    Editor,
-    UI,
+    UI_Regular,
+    UI_Italic,
     UI_Bold,
     UI_Small,
 }
@@ -32,6 +32,7 @@ Font :: struct {
     em_width:                i32,
     character_height:        i32,
     line_spacing:            i32,
+    line_height:             i32,
     max_ascender:            i32,
     typical_ascender:        i32,
     max_descender:           i32,
@@ -44,8 +45,9 @@ Font :: struct {
 // NOTE(nawe) maximum number of glyphs we can cache. This should be
 // sufficient for when working with code and editing text, but it
 // might need to grow according to experience in using the editor.
-MAX_SAFE_GLYPHS   :: 400
-BASE_TEXTURE_SIZE :: MAX_SAFE_GLYPHS * 3
+MAXIMUM_FONT_SIZE :: 120
+MAX_SAFE_GLYPHS   :: 300
+BASE_TEXTURE_SIZE :: MAX_SAFE_GLYPHS * 2
 
 CHAR_PADDING :: 1
 
@@ -55,7 +57,8 @@ fonts_initialized := false
 @(private="file")
 fonts_cache: [dynamic]^Font
 
-fonts_map:   map[Font_Face]^Font
+fonts_map:    map[Font_Face]^Font
+font_sizes := []i32{24, 26, 28, 32, 42, 52, 64, 81, 96, 120}
 
 fonts_init :: proc() {
     log.debug("initializing fonts")
@@ -88,19 +91,21 @@ ensure_fonts_are_initialized :: #force_inline proc() {
 }
 
 initialize_font_related_stuff :: proc() {
-    COMMON_CHARACTERS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789~!@#$%^&*()-|\"':;_+={}[]\\/`,.<>? "
+    COMMON_CHARACTERS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
 
-    scaled_font_editor_size := i32(f32(font_editor_size) * dpi_scale)
-    scaled_font_ui_size     := i32(f32(font_ui_size) * dpi_scale)
+    scaled_font_editor_size := i32(f32(settings.editor_font_size) * dpi_scale)
+    scaled_font_ui_size     := i32(f32(settings.ui_font_size)     * dpi_scale)
 
-    fonts_map[.Editor]   = get_font_with_size(FONT_EDITOR_NAME,  FONT_EDITOR_DATA,  scaled_font_editor_size)
-    fonts_map[.UI]       = get_font_with_size(FONT_UI_NAME,      FONT_UI_DATA,      scaled_font_ui_size)
-    fonts_map[.UI_Bold]  = get_font_with_size(FONT_UI_BOLD_NAME, FONT_UI_BOLD_DATA, scaled_font_ui_size)
-    fonts_map[.UI_Small] = get_font_with_size(FONT_UI_NAME,      FONT_UI_DATA,      scaled_font_ui_size - 6)
+    fonts_map[.UI_Regular] = get_font_with_size(FONT_UI_NAME,        FONT_UI_DATA,        scaled_font_ui_size    )
+    fonts_map[.UI_Italic]  = get_font_with_size(FONT_UI_ITALIC_NAME, FONT_UI_ITALIC_DATA, scaled_font_ui_size    )
+    fonts_map[.UI_Bold]    = get_font_with_size(FONT_UI_BOLD_NAME,   FONT_UI_BOLD_DATA,   scaled_font_ui_size    )
+    fonts_map[.UI_Small]   = get_font_with_size(FONT_UI_NAME,        FONT_UI_DATA,        scaled_font_ui_size - 4)
 
-    prepare_text(fonts_map[.Editor],  COMMON_CHARACTERS)
-    prepare_text(fonts_map[.UI],      COMMON_CHARACTERS)
-    prepare_text(fonts_map[.UI_Bold], COMMON_CHARACTERS)
+    prepare_text(get_font_with_size(FONT_EDITOR_NAME, FONT_EDITOR_DATA, scaled_font_editor_size), COMMON_CHARACTERS)
+    prepare_text(fonts_map[.UI_Regular], COMMON_CHARACTERS)
+    prepare_text(fonts_map[.UI_Italic],  COMMON_CHARACTERS)
+    prepare_text(fonts_map[.UI_Bold],    COMMON_CHARACTERS)
+    prepare_text(fonts_map[.UI_Small],   "0123456789") // usually used for numbers
 }
 
 get_font_with_size :: proc(name: string, data: []byte, character_height: i32) -> ^Font {
@@ -115,6 +120,8 @@ get_font_with_size :: proc(name: string, data: []byte, character_height: i32) ->
     font_data := sdl.IOFromMem(raw_data(data), len(data))
     face := ttf.OpenFontIO(font_data, true, f32(character_height))
 
+    ttf.SetFontHinting(face, .LIGHT_SUBPIXEL)
+
     result := new(Font, bragi_allocator)
     // TODO(nawe) maybe I don't need to clone this but I would guess,
     // if I ever allow to change it, I might just temporary load this
@@ -124,9 +131,9 @@ get_font_with_size :: proc(name: string, data: []byte, character_height: i32) ->
     result.face = face
     result.replacement_character = 0xFFFD
 
-    result.character_height =  ttf.GetFontHeight(result.face)
-    result.max_ascender =  ttf.GetFontAscent(result.face)
-    result.max_descender =  -ttf.GetFontDescent(result.face)
+    result.character_height = ttf.GetFontHeight(result.face)
+    result.max_ascender     = ttf.GetFontAscent(result.face)
+    result.max_descender    = -ttf.GetFontDescent(result.face)
 
     // NOTE(nawe) I read somewhere that SDL_ttf sometimes has a bug
     // with some fonts where it cannot calculate the character height
@@ -136,6 +143,7 @@ get_font_with_size :: proc(name: string, data: []byte, character_height: i32) ->
         result.character_height = result.max_ascender - result.max_descender
     }
 
+    result.line_height = result.character_height
     result.texture = texture_create(.STREAMING, BASE_TEXTURE_SIZE, BASE_TEXTURE_SIZE)
 
     minx, maxx, xadvance: i32
@@ -182,7 +190,7 @@ find_or_create_glyph :: proc(font: ^Font, r: rune) -> ^Glyph_Data {
 
     result := new(Glyph_Data, bragi_allocator)
 
-    surface := sdl.CreateSurface(BASE_TEXTURE_SIZE, BASE_TEXTURE_SIZE, .RGBA32)
+    surface := sdl.CreateSurface(font.texture.w, font.texture.h, .RGBA32)
     sdl.SetSurfaceColorKey(surface, true, sdl.MapSurfaceRGBA(surface, 0, 0, 0, 0))
 
     sdl.LockTextureToSurface(font.texture, nil, &surface)
@@ -190,11 +198,11 @@ find_or_create_glyph :: proc(font: ^Font, r: rune) -> ^Glyph_Data {
     str_from_rune := utf8.runes_to_string([]rune{r}, context.temp_allocator)
     cstr := cstring(raw_data(str_from_rune))
 
-    if x + width + CHAR_PADDING >= BASE_TEXTURE_SIZE {
+    if x + width + CHAR_PADDING >= font.texture.w {
         x = 0
         y += height + CHAR_PADDING
 
-        if y + height >= BASE_TEXTURE_SIZE {
+        if y + height >= font.texture.h {
             log.fatalf("there's no space in texture to store rune '{}'", r)
         }
     }
@@ -219,6 +227,10 @@ find_or_create_glyph :: proc(font: ^Font, r: rune) -> ^Glyph_Data {
     return result
 }
 
-get_line_height :: #force_inline proc(font: ^Font) -> i32 {
-    return font.character_height + font.line_spacing
+get_gutter_indicators :: proc(font: ^Font) -> (left, right: string) {
+    if ttf.FontHasGlyph(font.face, u32('«')) && ttf.FontHasGlyph(font.face, u32('»')) {
+        return "«", "»"
+    } else {
+        return "<", ">"
+    }
 }

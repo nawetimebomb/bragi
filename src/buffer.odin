@@ -47,7 +47,6 @@ Buffer :: struct {
     redo, undo:       [dynamic]^History_State,
 
     name:             string,
-    status:           string,
     file:             string,
     major_mode:       Major_Mode,
     flags:            bit_set[Buffer_Flag; u8],
@@ -65,9 +64,12 @@ History_State :: struct {
     pieces:  []Piece,
 }
 
-Major_Mode :: union {
+Major_Mode :: union #no_nil {
+    Major_Mode_Bragi,
     Major_Mode_Odin,
 }
+
+Major_Mode_Bragi :: struct {}
 
 Major_Mode_Odin :: struct {}
 
@@ -92,24 +94,24 @@ buffer_create_from_file :: proc(file: string, contents: []byte, allocator := con
 }
 
 buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allocator) {
-    contents_length := len(contents)
-
     buffer.allocator = allocator
-    buffer.original_source = strings.builder_make_len_cap(0, contents_length)
+    buffer.original_source = strings.builder_make_len_cap(0, len(contents))
     buffer.add_source = strings.builder_make()
     buffer.history_enabled = true
-    buffer.length_of_buffer = contents_length
     buffer.flags += {.Dirty}
 
     for b in contents {
         if b == '\r' {
             // remove carriage returns
-            buffer.flags += {.CRLF}
+            buffer.flags += {.Modified, .CRLF}
             continue
         }
 
         strings.write_byte(&buffer.original_source, b)
     }
+
+    contents_length := len(buffer.original_source.buf)
+    buffer.length_of_buffer = contents_length
 
     original_piece := Piece{
         source = .original,
@@ -197,7 +199,7 @@ undo :: proc(b: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: bool,
         delete(item.cursors)
         delete(item.pieces)
         free(item, b.allocator)
-        b.flags += {.Dirty}
+        b.flags += {.Dirty, .Modified}
         return true, cursors, pieces
     }
 
@@ -217,8 +219,25 @@ update_forward_cursors :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, starting_c
     }
 }
 
+is_modified :: #force_inline proc(buffer: ^Buffer) -> bool {
+    return .Modified in buffer.flags
+}
+
+is_crlf :: #force_inline proc(buffer: ^Buffer) -> bool {
+    return .CRLF in buffer.flags
+}
+
 is_continuation_byte :: proc(b: byte) -> bool {
 	return b >= 0x80 && b < 0xc0
+}
+
+get_major_mode_name :: proc(buffer: ^Buffer) -> string {
+    switch v in buffer.major_mode {
+    case Major_Mode_Bragi: return "Bragi"
+    case Major_Mode_Odin:  return "Odin"
+    }
+
+    unreachable()
 }
 
 insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text: int) {
@@ -227,7 +246,7 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     piece_index, new_offset := locate_piece(buffer, offset)
     piece := &buffer.pieces[piece_index]
     end_of_piece := piece.start + piece.length
-    buffer.flags += {.Dirty}
+    buffer.flags += {.Dirty, .Modified}
 
     strings.write_string(&buffer.add_source, text)
 
@@ -283,7 +302,7 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
     // Remove may affect multiple pieces.
     first_piece_index, first_offset := locate_piece(buffer, offset)
     last_piece_index, last_offset := locate_piece(buffer, offset + amount)
-    buffer.flags += {.Dirty}
+    buffer.flags += {.Dirty, .Modified}
 
     // Only one piece was affected, either at the beginning of the piece or at the end.
     if first_piece_index == last_piece_index {

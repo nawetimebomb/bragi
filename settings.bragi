@@ -1,0 +1,113 @@
+[[settings]]
+
+[[keymaps]]
+
+[global]
+modifier                        <Ctrl-x>
+
+increase_font_size              <Ctrl-+>
+decrease_font_size              <Ctrl-->
+reset_font_size                 <Ctrl-0>
+
+indent_region                   <TAB>
+
+quit_mode                       <Ctrl-g> <ESC>
+
+find_file                       <Ctrl-x-Ctrl-f>
+switch_buffer                   <Ctrl-x-b>
+search_backward                 <Ctrl-r>
+search_forward                  <Ctrl-s>
+kill_current_buffer             <Ctrl-x-k>
+save_buffer                     <Ctrl-x-Ctrl-s>
+
+delete_this_pane                <Ctrl-x-0>
+delete_other_panes              <Ctrl-x-1>
+new_pane_to_the_right           <Ctrl-x-3>
+other_pane                      <Ctrl-x-o> <Alt-o>
+
+undo                            <Ctrl-/>
+redo                            <Ctrl-Shift-/>
+
+ui_select                       <RET>
+
+kill_region                     <Ctrl-w>
+kill_line                       <Ctrl-k>
+kill_ring_save                  <Alt-w>
+yank                            <Ctrl-y>
+# yank_from_history
+
+# mark_backward_char
+# mark_backward_word
+# mark_backward_paragraph
+# mark_forward_char
+# mark_forward_word
+# mark_forward_paragraph
+# mark_rectangle
+mark_whole_buffer               <Ctrl-x-Ctrl-p>
+
+set_mark                        <Ctrl-SPACE>
+pop_mark                        <Ctrl-x-Ctrl-SPACE>
+
+delete_backward_char            <BACKSPACE>
+delete_backward_word            <Ctrl-BACKSPACE> <Alt-BACKSPACE>
+delete_forward_char             <Ctrl-d> <DEL>
+delete_forward_word             <Alt-d> <Alt-DEL>
+
+backward_char                   <Ctrl-b>
+backward_word                   <Alt-b>
+# backward_paragraph
+forward_char                    <Ctrl-f>
+forward_word                    <Alt-f>
+# forward_paragraph
+
+next_line                       <Ctrl-n>
+previous_line                   <Ctrl-p>
+
+beginning_of_buffer             <Alt-Shift-,>
+beginning_of_line               <Ctrl-a>
+end_of_buffer                   <Alt-Shift-.>
+end_of_line                     <Ctrl-e>
+
+dupe_next_line                  <Ctrl-Shift-n>
+dupe_previous_line              <Ctrl-Shift-p>
+switch_cursor                   <Ctrl-Shift-TAB>
+toggle_cursor_group             <Ctrl-Shift-a>
+delete_cursor                   <Ctrl-Shift-d>
+
+# Comments
+[[interface]]
+
+[ui]
+
+font                            default
+font_size                       18
+
+[colorscheme]
+# based on night-owl: https://github.com/aaronjensen/night-owl-emacs
+background                      011627
+builtin                         c792ea
+comment                         637777
+constant                        f78c6c
+cursor                          80a4c2
+cursor_active                   f78c6c
+code_function_name              82aaff
+default                         d6deeb
+highlight                       ffeb95
+highlight_line                  1d3b53
+trailing_whitespace             c792ea
+keyword                         c792ea
+preprocessor                    c792ea
+region                          1d3b53
+string                          ecc48d
+type                            ffcb8b
+
+modeline_off_bg                 011627
+modeline_off_fg                 676e95
+modeline_on_bg                  0b2942
+modeline_on_fg                  d6deeb
+modeline_shadow                 5f7e97
+
+ui_border                       5f7e97
+ui_gutter                       011627
+ui_line_number                  4b6479
+ui_line_number_current          d6deeb

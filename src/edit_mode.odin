@@ -50,6 +50,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
             clear(&pane.cursors)
             add_cursor(pane, len(pane.contents.buf))
             pane.cursors[0].pos = 0
+            return true
 
         case .move_start:
             move_to(pane, .start)

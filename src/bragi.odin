@@ -29,13 +29,14 @@ Global_Mode_Search :: struct {}
 DEFAULT_FONT_EDITOR_SIZE :: 24
 DEFAULT_FONT_UI_SIZE     :: 24
 
-FONT_EDITOR_NAME      :: "chivo-mono.ttf"
-FONT_UI_NAME          :: "chivo-mono.ttf"
-FONT_UI_BOLD_NAME     :: "chivo-mono-bold.ttf"
+FONT_EDITOR_NAME   :: "chivo-mono.ttf"
+FONT_EDITOR_DATA   :: #load("../res/fonts/chivo-mono.ttf")
 
-FONT_EDITOR  :: #load("../res/fonts/chivo-mono.ttf")
-FONT_UI      :: FONT_EDITOR
-FONT_UI_BOLD :: #load("../res/fonts/chivo-mono-bold.ttf")
+FONT_UI_NAME       :: "chivo-mono.ttf"
+FONT_UI_DATA       :: FONT_EDITOR_DATA
+
+FONT_UI_BOLD_NAME  :: "chivo-mono-bold.ttf"
+FONT_UI_BOLD_DATA  :: #load("../res/fonts/chivo-mono-bold.ttf")
 
 // these font sizes are configured by the user, the rest are derived from these.
 font_editor_size : i32 = DEFAULT_FONT_EDITOR_SIZE
@@ -59,6 +60,7 @@ SETTINGS_FILENAME     :: "settings.bragi"
 
 settings_file: os.Handle
 settings:      Settings
+colorscheme:   map[Face_Color]Color
 
 active_pane:  ^Pane
 global_mode:  Global_Mode
@@ -203,7 +205,7 @@ main :: proc() {
         }
         profiling_end()
 
-        set_background(0, 0, 0)
+        set_background(colorscheme[.background])
         prepare_for_drawing()
         update_and_draw_panes()
         debug_draw()
@@ -225,6 +227,8 @@ main :: proc() {
 
     delete(open_buffers)
     delete(open_panes)
+
+    delete(colorscheme)
 
     platform_destroy()
 

@@ -52,7 +52,7 @@ platform_init :: proc() {
     }
     log.debugf("window created with driver '{}'", sdl.GetCurrentVideoDriver())
 
-    renderer = sdl.CreateRenderer(window, nil)
+    renderer = sdl.CreateRenderer(window, "opengl")
     if renderer == nil {
         log.fatal("failed to setup renderer", sdl.GetError())
     }

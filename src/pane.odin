@@ -155,7 +155,7 @@ update_and_draw_panes :: proc() {
         }
 
         set_target(pane.texture)
-        set_background(0, 0, 0)
+        set_background(colorscheme[.background])
         prepare_for_drawing()
 
         result_size_of_gutter := draw_gutter(pane)

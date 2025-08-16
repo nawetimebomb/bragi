@@ -43,12 +43,12 @@ draw_texture :: #force_inline proc(texture: ^Texture, src, dest: ^Rect, loc := #
     }
 }
 
-set_background :: #force_inline proc(r, g, b: u8, a: u8 = 255) {
-    sdl.SetRenderDrawColor(renderer, r, g, b, a)
+set_background :: #force_inline proc(c: Color) {
+    sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
 }
 
-set_foreground :: #force_inline proc(texture: ^Texture, r, g, b: u8) {
-    sdl.SetTextureColorMod(texture, r, g, b)
+set_foreground :: #force_inline proc(texture: ^Texture, c: Color) {
+    sdl.SetTextureColorMod(texture, c.r, c.g, c.b)
 }
 
 set_target :: #force_inline proc(target: ^Texture = nil) {
@@ -65,7 +65,7 @@ draw_code :: proc(font: ^Font, pen: Vector2, code_lines: []Code_Line) { //, sele
             glyph := find_or_create_glyph(font, r)
             src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
             dest := make_rect(sx, sy, glyph.w, glyph.h)
-            set_foreground(font.texture, 160, 133, 99)
+            set_foreground(font.texture, colorscheme[.foreground])
             draw_texture(font.texture, &src, &dest)
             sx += glyph.xadvance
         }
@@ -76,7 +76,7 @@ draw_cursor :: proc(font: ^Font, pen: Vector2, rune_behind: rune, visible: bool,
     cursor_width := font.em_width if settings.cursor_is_a_block else i32(settings.cursor_width)
     cursor_height := font.character_height
 
-    set_background(205, 149, 12)
+    set_background(colorscheme[.cursor_active])
 
     if active {
         if visible {
@@ -86,7 +86,7 @@ draw_cursor :: proc(font: ^Font, pen: Vector2, rune_behind: rune, visible: bool,
                 glyph := find_or_create_glyph(font, rune_behind)
                 src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
                 dest := make_rect(pen.x, pen.y, glyph.w, glyph.h)
-                set_foreground(font.texture, 0, 0, 0)
+                set_foreground(font.texture, colorscheme[.foreground])
                 draw_texture(font.texture, &src, &dest)
             }
         }
@@ -112,7 +112,7 @@ draw_gutter :: proc(pane: ^Pane) -> (gutter_size: i32) {
         size_test_str := fmt.tprintf("{}", len(buffer_lines))
         gutter_size = prepare_text(font, size_test_str) + MINIMUM_GUTTER_PADDING * font.em_width
 
-        set_background(0, 0, 0)
+        set_background(colorscheme[.ui_line_number_background])
         draw_rect(0, 0, gutter_size, pane_height, true)
 
         first_visible_row := pane.y_offset
@@ -127,11 +127,11 @@ draw_gutter :: proc(pane: ^Pane) -> (gutter_size: i32) {
             if line_number >= last_line do break
 
             if slice.contains(current_rows[:], line_number) {
-                set_background(19, 19, 19)
+                set_background(colorscheme[.ui_line_number_current_background])
                 draw_rect(0, pen.y, gutter_size, regular_character_height)
-                set_foreground(font.texture, 152, 160, 152)
+                set_foreground(font.texture, colorscheme[.ui_line_number_current_foreground])
             } else {
-                set_foreground(font.texture, 55, 59, 65)
+                set_foreground(font.texture, colorscheme[.ui_line_number_foreground])
             }
 
             line_number_str := strings.right_justify(
@@ -147,12 +147,12 @@ draw_gutter :: proc(pane: ^Pane) -> (gutter_size: i32) {
 
     } else {
         gutter_size = MINIMUM_GUTTER_PADDING
-        set_background(0, 0, 0)
+        set_background(colorscheme[.ui_fringe])
         draw_rect(0, 0, gutter_size, pane_height, true)
     }
 
     if pane.rect.x > 0 {
-        set_background(55, 59, 65)
+        set_background(colorscheme[.ui_border])
         draw_line(0, 0, 0, pane_height)
     }
 

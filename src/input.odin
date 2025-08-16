@@ -216,6 +216,7 @@ Key_Code :: enum u32 {
     K_KP_OCTAL               = 0x400000db,
     K_KP_DECIMAL             = 0x400000dc,
     K_KP_HEXADECIMAL         = 0x400000dd,
+    K_LCTRL                  = 0x400000e0,
     K_LSHIFT                 = 0x400000e1,
     K_LALT                   = 0x400000e2,
     K_LGUI                   = 0x400000e3,

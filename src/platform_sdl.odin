@@ -148,6 +148,8 @@ platform_update_events :: proc() {
             }
             case .KEY_DOWN: {
                 key := u32(sdl.GetKeyFromScancode(event.key.scancode, event.key.mod, false))
+                // this is an uppercase alpha character, make it lowercase for consistency
+                if key >= 65 && key <= 90 do key += 32
                 keycode := Key_Code(key)
                 mods := event.key.mod
                 is_modifier_key := key > 0x400000dd && key < 0x40000102

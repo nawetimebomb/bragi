@@ -71,8 +71,6 @@ events_this_frame:              [dynamic]Event
 modifiers_queue:                [dynamic]string
 commands_map:                   map[string]Command
 last_keystroke:                 time.Tick
-text_inputs_to_skip_this_frame: int
-text_inputs_done_this_frame:    int
 
 bragi_allocator: runtime.Allocator
 bragi_context:   runtime.Context
@@ -124,6 +122,12 @@ main :: proc() {
         platform_update_events()
 
         profiling_start("parsing events")
+
+        // NOTE(nawe) text input events come with their singular key
+        // pressed event as well. If the event was handled by the key
+        // press, we need to ignore the text input.
+        text_input_events_to_ignore_this_frame := 0
+
         for &event in events_this_frame {
             switch v in event.variant {
             case Event_Drop_File:
@@ -131,6 +135,12 @@ main :: proc() {
                 switch_to_buffer(active_pane, buffer)
                 event.handled = true
             case Event_Keyboard:
+                if v.is_text_input && text_input_events_to_ignore_this_frame > 0 {
+                    text_input_events_to_ignore_this_frame -= 1
+                    event.handled = true
+                    continue
+                }
+
                 handled := false
 
                 if Key_Code(v.key_pressed) == .K_F2 {
@@ -157,10 +167,9 @@ main :: proc() {
 
                 if handled {
                     event.handled = handled
-                    text_inputs_to_skip_this_frame += 1
+                    if !v.is_text_input do text_input_events_to_ignore_this_frame += 1
                     last_keystroke = time.tick_now()
                 }
-
             case Event_Mouse:
             case Event_Quit:
                 bragi_running = false

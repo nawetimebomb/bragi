@@ -9,13 +9,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
     buffer := pane.buffer
 
     if event.is_text_input {
-        if text_inputs_to_skip_this_frame > 0 {
-            text_inputs_to_skip_this_frame -= 1
-            return true
-        }
-
         length_of_inserted_text := insert_at_points(pane, buffer, event.text)
-        text_inputs_done_this_frame += 1
         return length_of_inserted_text > 0
     } else {
         // handle the generic ones first

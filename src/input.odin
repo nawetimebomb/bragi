@@ -348,21 +348,27 @@ input_update_and_prepare :: proc() {
             delete(v.filepath)
             delete(v.data)
         case Event_Keyboard:
-            if !event.handled && text_inputs_done_this_frame > 0 {
-                text_inputs_done_this_frame -= 1
-                event.handled = true
+            when ODIN_DEBUG {
+                if !event.handled && !v.is_text_input {
+                    if v.key_pressed > 32 && v.key_pressed < 256 {
+                        // NOTE(nawe) this was probably handled as text input
+                        event.handled = true
+                    }
+                }
             }
         case Event_Mouse:
         case Event_Quit:
         case Event_Window:
         }
 
-        if !event.handled do log.warnf("event wasn't handled properly {}", event)
+        when ODIN_DEBUG {
+            if !event.handled {
+                log.warnf("event wasn't handled properly {}", event)
+            }
+        }
     }
 
     clear(&events_this_frame)
-    text_inputs_to_skip_this_frame = 0
-    text_inputs_done_this_frame = 0
 }
 
 input_register :: proc(variant: Event_Variant) {

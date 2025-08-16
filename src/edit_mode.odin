@@ -2,7 +2,6 @@ package main
 
 import "core:log"
 import "core:slice"
-import "core:time"
 
 // edit mode is when we're editing a file
 edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
@@ -10,34 +9,36 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
     buffer := pane.buffer
 
     if event.is_text_input {
+        if text_inputs_to_skip_this_frame > 0 {
+            text_inputs_to_skip_this_frame -= 1
+            return true
+        }
+
         length_of_inserted_text := insert_at_points(pane, buffer, event.text)
-        pane.last_keystroke = time.tick_now()
+        text_inputs_done_this_frame += 1
         return length_of_inserted_text > 0
     } else {
         // handle the generic ones first
-        #partial switch event.key_pressed {
-            case .Enter: {
+        #partial switch event.key_code {
+            case .K_ENTER: {
                 insert_newlines_and_indent(pane, buffer)
-                pane.last_keystroke = time.tick_now()
                 return true
             }
-            case .Backspace: {
+            case .K_BACKSPACE: {
                 remove_to(pane, buffer, .left)
-                pane.last_keystroke = time.tick_now()
                 return true
             }
-            case .Delete: {
+            case .K_DELETE: {
                 remove_to(pane, buffer, .right)
-                pane.last_keystroke = time.tick_now()
                 return true
             }
         }
 
-        cmd := map_keystroke_to_command(event.key_pressed, event.modifiers)
+        cmd := map_keystroke_to_command(event.key_code, event.modifiers)
 
         switch cmd {
         case .noop:     // not handled, it should report for now
-        case .modifier: // not handled (for now)
+        case .modifier: return true // not handled (for now)
 
         case .increase_font_size:
         case .decrease_font_size:
@@ -98,6 +99,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
             return true
         case .other_pane:
 
+
         case .undo:
             undo_done, cursors, pieces := undo(buffer, &buffer.undo, &buffer.redo)
             if undo_done {
@@ -105,7 +107,6 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
                 delete(buffer.pieces)
                 pane.cursors = slice.clone_to_dynamic(cursors)
                 buffer.pieces = slice.clone_to_dynamic(pieces)
-                pane.last_keystroke = time.tick_now()
                 return true
             }
             log.debug("no more history to undo")
@@ -117,7 +118,6 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
                 delete(buffer.pieces)
                 pane.cursors = slice.clone_to_dynamic(cursors)
                 buffer.pieces = slice.clone_to_dynamic(pieces)
-                pane.last_keystroke = time.tick_now()
                 return true
             }
             log.debug("no more history to redo")
@@ -135,8 +135,6 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
 }
 
 move_to :: proc(pane: ^Pane, t: Translation) {
-    pane.last_keystroke = time.tick_now()
-
     if .Selection in pane.cursor_modes {
         select_to(pane, t)
         return
@@ -163,8 +161,6 @@ move_to :: proc(pane: ^Pane, t: Translation) {
 }
 
 select_to :: proc(pane: ^Pane, t: Translation) {
-    pane.last_keystroke = time.tick_now()
-
     for &cursor in pane.cursors {
         cursor.pos, _ = translate_position(pane, cursor.pos, t)
     }

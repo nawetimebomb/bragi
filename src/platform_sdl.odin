@@ -144,30 +144,20 @@ platform_update_events :: proc() {
                     )
                 }
 
-
                 input_register(wevent)
             }
             case .KEY_DOWN: {
-                key_code := Key_Code(event.key.scancode)
+                key := u32(sdl.GetKeyFromScancode(event.key.scancode, event.key.mod, false))
+                keycode := Key_Code(key)
+                mods := event.key.mod
+                is_modifier_key := key > 0x400000dd && key < 0x40000102
 
-                if reflect.enum_value_has_name(key_code) {
-                    // NOTE(nawe) we only want to register the
-                    // following keys below if they are pressed
-                    // together with a modifier key, the rest of the
-                    // keys that are not below will always be
-                    // registered.
-                    last_alphanumeric_key: Key_Code = .Num_0
-                    first_symbol_key, last_symbol_key: Key_Code = .Spacebar, .Slash
-                    should_register := key_code > last_alphanumeric_key &&
-                        key_code < first_symbol_key || key_code > last_symbol_key
-                    mods := event.key.mod
-
-                    // maybe alphanumeric or symbol, check for modifier key or leave
-                    if !should_register && mods - sdl.KMOD_SHIFT - sdl.KMOD_MODE == {} do continue
-
-                    kb_event := Event_Keyboard{}
-                    kb_event.key_pressed = key_code
-                    kb_event.repeat = event.key.repeat
+                if reflect.enum_value_has_name(keycode) && !is_modifier_key {
+                    kb_event := Event_Keyboard{
+                        key_pressed = key,
+                        key_code    = keycode,
+                        repeat = event.key.repeat,
+                    }
 
                     if .LCTRL  in mods  || .RCTRL  in mods  do kb_event.modifiers += {.Ctrl}
                     if .LALT   in mods  || .RALT   in mods  do kb_event.modifiers += {.Alt}
@@ -177,13 +167,19 @@ platform_update_events :: proc() {
                     input_register(kb_event)
                 }
             }
-            case .TEXT_INPUT: input_register(Event_Keyboard{
-                is_text_input = true,
-                text = string(event.text.text),
-            })
+            case .TEXT_INPUT: {
+                input_register(Event_Keyboard{
+                    is_text_input = true,
+                    text = string(event.text.text),
+                })
+            }
         }
     }
     profiling_end()
+}
+
+platform_key_name :: proc(key: u32) -> string {
+    return string(sdl.GetKeyName(sdl.Keycode(key)))
 }
 
 platform_resize_window :: #force_inline proc(w, h: i32) {

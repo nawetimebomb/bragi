@@ -4,6 +4,7 @@ import "core:log"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import "core:unicode/utf8"
 
 CURSOR_BLINK_MAX_COUNT :: 6
 CURSOR_BLINK_TIMEOUT   :: 500 * time.Millisecond
@@ -35,7 +36,6 @@ Pane :: struct {
     cursor_showing:      bool,
     cursor_blink_count:  int,
     cursor_blink_timer:  time.Tick,
-    last_keystroke:      time.Tick,
 
     buffer:              ^Buffer,
     contents:            strings.Builder,
@@ -130,7 +130,7 @@ update_and_draw_panes :: proc() {
             pane.flags += {.Need_Full_Repaint}
         }
 
-        if time.tick_diff(pane.last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
+        if time.tick_diff(last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
             pane.cursor_showing = true
             pane.cursor_blink_count = 0
             pane.cursor_blink_timer = time.tick_now()
@@ -246,7 +246,7 @@ prepare_cursor_for_drawing :: #force_inline proc(
     rune_behind_cursor = ' '
 
     if cursor.pos < len(pane.contents.buf) {
-        rune_behind_cursor = rune(pane.contents.buf[cursor.pos])
+        rune_behind_cursor = utf8.rune_at(strings.to_string(pane.contents), cursor.pos)
     }
 
     return false, pen, rune_behind_cursor

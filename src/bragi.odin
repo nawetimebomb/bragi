@@ -65,8 +65,12 @@ global_mode:  Global_Mode
 open_buffers: [dynamic]^Buffer
 open_panes:   [dynamic]^Pane
 
-events_this_frame: [dynamic]Event
-modifiers_queue:   [dynamic]string
+events_this_frame:              [dynamic]Event
+modifiers_queue:                [dynamic]string
+commands_map:                   map[string]Command
+last_keystroke:                 time.Tick
+text_inputs_to_skip_this_frame: int
+text_inputs_done_this_frame:    int
 
 bragi_allocator: runtime.Allocator
 bragi_context:   runtime.Context
@@ -125,27 +129,36 @@ main :: proc() {
                 switch_to_buffer(active_pane, buffer)
                 event.handled = true
             case Event_Keyboard:
-                if v.key_pressed == .F2 {
+                handled := false
+
+                if Key_Code(v.key_pressed) == .K_F2 {
                     if debug.profiling {
                         profiling_destroy()
                     } else {
                         profiling_init()
                     }
-                    event.handled = true
-                    continue
+                    handled = true
                 }
 
-                if v.key_pressed == .F3 {
+                if Key_Code(v.key_pressed) == .K_F3 {
                     debug.show_debug_info = !debug.show_debug_info
-                    event.handled = true
-                    continue
+                    handled = true
                 }
 
-                switch mode in global_mode {
-                case Global_Mode_Edit:       event.handled = edit_mode_keyboard_event_handler(v)
-                case Global_Mode_Find_File:  event.handled = false; unimplemented()
-                case Global_Mode_Search:     event.handled = false; unimplemented()
+                if !handled {
+                    switch mode in global_mode {
+                    case Global_Mode_Edit:       handled = edit_mode_keyboard_event_handler(v)
+                    case Global_Mode_Find_File:  handled = false; unimplemented()
+                    case Global_Mode_Search:     handled = false; unimplemented()
+                    }
                 }
+
+                if handled {
+                    event.handled = handled
+                    text_inputs_to_skip_this_frame += 1
+                    last_keystroke = time.tick_now()
+                }
+
             case Event_Mouse:
             case Event_Quit:
                 bragi_running = false

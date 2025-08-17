@@ -9,7 +9,7 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 
-UNDO_TIMEOUT :: 300 * time.Millisecond
+UNDO_TIMEOUT :: 500 * time.Millisecond
 
 Buffer_Flag :: enum u8 {
     Dirty     = 0, // change in the buffer state, needs to redraw
@@ -74,19 +74,19 @@ Major_Mode_Bragi :: struct {}
 Major_Mode_Odin :: struct {}
 
 // TODO(nawe) maybe this should create it's own allocator
-buffer_create_empty :: proc(allocator := context.allocator) -> ^Buffer {
+buffer_create_empty :: proc() -> ^Buffer {
     log.debug("creating empty buffer")
     result := new(Buffer)
-    buffer_init(result, {}, allocator)
+    buffer_init(result, {})
     result.name = "*empty*"
     append(&open_buffers, result)
     return result
 }
 
-buffer_create_from_file :: proc(file: string, contents: []byte, allocator := context.allocator) -> ^Buffer {
+buffer_create_from_file :: proc(file: string, contents: []byte) -> ^Buffer {
     log.debugf("creating buffer for file '{}'", file)
     result := new(Buffer)
-    buffer_init(result, contents, allocator)
+    buffer_init(result, contents)
     result.file = strings.clone(file)
     result.name = filepath.base(result.file)
     append(&open_buffers, result)
@@ -166,40 +166,40 @@ buffer_update :: proc(buffer: ^Buffer, pane: ^Pane, force_update := false) -> (c
     return
 }
 
-undo_clear :: proc(b: ^Buffer, undo: ^[dynamic]^History_State) {
+undo_clear :: proc(buffer: ^Buffer, undo: ^[dynamic]^History_State) {
     for len(undo) > 0 {
         item := pop(undo)
         delete(item.cursors)
         delete(item.pieces)
-        free(item, b.allocator)
+        free(item, buffer.allocator)
     }
 }
 
-undo_state_push :: proc(b: ^Buffer, undo: ^[dynamic]^History_State) -> mem.Allocator_Error {
+undo_state_push :: proc(buffer: ^Buffer, undo: ^[dynamic]^History_State) -> mem.Allocator_Error {
     log.debug("pushing new undo state")
     item := (^History_State)(
         // safe to use b.cursors here because we should always have a copy at hand when doing this
-        mem.alloc(size_of(History_State) + len(b.cursors) + len(b.pieces),
-                  align_of(History_State), b.allocator) or_return,
+        mem.alloc(size_of(History_State) + len(buffer.cursors) + len(buffer.pieces),
+                  align_of(History_State), buffer.allocator) or_return,
     )
 
-    item.cursors = slice.clone(b.cursors[:])
-    item.pieces  = slice.clone(b.pieces[:])
+    item.cursors = slice.clone(buffer.cursors[:])
+    item.pieces  = slice.clone(buffer.pieces[:])
 
     append(undo, item) or_return
     return nil
 }
 
-undo :: proc(b: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: bool, cursors: []Cursor, pieces: []Piece) {
+undo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: bool, cursors: []Cursor, pieces: []Piece) {
     if len(undo) > 0 {
-        undo_state_push(b, redo)
+        undo_state_push(buffer, redo)
         item := pop(undo)
         cursors = slice.clone(item.cursors, context.temp_allocator)
         pieces = slice.clone(item.pieces, context.temp_allocator)
         delete(item.cursors)
         delete(item.pieces)
-        free(item, b.allocator)
-        b.flags += {.Dirty, .Modified}
+        free(item, buffer.allocator)
+        buffer.flags += {.Dirty, .Modified}
         return true, cursors, pieces
     }
 
@@ -208,15 +208,6 @@ undo :: proc(b: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: bool,
 
 cursor_has_selection :: proc(cursor: Cursor) -> bool {
     return cursor.pos != cursor.sel
-}
-
-update_forward_cursors :: proc(b: ^Buffer, cursors: ^[dynamic]Cursor, starting_cursor, offset: int) {
-    for cursor_index in starting_cursor..<len(cursors) {
-        cursor := &cursors[cursor_index]
-        cursor.pos = clamp(cursor.pos + offset, 0, b.length_of_buffer)
-        cursor.sel = cursor.pos
-        cursor.last_column = -1
-    }
 }
 
 is_modified :: #force_inline proc(buffer: ^Buffer) -> bool {
@@ -250,6 +241,9 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
 
     strings.write_string(&buffer.add_source, text)
 
+    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
+    buffer.last_edit_time = time.tick_now()
+
     // If the cursor is at the end of a piece, and that also points to the end
     // of the add buffer, we just need to grow the length of that piece. This is
     // the most common operation while entering text in sequence.
@@ -281,11 +275,8 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
         return new_piece.length > 0
     }, context.temp_allocator)
 
-    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
-
     ordered_remove(&buffer.pieces, piece_index)
     inject_at(&buffer.pieces, piece_index, ..new_pieces)
-    buffer.last_edit_time = time.tick_now()
 
     return
 }
@@ -298,6 +289,9 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
         remove_at(buffer, offset + amount, -amount)
         return
     }
+
+    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
+    buffer.last_edit_time = time.tick_now()
 
     // Remove may affect multiple pieces.
     first_piece_index, first_offset := locate_piece(buffer, offset)
@@ -336,18 +330,15 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
         return new_piece.length > 0
     }, context.temp_allocator)
 
-    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
-
     remove_range(&buffer.pieces, first_piece_index, last_piece_index + 1)
     inject_at(&buffer.pieces, first_piece_index, ..new_pieces)
-    buffer.last_edit_time = time.tick_now()
 }
 
-locate_piece :: proc(b: ^Buffer, offset: int) -> (piece_index, new_offset: int) {
+locate_piece :: proc(buffer: ^Buffer, offset: int) -> (piece_index, new_offset: int) {
     assert(offset >= 0)
     remaining := offset
 
-    for piece, index in b.pieces {
+    for piece, index in buffer.pieces {
         if remaining <= piece.length {
             return index, piece.start + remaining
         }

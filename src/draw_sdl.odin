@@ -4,6 +4,7 @@ import     "core:fmt"
 import     "core:log"
 import     "core:slice"
 import     "core:strings"
+import     "core:unicode/utf8"
 
 import sdl "vendor:sdl3"
 
@@ -69,7 +70,7 @@ set_target :: #force_inline proc(target: ^Texture = nil) {
     sdl.SetRenderTarget(renderer, target)
 }
 
-draw_code :: proc(font: ^Font, pen: Vector2, code_lines: []Code_Line, selections: []Range = {}) {
+draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Line, selections: []Range = {}) {
     is_selected :: proc(selections: []Range, offset: int) -> bool {
         for s in selections {
             if s.start != s.end && offset >= s.start && offset < s.end do return true
@@ -78,11 +79,10 @@ draw_code :: proc(font: ^Font, pen: Vector2, code_lines: []Code_Line, selections
     }
 
     for code, y_offset in code_lines {
-        sx := pen.x
+        sx := pen.x - i32(pane.x_offset) * font.xadvance
         sy := pen.y + (i32(y_offset) * font.line_height)
 
         for r, x_offset in code.line {
-            if code.skipped_offsets > x_offset do continue
             glyph := find_or_create_glyph(font, r)
             src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
             dest := make_rect(sx, sy, glyph.w, glyph.h)
@@ -128,6 +128,21 @@ draw_cursor :: proc(font: ^Font, pen: Vector2, rune_behind: rune, visible: bool,
 }
 
 draw_gutter :: proc(pane: ^Pane) {
+    draw_gutter_extension :: proc(pane: ^Pane, font: ^Font, pen: Vector2, line_number: int, lines: []int) {
+        left_indicator, right_indicator := get_gutter_indicators(font)
+        start, end := get_line_boundaries(line_number, lines)
+        text := string(pane.contents.buf[start:end])
+        count := utf8.rune_count_in_string(text)
+
+        set_color(.ui_line_number_current_foreground, font.texture)
+        if pane.x_offset > 0 {
+            draw_text(font, pen, left_indicator)
+        }
+        if count > pane.visible_columns + pane.x_offset {
+            draw_text(font, {i32(pane.rect.w) - font.em_width, pen.y}, right_indicator)
+        }
+    }
+
     pane_height := i32(pane.rect.h)
     font := fonts_map[.UI_Small]
     regular_character_height := pane.font.line_height
@@ -138,7 +153,6 @@ draw_gutter :: proc(pane: ^Pane) {
     last_visible_row := pane.y_offset + pane.visible_rows
     last_line := len(buffer_lines) - 1
     gutter_size := get_gutter_size(pane)
-    left_indicator, right_indicator := get_gutter_indicators(font)
     pen := Vector2{}
 
     if settings.modeline_position == .top {
@@ -166,24 +180,13 @@ draw_gutter :: proc(pane: ^Pane) {
             }
 
             pen.y += y_offset_for_centering
-
             line_number_str := strings.right_justify(
                 fmt.tprintf("{}", line_number + 1),
                 len(size_test_str) + GUTTER_LINE_NUMBER_JUSTIFY,
                 " ", context.temp_allocator,
             )
-
-            start, end := get_line_boundaries(line_number, buffer_lines)
             draw_text(font, pen, line_number_str)
-
-            set_color(.ui_line_number_current_foreground, font.texture)
-            if pane.x_offset > 0 {
-                draw_text(font, pen, left_indicator)
-            }
-            if end - start > pane.visible_columns + pane.x_offset {
-                draw_text(font, {i32(pane.rect.w) - font.em_width, pen.y}, right_indicator)
-            }
-
+            draw_gutter_extension(pane, font, pen, line_number, buffer_lines)
             pen.y += regular_character_height - y_offset_for_centering
         }
 
@@ -196,16 +199,7 @@ draw_gutter :: proc(pane: ^Pane) {
             if line_number >= last_line do break
 
             pen.y += y_offset_for_centering
-            start, end := get_line_boundaries(line_number, buffer_lines)
-
-            set_color(.ui_line_number_current_foreground, font.texture)
-            if pane.x_offset > 0 {
-                draw_text(font, pen, left_indicator)
-            }
-            if end - start > pane.visible_columns + pane.x_offset {
-                draw_text(font, {i32(pane.rect.w) - font.em_width, pen.y}, right_indicator)
-            }
-
+            draw_gutter_extension(pane, font, pen, line_number, buffer_lines)
             pen.y += regular_character_height - y_offset_for_centering
         }
     }

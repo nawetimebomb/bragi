@@ -79,11 +79,10 @@ Code_Line :: struct {
     line:               string,
     line_is_wrapped:    bool, // this line continues on the next line
     start_offset:       int,
-    skipped_offsets:    int,
     //tokens:          []Token_Kind,
 }
 
-pane_create :: proc(buffer: ^Buffer = nil, allocator := context.allocator) -> ^Pane {
+pane_create :: proc(buffer: ^Buffer = nil) -> ^Pane {
     log.debug("creating new pane")
     result := new(Pane)
 
@@ -93,7 +92,7 @@ pane_create :: proc(buffer: ^Buffer = nil, allocator := context.allocator) -> ^P
     add_cursor(result)
 
     if buffer == nil {
-        result.buffer = buffer_create_empty(allocator)
+        result.buffer = buffer_create_empty()
     } else {
         result.buffer = buffer
     }
@@ -175,7 +174,6 @@ update_and_draw_panes :: proc() {
                     moved = true
                 }
 
-
                 for coords.row < pane.y_offset {
                     pane.y_offset -= 1
                     moved = true
@@ -205,7 +203,6 @@ update_and_draw_panes :: proc() {
         if settings.modeline_position == .top do initial_pen.y = get_modeline_height()
 
         lines := get_lines_array(pane)
-        pane_text_content := strings.to_string(pane.contents)
         first_row := pane.y_offset
         last_row := min(pane.y_offset + pane.visible_rows + 1, len(lines) - 1)
         first_offset, last_offset := lines[first_row], lines[last_row]
@@ -225,15 +222,14 @@ update_and_draw_panes :: proc() {
 
         for line_number in first_row..<last_row {
             code_line := Code_Line{}
-            start, end := get_line_boundaries(line_number, lines)
+            start, _ := get_line_boundaries(line_number, lines)
             code_line.start_offset = start
-            code_line.skipped_offsets = pane.x_offset
-            code_line.line = pane_text_content[start:end]
+            code_line.line = get_line_text(pane, line_number, lines)
             code_line.line_is_wrapped = false
             append(&code_lines, code_line)
         }
 
-        draw_code(pane.font, initial_pen, code_lines[:], selections[:])
+        draw_code(pane, pane.font, initial_pen, code_lines[:], selections[:])
 
         for cursor in pane.cursors {
             out_of_bounds, cursor_pen, rune_behind_cursor := prepare_cursor_for_drawing(pane, pane.font, initial_pen, cursor)
@@ -311,10 +307,10 @@ prepare_cursor_for_drawing :: #force_inline proc(
 
     if !is_within_viewport(pane, coords) do return true, {}, ' '
 
-    line := get_line_text(pane, coords.row, lines)
     pen = starting_pen
+    line_text := get_line_text_until_offset(pane, coords.row, lines, cursor.pos)
 
-    if coords.column != 0 do pen.x += prepare_text(font, line[:coords.column - pane.x_offset])
+    pen.x += prepare_text(font, line_text) - i32(pane.x_offset) * font.xadvance
     pen.y += i32(coords.row - pane.y_offset) * font.character_height
     rune_behind_cursor = ' '
 
@@ -334,14 +330,28 @@ is_within_viewport :: #force_inline proc(pane: ^Pane, coords: Coords) -> bool {
 
 cursor_offset_to_coords :: #force_inline proc(pane: ^Pane, lines: []int, offset: int) -> (result: Coords) {
     result.row = get_line_index(offset, lines)
-    start, _ := get_line_boundaries(result.row, lines)
-    result.column = offset - start
+    start, end := get_line_boundaries(result.row, lines)
+    buf := pane.contents.buf[start:end]
+    index := 0
+
+    for index < offset - start {
+        result.column += 1
+        index += 1
+        for index < len(buf) && is_continuation_byte(buf[index]) do index += 1
+    }
+
     return
 }
 
 cursor_coords_to_offset :: #force_inline proc(pane: ^Pane, lines: []int, coords: Coords) -> (offset: int) {
-    start := lines[coords.row]
-    return start + coords.column
+    offset = lines[coords.row]
+    column := coords.column
+    for column > 0 {
+        column -= 1
+        offset += 1
+        for is_continuation_byte(pane.contents.buf[offset]) do offset += 1
+    }
+    return
 }
 
 is_in_line :: #force_inline proc(offset: int, lines: []int, line_index: int) -> bool {
@@ -360,6 +370,12 @@ get_line_text :: #force_inline proc(pane: ^Pane, line_index: int, lines: []int) 
     result = strings.to_string(pane.contents)
     start, end := get_line_boundaries(line_index, lines)
     return result[start:end]
+}
+
+get_line_text_until_offset :: #force_inline proc(pane: ^Pane, line_index: int, lines: []int, offset: int) -> string {
+    result := strings.to_string(pane.contents)
+    start, _ := get_line_boundaries(line_index, lines)
+    return result[start:offset - start]
 }
 
 get_line_boundaries :: #force_inline proc(line_index: int, lines: []int) -> (start, end: int) {

@@ -9,7 +9,12 @@ import "core:unicode/utf8"
 
 WIDGET_HEIGHT_IN_ROWS :: 15
 
+Widget_Action :: enum {
+    find_buffer,
+}
+
 Widget :: struct {
+    action:              Widget_Action,
     active:              bool,
     cursor:              Cursor,
     cursor_showing:      bool,
@@ -17,13 +22,9 @@ Widget :: struct {
 
     // the selected line or -1 if selecting the prompt
     selection:           int,
-    results_last_index:  int,
-    // all_results:         [dynamic]Result, // the one to keep
-    // view_results:        []Result, // the one to show, contains the filters
-
-    contents:            strings.Builder,
+    all_results:         [dynamic]Widget_Result, // the one to keep
+    view_results:        []Widget_Result, // the one to show, contains the filters
     prompt:              strings.Builder,
-    variant:             Widget_Variant,
 
     font:                ^Font,
     texture:             ^Texture,
@@ -31,13 +32,17 @@ Widget :: struct {
     y_offset:            int,
 }
 
-Widget_Variant :: union {
-    Widget_Find_Buffer,
+Widget_Result :: struct {
+    format:    string,
+    highlight: Range,
+    value:     Widget_Result_Value,
 }
 
-Widget_Find_Buffer :: struct {
-    items: []^Buffer,
+Widget_Result_Value :: union {
+    Widget_Result_Buffer,
 }
+
+Widget_Result_Buffer :: ^Buffer
 
 widget_init :: proc() {
     global_widget.font = fonts_map[.UI_Regular]
@@ -56,26 +61,33 @@ update_widget_texture :: proc() {
 widget_open_find_buffer :: proc() {
     widget_open()
 
-    buffers_list := make([dynamic]^Buffer, context.temp_allocator)
+    global_widget.action = .find_buffer
+    global_widget.all_results = make([dynamic]Widget_Result, 0, len(open_buffers))
 
     for buffer in open_buffers {
         if active_pane.buffer == buffer do continue
-        append(&buffers_list, buffer)
+        append(&global_widget.all_results, Widget_Result{
+            format    = get_find_buffer_format(buffer),
+            highlight = {},
+            value     = buffer,
+        })
     }
 
     // prefer most recent edited buffers... (not stable sorting but mostly cosmetic, not really important)
-    slice.sort_by(buffers_list[:], proc(a: ^Buffer, b: ^Buffer) -> bool {
+    slice.sort_by(global_widget.all_results[:], proc(a: Widget_Result, b: Widget_Result) -> bool {
         current_tick := time.tick_now()
-        return time.tick_diff(a.last_edit_time, current_tick) < time.tick_diff(b.last_edit_time, current_tick)
+        buf1, buf2 := a.value.(^Buffer), b.value.(^Buffer)
+        return time.tick_diff(buf1.last_edit_time, current_tick) < time.tick_diff(buf2.last_edit_time, current_tick)
     })
 
     // ...but append the current active buffer last
-    append(&buffers_list, active_pane.buffer)
+    append(&global_widget.all_results, Widget_Result{
+        format    = get_find_buffer_format(active_pane.buffer),
+        highlight = {},
+        value     = active_pane.buffer,
+    })
 
-    global_widget.variant = Widget_Find_Buffer{
-        items  = slice.clone(buffers_list[:]),
-    }
-    global_widget.results_last_index = len(buffers_list) - 1
+    global_widget.view_results = slice.clone(global_widget.all_results[:])
 }
 
 // NOTE(nawe) a generic procedure to make sure we clean up opened
@@ -84,7 +96,6 @@ widget_open_find_buffer :: proc() {
 widget_open :: proc() {
     if global_widget.active do widget_close()
 
-    global_widget.results_last_index = -1
     global_widget.cursor.pos = 0
     global_widget.cursor.sel = 0
     global_widget.selection = -1
@@ -96,12 +107,13 @@ widget_close :: proc() {
     if !global_widget.active do return
     global_widget.active = false
 
-    switch v in global_widget.variant {
-    case Widget_Find_Buffer:
-        delete(v.items)
+    for r in global_widget.all_results {
+        delete(r.format)
     }
 
-    strings.builder_destroy(&global_widget.contents)
+    delete(global_widget.all_results)
+    delete(global_widget.view_results)
+
     strings.builder_destroy(&global_widget.prompt)
     update_all_pane_textures()
 }
@@ -136,7 +148,7 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
             global_widget.selection -= 1
 
             if global_widget.selection < -1 {
-                global_widget.selection = global_widget.results_last_index
+                global_widget.selection = len(global_widget.view_results) - 1
             }
 
             return true
@@ -144,7 +156,7 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
         case .move_down: {
             global_widget.selection += 1
 
-            if global_widget.selection > global_widget.results_last_index {
+            if global_widget.selection > len(global_widget.view_results) - 1 {
                 global_widget.selection = 0
             }
 
@@ -168,18 +180,19 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
         }
     }
 
-    switch v in global_widget.variant {
-    case Widget_Find_Buffer: handled = find_buffer_keyboard_event_handler(event, v)
+    switch global_widget.action {
+    case .find_buffer: handled = find_buffer_keyboard_event_handler(event)
     }
 
     return
 }
 
-find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, data: Widget_Find_Buffer) -> bool {
+find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
     #partial switch event.key_code {
         case .K_ENTER: {
             if global_widget.selection > -1 {
-                buffer := data.items[global_widget.selection]
+                result := global_widget.view_results[global_widget.selection]
+                buffer := result.value.(^Buffer)
                 switch_to_buffer(active_pane, buffer)
                 widget_close()
                 return true
@@ -206,7 +219,6 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, data: Widget_F
 
 update_and_draw_widget :: proc() {
     if !global_widget.active do return
-    assert(global_widget.results_last_index != -1)
 
     if time.tick_diff(last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
         global_widget.cursor_showing = true
@@ -218,16 +230,17 @@ update_and_draw_widget :: proc() {
         global_widget.cursor_blink_timer = time.tick_now()
     }
 
-    switch v in global_widget.variant {
-    case Widget_Find_Buffer:
-        if global_widget.selection > -1 {
-            buffer := v.items[global_widget.selection]
+    // TODO(nawe) change buffer on selection
+    // switch v in global_widget.variant {
+    // case Widget_Find_Buffer:
+    //     if global_widget.selection > -1 {
+    //         buffer := v.items[global_widget.selection]
 
-            if active_pane.buffer != buffer {
-                switch_to_buffer(active_pane, buffer)
-            }
-        }
-    }
+    //         if active_pane.buffer != buffer {
+    //             switch_to_buffer(active_pane, buffer)
+    //         }
+    //     }
+    // }
 
     set_target(global_widget.texture)
     set_color(.background)
@@ -240,24 +253,21 @@ update_and_draw_widget :: proc() {
     left_padding := font_regular.xadvance
     results_pen := Vector2{left_padding, line_height}
 
-    switch v in global_widget.variant {
-    case Widget_Find_Buffer:
-        prompt_ask_str = fmt.tprintf(
-            "{}/{}  Switch to: ",
-            global_widget.selection + 1,
-            len(v.items),
-        )
+    prompt_ask_str = fmt.tprintf(
+        "{}/{}  Switch to: ",
+        global_widget.selection + 1,
+        len(global_widget.view_results),
+    )
 
-        for item, index in v.items {
-            if global_widget.selection == index {
-                set_color(.ui_selection_background)
-                draw_rect(0, results_pen.y, i32(global_widget.rect.w), line_height, true)
-                set_color(.ui_selection_foreground, font_regular.texture)
-            } else {
-                set_color(.foreground, font_regular.texture)
-            }
-            results_pen = draw_text(font_regular, results_pen, fmt.tprintf("{}\n", item.name))
+    for result, index in global_widget.view_results {
+        if global_widget.selection == index {
+            set_color(.ui_selection_background)
+            draw_rect(0, results_pen.y, i32(global_widget.rect.w), line_height, true)
+            set_color(.ui_selection_foreground, font_regular.texture)
+        } else {
+            set_color(.foreground, font_regular.texture)
         }
+        results_pen = draw_text(font_regular, results_pen, result.format)
     }
 
     prompt_query_str := strings.to_string(global_widget.prompt)
@@ -289,4 +299,11 @@ update_and_draw_widget :: proc() {
 
     set_target()
     draw_texture(global_widget.texture, nil, &global_widget.rect)
+}
+
+get_find_buffer_format :: proc(buffer: ^Buffer) -> string {
+    result := strings.builder_make(context.temp_allocator)
+    strings.write_string(&result, buffer.name)
+    strings.write_byte(&result, '\n')
+    return strings.clone(strings.to_string(result))
 }

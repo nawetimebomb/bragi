@@ -151,7 +151,8 @@ main :: proc() {
 
                 if !handled && active_widget != nil {
                     switch active_widget.type {
-                    case .find_file: unimplemented()
+                    case .find_buffer: unimplemented()
+                    case .find_file:   unimplemented()
                     }
                 }
 

@@ -83,7 +83,6 @@ buffer_get_or_create_empty :: proc() -> ^Buffer {
         }
     }
 
-
     log.debug("creating new scratchpad buffer")
     result := new(Buffer)
     buffer_init(result, {})

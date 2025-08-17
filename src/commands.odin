@@ -27,11 +27,12 @@ Command :: enum u32 {
     select_right,
 
     find_file,
-    save_file,
-    save_file_as,
 
-    switch_buffer,
+
     kill_current_buffer,
+    save_buffer,
+    save_buffer_as,
+    switch_buffer,
 
     search_backward,
     search_forward,

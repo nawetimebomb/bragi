@@ -2,7 +2,6 @@ package main
 
 import "base:runtime"
 
-import "core:crypto"
 import "core:log"
 import "core:mem"
 import "core:os"
@@ -14,27 +13,12 @@ AUTHOR  :: "Nahuel J. Sacchetti"
 URL     :: "https://github.com/nawetimebomb/bragi"
 VERSION :: "0.01"
 
-Global_Mode :: union #no_nil {
-    Global_Mode_Edit,
-    Global_Mode_Find_File,
-    Global_Mode_Search,
-}
-
-Global_Mode_Edit :: struct {}
-
-Global_Mode_Find_File :: struct {}
-
-Global_Mode_Search :: struct {}
-
 FONT_EDITOR_NAME    :: "chivo-mono.ttf"
 FONT_EDITOR_DATA    :: #load("../res/fonts/chivo-mono.ttf")
-
 FONT_UI_NAME        :: "roboto-regular.ttf"
 FONT_UI_DATA        :: #load("../res/fonts/roboto-regular.ttf")
-
 FONT_UI_ITALIC_NAME :: "roboto-italic.ttf"
 FONT_UI_ITALIC_DATA :: #load("../res/fonts/roboto-italic.ttf")
-
 FONT_UI_BOLD_NAME   :: "roboto-semibold.ttf"
 FONT_UI_BOLD_DATA   :: #load("../res/fonts/roboto-semibold.ttf")
 
@@ -58,15 +42,15 @@ settings_file: os.Handle
 settings:      Settings
 colorscheme:   map[Face_Color]Color
 
-active_pane:  ^Pane
-global_mode:  Global_Mode
-open_buffers: [dynamic]^Buffer
-open_panes:   [dynamic]^Pane
+active_pane:   ^Pane
+active_widget: ^Widget
+open_buffers:  [dynamic]^Buffer
+open_panes:    [dynamic]^Pane
 
-events_this_frame:              [dynamic]Event
-modifiers_queue:                [dynamic]string
-commands_map:                   map[string]Command
-last_keystroke:                 time.Tick
+commands_map:      map[string]Command
+events_this_frame: [dynamic]Event
+last_keystroke:    time.Tick
+modifiers_queue:   [dynamic]string
 
 bragi_allocator: runtime.Allocator
 bragi_context:   runtime.Context
@@ -80,7 +64,6 @@ tracking_allocator: mem.Tracking_Allocator
 
 main :: proc() {
     context.logger = log.create_console_logger()
-    context.random_generator = crypto.random_generator()
 
     when ODIN_DEBUG {
         default_allocator := context.allocator
@@ -127,8 +110,21 @@ main :: proc() {
         for &event in events_this_frame {
             switch v in event.variant {
             case Event_Drop_File:
-                buffer := buffer_create_from_file(v.filepath, v.data)
-                switch_to_buffer(active_pane, buffer)
+                found := false
+
+                for buffer in open_buffers {
+                    if buffer.file == v.filepath {
+                        switch_to_buffer(active_pane, buffer)
+                        found = true
+                        break
+                    }
+                }
+
+                if !found {
+                    buffer := buffer_create_from_file(v.filepath, v.data)
+                    switch_to_buffer(active_pane, buffer)
+                }
+
                 event.handled = true
             case Event_Keyboard:
                 if v.is_text_input && text_input_events_to_ignore_this_frame > 0 {
@@ -153,12 +149,14 @@ main :: proc() {
                     handled = true
                 }
 
-                if !handled {
-                    switch mode in global_mode {
-                    case Global_Mode_Edit:       handled = edit_mode_keyboard_event_handler(v)
-                    case Global_Mode_Find_File:  handled = false; unimplemented()
-                    case Global_Mode_Search:     handled = false; unimplemented()
+                if !handled && active_widget != nil {
+                    switch active_widget.type {
+                    case .find_file: unimplemented()
                     }
+                }
+
+                if !handled {
+                    handled = edit_mode_keyboard_event_handler(v)
                 }
 
                 if handled {
@@ -212,7 +210,10 @@ main :: proc() {
 
         set_color(.background)
         prepare_for_drawing()
+        update_opened_buffers()
+        update_active_pane()
         update_and_draw_panes()
+        update_and_draw_widget()
         debug_draw()
         draw_frame()
 

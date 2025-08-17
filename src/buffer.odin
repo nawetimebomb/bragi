@@ -16,6 +16,7 @@ Buffer_Flag :: enum u8 {
     Modified  = 1, // contents change compared to previous version
     Read_Only = 2, // can't be changed
     CRLF      = 3, // was saved before as CRLF, it will be converted to LF
+    Scratch   = 4, // created by Bragi as scratchpad. If saved as file, this flag will be removed.
 }
 
 Source_Buffer :: enum {
@@ -36,6 +37,7 @@ Buffer :: struct {
     original_source:  strings.Builder,
     add_source:       strings.Builder,
     pieces:           [dynamic]Piece,
+    text_content:     strings.Builder,
     length_of_buffer: int,
 
     indent: struct {
@@ -73,12 +75,20 @@ Major_Mode_Bragi :: struct {}
 
 Major_Mode_Odin :: struct {}
 
-// TODO(nawe) maybe this should create it's own allocator
-buffer_create_empty :: proc() -> ^Buffer {
-    log.debug("creating empty buffer")
+buffer_get_or_create_empty :: proc() -> ^Buffer {
+    for buffer in open_buffers {
+        if .Scratch in buffer.flags {
+            log.debug("using existing scratchpad buffer")
+            return buffer
+        }
+    }
+
+
+    log.debug("creating new scratchpad buffer")
     result := new(Buffer)
     buffer_init(result, {})
-    result.name = "*empty*"
+    result.name = "*scratchpad*"
+    result.flags += {.Scratch}
     append(&open_buffers, result)
     return result
 }
@@ -124,6 +134,7 @@ buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allo
 buffer_destroy :: proc(buffer: ^Buffer) {
     strings.builder_destroy(&buffer.original_source)
     strings.builder_destroy(&buffer.add_source)
+    strings.builder_destroy(&buffer.text_content)
     undo_clear(buffer, &buffer.undo)
     undo_clear(buffer, &buffer.redo)
     delete(buffer.pieces)
@@ -133,37 +144,56 @@ buffer_destroy :: proc(buffer: ^Buffer) {
     free(buffer)
 }
 
-buffer_update :: proc(buffer: ^Buffer, pane: ^Pane, force_update := false) -> (changed: bool) {
-    profiling_start("buffer_update")
-    if .Dirty in buffer.flags || force_update {
-        buffer.cursors = pane.cursors[:]
-        buffer.flags -= {.Dirty}
-        total_length := 0
-        strings.builder_reset(&pane.contents)
+update_opened_buffers :: proc() {
+    profiling_start("updating opened buffers")
+    for buffer in open_buffers {
+        is_active_in_panes := false
 
-        for piece in buffer.pieces {
-            data := &buffer.original_source.buf
-            total_length += piece.length
+        for pane in open_panes {
+            if pane.buffer == buffer {
+                is_active_in_panes = true
+                break
+            }
+        }
 
-            if piece.source == .add {
-                data = &buffer.add_source.buf
+        if !is_active_in_panes do continue
+
+        if .Dirty in buffer.flags {
+            buffer.flags -= {.Dirty}
+            total_length := 0
+            strings.builder_reset(&buffer.text_content)
+            lines_array := make([dynamic]int, context.temp_allocator)
+
+            for piece in buffer.pieces {
+                data := &buffer.original_source.buf
+                total_length += piece.length
+
+                if piece.source == .add {
+                    data = &buffer.add_source.buf
+                }
+
+                strings.write_string(&buffer.text_content, string(data[piece.start:piece.start + piece.length]))
             }
 
-            strings.write_string(&pane.contents, string(data[piece.start:piece.start + piece.length]))
-        }
+            buffer.length_of_buffer = total_length
+            append(&lines_array, 0)
+            for r, index in strings.to_string(buffer.text_content) {
+                if r == '\n' do append(&lines_array, index + 1)
+            }
+            append(&lines_array, total_length + 1)
 
-        buffer.length_of_buffer = total_length
-
-        clear(&pane.line_starts)
-        append(&pane.line_starts, 0)
-        for r, index in pane.contents.buf {
-            if r == '\n' do append(&pane.line_starts, index + 1)
+            for pane in open_panes {
+                if pane.buffer != buffer do continue
+                delete(pane.line_starts)
+                strings.builder_reset(&pane.contents)
+                strings.write_string(&pane.contents, strings.to_string(buffer.text_content))
+                pane.line_starts = slice.clone_to_dynamic(lines_array[:])
+                if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
+                pane.flags += {.Need_Full_Repaint}
+            }
         }
-        append(&pane.line_starts, total_length + 1)
     }
     profiling_end()
-
-    return
 }
 
 undo_clear :: proc(buffer: ^Buffer, undo: ^[dynamic]^History_State) {
@@ -208,6 +238,10 @@ undo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: 
 
 cursor_has_selection :: proc(cursor: Cursor) -> bool {
     return cursor.pos != cursor.sel
+}
+
+flag_buffer :: #force_inline proc(buffer: ^Buffer, flag: Buffer_Flag) {
+    buffer.flags += {flag}
 }
 
 is_modified :: #force_inline proc(buffer: ^Buffer) -> bool {

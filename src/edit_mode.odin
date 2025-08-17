@@ -96,9 +96,10 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
             select_to(pane, .right)
             return true
 
-        case .find_file:
-        case .save_file:
-        case .save_file_as:
+        case .find_file: widget_open(.find_file)
+
+        case .save_buffer:
+        case .save_buffer_as:
         case .switch_buffer:
         case .kill_current_buffer:
 
@@ -108,10 +109,11 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
         case .delete_this_pane:
         case .delete_other_pane:
         case .new_pane_to_the_right:
-            active_pane = pane_create()
+            result := pane_create()
+            switch_to_buffer(result, buffer)
+            active_pane = result
             return true
         case .other_pane:
-
 
         case .undo:
             undo_done, cursors, pieces := undo(buffer, &buffer.undo, &buffer.redo)

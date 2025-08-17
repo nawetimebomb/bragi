@@ -92,21 +92,13 @@ pane_create :: proc(buffer: ^Buffer = nil) -> ^Pane {
     add_cursor(result)
 
     if buffer == nil {
-        result.buffer = buffer_create_empty()
+        result.buffer = buffer_get_or_create_empty()
     } else {
         result.buffer = buffer
     }
 
     result.local_font_size = i32(settings.editor_font_size)
 
-    append(&open_panes, result)
-    update_all_pane_textures()
-    return result
-}
-
-pane_clone :: proc(pane: ^Pane) -> ^Pane {
-    log.debug("cloning pane")
-    result := new_clone(pane^)
     append(&open_panes, result)
     update_all_pane_textures()
     return result
@@ -121,73 +113,71 @@ pane_destroy :: proc(pane: ^Pane) {
     free(pane)
 }
 
-update_and_draw_panes :: proc() {
+update_active_pane :: proc() {
     should_cursor_blink :: proc(p: ^Pane) -> bool {
         return p.cursor_blink_count < CURSOR_BLINK_MAX_COUNT &&
             time.tick_diff(p.cursor_blink_timer, time.tick_now()) > CURSOR_BLINK_TIMEOUT
     }
+    profiling_start("active_pane")
+    pane := active_pane
 
+    if time.tick_diff(last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
+        pane.cursor_showing = true
+        pane.cursor_blink_count = 0
+        pane.cursor_blink_timer = time.tick_now()
+        pane.flags += {.Need_Full_Repaint}
+    }
+
+    if should_cursor_blink(pane) {
+        pane.cursor_showing = !pane.cursor_showing
+        pane.cursor_blink_count += 1
+        pane.cursor_blink_timer = time.tick_now()
+
+        if pane.cursor_blink_count >= CURSOR_BLINK_MAX_COUNT {
+            pane.cursor_showing = true
+        }
+
+        pane.flags += {.Need_Full_Repaint}
+    }
+
+    for cursor in pane.cursors {
+        if cursor.active {
+            lines := get_lines_array(pane)
+            coords := cursor_offset_to_coords(pane, lines, cursor.pos)
+            has_scrolled := false
+
+            for coords.column < pane.x_offset {
+                pane.x_offset -= 1
+                has_scrolled = true
+            }
+
+            for coords.column >= pane.visible_columns + pane.x_offset {
+                pane.x_offset += 1
+                has_scrolled = true
+            }
+
+            for coords.row < pane.y_offset {
+                pane.y_offset -= 1
+                has_scrolled = true
+            }
+
+            for coords.row >= pane.visible_rows + pane.y_offset {
+                pane.y_offset += 1
+                has_scrolled = true
+            }
+
+            if has_scrolled do pane.flags += {.Need_Full_Repaint}
+            break
+        }
+    }
+    profiling_end()
+}
+
+update_and_draw_panes :: proc() {
     profiling_start("all panes: update and draw")
     for pane in open_panes {
-        is_focused := pane == active_pane
         assert(pane.buffer != nil)
         assert(pane.texture != nil)
-
-        if buffer_update(pane.buffer, pane) {
-            if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
-
-            pane.flags += {.Need_Full_Repaint}
-        }
-
-        if time.tick_diff(last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
-            pane.cursor_showing = true
-            pane.cursor_blink_count = 0
-            pane.cursor_blink_timer = time.tick_now()
-            pane.flags += {.Need_Full_Repaint}
-        }
-
-        if should_cursor_blink(pane) {
-            pane.cursor_showing = !pane.cursor_showing
-            pane.cursor_blink_count += 1
-            pane.cursor_blink_timer = time.tick_now()
-
-            if pane.cursor_blink_count >= CURSOR_BLINK_MAX_COUNT {
-                pane.cursor_showing = true
-            }
-
-            pane.flags += {.Need_Full_Repaint}
-        }
-
-        for cursor in pane.cursors {
-            if cursor.active {
-                lines := get_lines_array(pane)
-                coords := cursor_offset_to_coords(pane, lines, cursor.pos)
-                moved := false
-
-                for coords.column < pane.x_offset {
-                    pane.x_offset -= 1
-                    moved = true
-                }
-
-                for coords.column >= pane.visible_columns + pane.x_offset {
-                    pane.x_offset += 1
-                    moved = true
-                }
-
-                for coords.row < pane.y_offset {
-                    pane.y_offset -= 1
-                    moved = true
-                }
-
-                for coords.row >= pane.visible_rows + pane.y_offset {
-                    pane.y_offset += 1
-                    moved = true
-                }
-
-                if moved do pane.flags += {.Need_Full_Repaint}
-                break
-            }
-        }
 
         if .Need_Full_Repaint not_in pane.flags {
             draw_texture(pane.texture, nil, &pane.rect)
@@ -236,7 +226,7 @@ update_and_draw_panes :: proc() {
             _ = rune_behind_cursor
 
             if !out_of_bounds do draw_cursor(
-                pane.font, cursor_pen, rune_behind_cursor, pane.cursor_showing, is_focused,
+                pane.font, cursor_pen, rune_behind_cursor, pane.cursor_showing, is_pane_focused(pane),
             )
         }
 
@@ -403,6 +393,10 @@ sorted_cursor :: #force_inline proc(cursor: Cursor) -> (low, high: int) {
     return
 }
 
+is_pane_focused :: proc(pane: ^Pane) -> bool {
+    return active_widget == nil && active_pane == pane
+}
+
 get_gutter_size :: proc(pane: ^Pane) -> (gutter_size: i32) {
     font := fonts_map[.UI_Small]
     gutter_size = font.em_width
@@ -432,6 +426,7 @@ switch_to_buffer :: proc(pane: ^Pane, buffer: ^Buffer) {
     }
 
     pane.buffer = buffer
+    flag_buffer(buffer, .Dirty)
     pane.flags += {.Need_Full_Repaint}
 }
 

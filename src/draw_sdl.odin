@@ -213,7 +213,7 @@ draw_gutter :: proc(pane: ^Pane) {
 }
 
 draw_modeline :: proc(pane: ^Pane) {
-    is_focused := pane == active_pane
+    is_focused := is_pane_focused(pane)
 
     font := fonts_map[.UI_Regular]
     font_bold := fonts_map[.UI_Bold]

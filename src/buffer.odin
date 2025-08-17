@@ -11,6 +11,8 @@ import "core:time"
 
 UNDO_TIMEOUT :: 500 * time.Millisecond
 
+Buffer_Flags :: bit_set[Buffer_Flag; u8]
+
 Buffer_Flag :: enum u8 {
     Dirty     = 0, // change in the buffer state, needs to redraw
     Modified  = 1, // contents change compared to previous version
@@ -51,7 +53,7 @@ Buffer :: struct {
     name:             string,
     file:             string,
     major_mode:       Major_Mode,
-    flags:            bit_set[Buffer_Flag; u8],
+    flags:            Buffer_Flags,
     last_edit_time:   time.Tick,
 }
 
@@ -87,7 +89,7 @@ buffer_get_or_create_empty :: proc() -> ^Buffer {
     result := new(Buffer)
     buffer_init(result, {})
     result.name = "*scratchpad*"
-    result.flags += {.Scratch}
+    flag_buffer(result, {.Scratch})
     append(&open_buffers, result)
     return result
 }
@@ -107,12 +109,12 @@ buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allo
     buffer.original_source = strings.builder_make_len_cap(0, len(contents))
     buffer.add_source = strings.builder_make()
     buffer.history_enabled = true
-    buffer.flags += {.Dirty}
+    flag_buffer(buffer, {.Dirty})
 
     for b in contents {
         if b == '\r' {
             // remove carriage returns
-            buffer.flags += {.Modified, .CRLF}
+            flag_buffer(buffer, {.CRLF, .Modified})
             continue
         }
 
@@ -158,7 +160,7 @@ update_opened_buffers :: proc() {
         if !is_active_in_panes do continue
 
         if .Dirty in buffer.flags {
-            buffer.flags -= {.Dirty}
+            unflag_buffer(buffer, {.Dirty})
             total_length := 0
             strings.builder_reset(&buffer.text_content)
             lines_array := make([dynamic]int, context.temp_allocator)
@@ -188,7 +190,7 @@ update_opened_buffers :: proc() {
                 strings.write_string(&pane.contents, strings.to_string(buffer.text_content))
                 pane.line_starts = slice.clone_to_dynamic(lines_array[:])
                 if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
-                pane.flags += {.Need_Full_Repaint}
+                flag_pane(pane, {.Need_Full_Repaint})
             }
         }
     }
@@ -228,7 +230,7 @@ undo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: 
         delete(item.cursors)
         delete(item.pieces)
         free(item, buffer.allocator)
-        buffer.flags += {.Dirty, .Modified}
+        flag_buffer(buffer, {.Dirty, .Modified})
         return true, cursors, pieces
     }
 
@@ -239,8 +241,12 @@ cursor_has_selection :: proc(cursor: Cursor) -> bool {
     return cursor.pos != cursor.sel
 }
 
-flag_buffer :: #force_inline proc(buffer: ^Buffer, flag: Buffer_Flag) {
-    buffer.flags += {flag}
+flag_buffer :: #force_inline proc(buffer: ^Buffer, flags: Buffer_Flags) {
+    buffer.flags += flags
+}
+
+unflag_buffer :: #force_inline proc(buffer: ^Buffer, flags: Buffer_Flags) {
+    buffer.flags -= flags
 }
 
 is_modified :: #force_inline proc(buffer: ^Buffer) -> bool {
@@ -270,7 +276,7 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     piece_index, new_offset := locate_piece(buffer, offset)
     piece := &buffer.pieces[piece_index]
     end_of_piece := piece.start + piece.length
-    buffer.flags += {.Dirty, .Modified}
+    flag_buffer(buffer, {.Dirty, .Modified})
 
     strings.write_string(&buffer.add_source, text)
 
@@ -329,7 +335,7 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
     // Remove may affect multiple pieces.
     first_piece_index, first_offset := locate_piece(buffer, offset)
     last_piece_index, last_offset := locate_piece(buffer, offset + amount)
-    buffer.flags += {.Dirty, .Modified}
+    flag_buffer(buffer, {.Dirty, .Modified})
 
     // Only one piece was affected, either at the beginning of the piece or at the end.
     if first_piece_index == last_piece_index {

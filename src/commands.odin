@@ -16,23 +16,26 @@ Command :: enum u32 {
     move_start,
     move_end,
     move_left,
-    move_left_word,
     move_right,
-    move_right_word,
     move_down,
     move_up,
+    move_prev_word,
+    move_next_word,
+    move_prev_paragraph,
+    move_next_paragraph,
+    move_beginning_of_line,
+    move_end_of_line,
 
     select_all,
     select_left,
     select_right,
 
+    find_buffer,
     find_file,
-
 
     kill_current_buffer,
     save_buffer,
     save_buffer_as,
-    switch_buffer,
 
     search_backward,
     search_forward,
@@ -65,17 +68,23 @@ commands_init :: proc() {
     commands_map["Home"]         = .move_start
     commands_map["End"]          = .move_end
     commands_map["Left"]         = .move_left
-    commands_map["Ctrl-Left"]    = .move_left_word
     commands_map["Right"]        = .move_right
-    commands_map["Ctrl-Right"]   = .move_right_word
     commands_map["Down"]         = .move_down
     commands_map["Up"]           = .move_up
+    commands_map["Ctrl-Left"]    = .move_prev_word
+    commands_map["Ctrl-Right"]   = .move_next_word
+    commands_map["Ctrl-Up"]      = .move_prev_paragraph
+    commands_map["Ctrl-Down"]    = .move_next_paragraph
+    commands_map["Ctrl-A"]       = .move_beginning_of_line
+    commands_map["Ctrl-E"]       = .move_end_of_line
 
-    commands_map["Ctrl-A"]       = .select_all
+    commands_map["Ctrl-Shift-A"]       = .select_all
     commands_map["Shift-Left"]   = .select_left
     commands_map["Shift-Right"]  = .select_right
 
-    commands_map["Ctrl-B"]       = .switch_buffer
+    commands_map["Alt-B"]       = .find_buffer
+    commands_map["Alt-F"]       = .find_file
+
     commands_map["Ctrl-W"]       = .kill_current_buffer
 
     commands_map["Ctrl-3"]       = .new_pane_to_the_right
@@ -125,4 +134,8 @@ map_keystroke_to_command :: proc(key: Key_Code, modifiers: Modifiers_Set) -> Com
     }
 
     return .noop
+}
+
+quit_mode_command :: proc() {
+    widget_close()
 }

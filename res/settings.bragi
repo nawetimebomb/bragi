@@ -22,7 +22,7 @@ save_buffer                     <Ctrl-x-Ctrl-s>
 
 delete_this_pane                <Ctrl-x-0>
 delete_other_panes              <Ctrl-x-1>
-new_pane_to_the_right           <Ctrl-x-3>
+new_pane_to_the_right           <Ctrl-x-3> <Alt-n>
 other_pane                      <Ctrl-x-o> <Alt-o>
 
 undo                            <Ctrl-/>

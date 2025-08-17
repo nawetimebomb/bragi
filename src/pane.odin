@@ -14,6 +14,8 @@ CURSOR_RESET_TIMEOUT   :: 100 * time.Millisecond
 MINIMUM_GUTTER_PADDING     :: 3
 GUTTER_LINE_NUMBER_JUSTIFY :: 2
 
+Pane_Flags :: bit_set[Pane_Flag; u8]
+
 Pane_Mode :: enum u8 {
     Line_Wrappings,
 }
@@ -31,7 +33,9 @@ Cursor_Mode :: enum u8 {
 Translation :: enum u16 {
     start, end,
     down, left, right, up,
-    left_word, right_word,
+    prev_word, next_word,
+    prev_paragraph, next_paragraph,
+    beginning_of_line, end_of_line,
 }
 
 Pane :: struct {
@@ -50,7 +54,7 @@ Pane :: struct {
 
     // TODO(nawe) maybe combine?
     modes:               bit_set[Pane_Mode; u8],
-    flags:               bit_set[Pane_Flag; u8],
+    flags:               Pane_Flags,
 
     // rendering stuff
     rect:                Rect,
@@ -125,7 +129,7 @@ update_active_pane :: proc() {
         pane.cursor_showing = true
         pane.cursor_blink_count = 0
         pane.cursor_blink_timer = time.tick_now()
-        pane.flags += {.Need_Full_Repaint}
+        flag_pane(pane, {.Need_Full_Repaint})
     }
 
     if should_cursor_blink(pane) {
@@ -137,7 +141,7 @@ update_active_pane :: proc() {
             pane.cursor_showing = true
         }
 
-        pane.flags += {.Need_Full_Repaint}
+        flag_pane(pane, {.Need_Full_Repaint})
     }
 
     for cursor in pane.cursors {
@@ -166,7 +170,7 @@ update_active_pane :: proc() {
                 has_scrolled = true
             }
 
-            if has_scrolled do pane.flags += {.Need_Full_Repaint}
+            if has_scrolled do flag_pane(pane, {.Need_Full_Repaint})
             break
         }
     }
@@ -240,7 +244,7 @@ update_and_draw_panes :: proc() {
 
         set_target()
         draw_texture(pane.texture, nil, &pane.rect)
-        pane.flags -= {.Need_Full_Repaint}
+        unflag_pane(pane, {.Need_Full_Repaint})
     }
     profiling_end()
 }
@@ -253,26 +257,32 @@ update_pane_font :: #force_inline proc(pane: ^Pane) {
 update_all_pane_textures :: proc() {
     // NOTE(nawe) should be safe to clean up textures here since we're
     // probably recreating them due to the change in size
-    pane_width := f32(window_width / i32(len(open_panes)))
-    pane_height := f32(window_height)
+    pane_width := window_width / i32(len(open_panes))
+    pane_height := window_height
 
     for &pane, index in open_panes {
         update_pane_font(pane)
         texture_destroy(pane.texture)
 
-        pane.rect = { pane_width * f32(index), 0, pane_width, pane_height }
+        pane.rect = make_rect(pane_width * i32(index), 0, pane_width, pane_height)
         pane.texture = texture_create(.TARGET, i32(pane_width), i32(pane_height))
         pane.visible_columns = int(pane.rect.w) / int(pane.font.xadvance) - 1
         pane.visible_rows = (int(pane.rect.h) / int(pane.font.line_height)) - 1
-
         if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
-
-        pane.flags += {.Need_Full_Repaint}
+        flag_pane(pane, {.Need_Full_Repaint})
     }
 }
 
 recalculate_line_wrappings :: proc(pane: ^Pane) {
     unimplemented()
+}
+
+flag_pane :: #force_inline proc(pane: ^Pane, flags: Pane_Flags) {
+    pane.flags += flags
+}
+
+unflag_pane :: #force_inline proc(pane: ^Pane, flags: Pane_Flags) {
+    pane.flags -= flags
 }
 
 add_cursor :: proc(p: ^Pane, pos := 0) {
@@ -365,7 +375,7 @@ get_line_text :: #force_inline proc(pane: ^Pane, line_index: int, lines: []int) 
 get_line_text_until_offset :: #force_inline proc(pane: ^Pane, line_index: int, lines: []int, offset: int) -> string {
     result := strings.to_string(pane.contents)
     start, _ := get_line_boundaries(line_index, lines)
-    return result[start:offset - start]
+    return result[start:offset]
 }
 
 get_line_boundaries :: #force_inline proc(line_index: int, lines: []int) -> (start, end: int) {
@@ -394,7 +404,7 @@ sorted_cursor :: #force_inline proc(cursor: Cursor) -> (low, high: int) {
 }
 
 is_pane_focused :: proc(pane: ^Pane) -> bool {
-    return active_widget == nil && active_pane == pane
+    return !global_widget.active && active_pane == pane
 }
 
 get_gutter_size :: proc(pane: ^Pane) -> (gutter_size: i32) {
@@ -426,13 +436,17 @@ switch_to_buffer :: proc(pane: ^Pane, buffer: ^Buffer) {
     }
 
     pane.buffer = buffer
-    flag_buffer(buffer, .Dirty)
-    pane.flags += {.Need_Full_Repaint}
+    flag_buffer(buffer, {.Dirty})
+    flag_pane(pane, {.Need_Full_Repaint})
 }
 
 translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := -1) -> (result, last_column: int) {
     is_space :: proc(b: byte) -> bool {
-        return b == ' ' || b == '\t' || b == '\n'
+        return b == ' ' || b == '\n' || b == '\t'
+    }
+
+    is_word_delim :: proc(b: byte) -> bool {
+        return is_space(b) || b == '_'
     }
 
     buf := strings.to_string(pane.contents)
@@ -472,12 +486,52 @@ translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := 
             last_column = -1
             return
         }
-    case .left_word:
-        for result > 0 && is_space(buf[result-1])  do result -= 1
-        for result > 0 && !is_space(buf[result-1]) do result -= 1
-    case .right_word:
-        for result < len(buf) && !is_space(buf[result]) do result += 1
-        for result < len(buf) && is_space(buf[result])  do result += 1
+    case .prev_word:
+        for result > 0 && is_word_delim(buf[result-1])  do result -= 1
+        for result > 0 && !is_word_delim(buf[result-1]) do result -= 1
+    case .next_word:
+        for result < len(buf) && !is_word_delim(buf[result]) do result += 1
+        for result < len(buf) && is_word_delim(buf[result])  do result += 1
+    case .prev_paragraph:
+        coords := cursor_offset_to_coords(pane, lines, result)
+        coords.row = max(coords.row - 1, 0)
+        start, end := get_line_boundaries(coords.row, lines)
+        for coords.row > 0 && end - start > 1 {
+            coords.row -= 1
+            start, end = get_line_boundaries(coords.row, lines)
+        }
+
+        coords.column = 0
+        last_column = -1
+        result = cursor_coords_to_offset(pane, lines, coords)
+    case .next_paragraph:
+        coords := cursor_offset_to_coords(pane, lines, result)
+        coords.row = min(coords.row + 1, len(lines))
+        start, end := get_line_boundaries(coords.row, lines)
+        for coords.row < len(lines) && end - start > 1 {
+            coords.row += 1
+            start, end = get_line_boundaries(coords.row, lines)
+        }
+
+        coords.column = 0
+        last_column = -1
+        result = cursor_coords_to_offset(pane, lines, coords)
+    case .beginning_of_line:
+        coords := cursor_offset_to_coords(pane, lines, result)
+
+        if coords.column == 0 {
+            for result < len(buf) && is_space(buf[result]) do result += 1
+        } else {
+            coords.column = 0
+            result = cursor_coords_to_offset(pane, lines, coords)
+        }
+
+        last_column = -1
+    case .end_of_line:
+        coords := cursor_offset_to_coords(pane, lines, result)
+        _, end := get_line_boundaries(coords.row, lines)
+        last_column = -1
+        result = end
     }
 
     result = clamp(result, 0, len(buf))

@@ -226,6 +226,11 @@ draw_modeline :: proc(pane: ^Pane) {
     modeline_height := get_modeline_height()
     modeline_width := i32(pane.rect.w)
     modeline_y_pos: i32 = settings.modeline_position == .top ? 0 : i32(pane.rect.h) - modeline_height
+
+    if global_widget.active && settings.modeline_position == .bottom {
+        modeline_y_pos -= WIDGET_HEIGHT
+    }
+
     y_offset_for_centering := (modeline_height - font.line_height)/2
 
     left_pen := Vector2{0, modeline_y_pos  + y_offset_for_centering}

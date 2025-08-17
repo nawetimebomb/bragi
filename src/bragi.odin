@@ -43,9 +43,9 @@ settings:      Settings
 colorscheme:   map[Face_Color]Color
 
 active_pane:   ^Pane
-active_widget: ^Widget
 open_buffers:  [dynamic]^Buffer
 open_panes:    [dynamic]^Pane
+global_widget: Widget
 
 commands_map:      map[string]Command
 events_this_frame: [dynamic]Event
@@ -88,6 +88,7 @@ main :: proc() {
     settings_init()
     platform_init()
     commands_init()
+    widget_init()
     debug_init()
 
     initialize_font_related_stuff()
@@ -135,25 +136,27 @@ main :: proc() {
 
                 handled := false
 
-                if Key_Code(v.key_pressed) == .K_F2 {
-                    if debug.profiling {
-                        profiling_destroy()
-                    } else {
-                        profiling_init()
+                #partial switch v.key_code {
+                    case .K_F2: {
+                        if debug.profiling {
+                            profiling_destroy()
+                        } else {
+                            profiling_init()
+                        }
+                        handled = true
                     }
-                    handled = true
+                    case .K_F3: {
+                        debug.show_debug_info = !debug.show_debug_info
+                        handled = true
+                    }
+                    case .K_ESCAPE: {
+                        quit_mode_command()
+                        handled = true
+                    }
                 }
 
-                if Key_Code(v.key_pressed) == .K_F3 {
-                    debug.show_debug_info = !debug.show_debug_info
-                    handled = true
-                }
-
-                if !handled && active_widget != nil {
-                    switch active_widget.type {
-                    case .find_buffer: unimplemented()
-                    case .find_file:   unimplemented()
-                    }
+                if global_widget.active && !handled {
+                    handled = widget_keyboard_event_handler(v)
                 }
 
                 if !handled {
@@ -195,8 +198,9 @@ main :: proc() {
                         platform_resize_window(window_width, window_height)
                     }
 
-                    log.debug("updating pane textures due to resizing")
+                    log.debug("updating necessary textures after resizing")
                     update_all_pane_textures()
+                    update_widget_texture()
                 }
 
                 if v.dpi_scale != dpi_scale {
@@ -222,6 +226,7 @@ main :: proc() {
         frame_delta_time = time.tick_lap_time(&previous_frame_time)
     }
 
+    widget_close()
     input_destroy()
     fonts_destroy()
     commands_destroy()

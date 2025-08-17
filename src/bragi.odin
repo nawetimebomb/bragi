@@ -20,7 +20,7 @@ FONT_UI_DATA        :: #load("../res/fonts/roboto-regular.ttf")
 FONT_UI_ITALIC_NAME :: "roboto-italic.ttf"
 FONT_UI_ITALIC_DATA :: #load("../res/fonts/roboto-italic.ttf")
 FONT_UI_BOLD_NAME   :: "roboto-semibold.ttf"
-FONT_UI_BOLD_DATA   :: #load("../res/fonts/roboto-semibold.ttf")
+FONT_UI_BOLD_DATA   :: #load("../res/fonts/roboto-bold.ttf")
 
 MINIMUM_WINDOW_SIZE :: 800
 DEFAULT_WINDOW_SIZE :: 1080
@@ -88,10 +88,11 @@ main :: proc() {
     settings_init()
     platform_init()
     commands_init()
-    widget_init()
     debug_init()
 
     initialize_font_related_stuff()
+
+    widget_init()
     active_pane = pane_create()
 
     previous_frame_time := time.tick_now()
@@ -155,19 +156,22 @@ main :: proc() {
                     }
                 }
 
-                if global_widget.active && !handled {
-                    handled = widget_keyboard_event_handler(v)
+                switch {
+                case global_widget.active && !handled:  handled = widget_keyboard_event_handler(v)
+                case !global_widget.active && !handled: handled = edit_mode_keyboard_event_handler(v)
                 }
 
-                if !handled {
-                    handled = edit_mode_keyboard_event_handler(v)
+                // NOTE(nawe) this event was already handled by the
+                // key pressed event and so we skip the next related
+                // text input. This is to allow bindings with
+                // modifiers that also have regular alphanumeric or
+                // symbol characters as key pressed, like in Emacs C-x-3.
+                if !v.is_text_input && handled {
+                    text_input_events_to_ignore_this_frame += 1
                 }
 
-                if handled {
-                    event.handled = handled
-                    if !v.is_text_input do text_input_events_to_ignore_this_frame += 1
-                    last_keystroke = time.tick_now()
-                }
+                event.handled = handled
+                last_keystroke = time.tick_now()
             case Event_Mouse:
             case Event_Quit:
                 bragi_running = false

@@ -138,6 +138,7 @@ buffer_destroy :: proc(buffer: ^Buffer) {
     strings.builder_destroy(&buffer.text_content)
     undo_clear(buffer, &buffer.undo)
     undo_clear(buffer, &buffer.redo)
+    delete(buffer.cursors)
     delete(buffer.pieces)
     delete(buffer.undo)
     delete(buffer.redo)
@@ -237,8 +238,9 @@ undo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: 
     return false, {}, {}
 }
 
-cursor_has_selection :: proc(cursor: Cursor) -> bool {
-    return cursor.pos != cursor.sel
+copy_cursors :: proc(pane: ^Pane, buffer: ^Buffer) {
+    delete(buffer.cursors)
+    buffer.cursors = slice.clone(pane.cursors[:])
 }
 
 flag_buffer :: #force_inline proc(buffer: ^Buffer, flags: Buffer_Flags) {

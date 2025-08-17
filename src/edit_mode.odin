@@ -207,7 +207,7 @@ select_to :: proc(pane: ^Pane, t: Translation) {
 
 insert_at_points :: proc(pane: ^Pane, buffer: ^Buffer, text: string) -> (total_length_of_inserted_characters: int) {
     profiling_start("inserting text input")
-    buffer.cursors = pane.cursors[:]
+    copy_cursors(pane, buffer)
 
     for &cursor in pane.cursors {
         offset := insert_at(buffer, cursor.pos, text)
@@ -221,7 +221,7 @@ insert_at_points :: proc(pane: ^Pane, buffer: ^Buffer, text: string) -> (total_l
 
 insert_newlines_and_indent :: proc(pane: ^Pane, buffer: ^Buffer) -> (total_length_of_inserted_characters: int) {
     profiling_start("inserting newline and indenting")
-    buffer.cursors = pane.cursors[:]
+    copy_cursors(pane, buffer)
 
     for &cursor in pane.cursors {
         // TODO(nawe) add indent
@@ -236,7 +236,7 @@ insert_newlines_and_indent :: proc(pane: ^Pane, buffer: ^Buffer) -> (total_lengt
 
 remove_to :: proc(pane: ^Pane, buffer: ^Buffer, t: Translation) -> (total_amount_of_removed_characters: int) {
     profiling_start("removing text")
-    buffer.cursors = pane.cursors[:]
+    copy_cursors(pane, buffer)
 
     for &cursor in pane.cursors {
         if !has_selection(cursor) {

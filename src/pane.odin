@@ -294,9 +294,13 @@ add_cursor :: proc(p: ^Pane, pos := 0) {
     })
 }
 
-clone_cursor :: proc(p: ^Pane, cursor_to_clone: Cursor) -> ^Cursor {
-    append(&p.cursors, cursor_to_clone)
-    return &p.cursors[len(p.cursors) - 1]
+clone_cursor :: proc(pane: ^Pane, cursor_to_clone: Cursor) -> ^Cursor {
+    append(&pane.cursors, cursor_to_clone)
+    return &pane.cursors[len(pane.cursors) - 1]
+}
+
+cursor_has_selection :: proc(cursor: Cursor) -> bool {
+    return cursor.pos != cursor.sel
 }
 
 prepare_cursor_for_drawing :: #force_inline proc(
@@ -427,17 +431,18 @@ get_modeline_height :: #force_inline proc() -> i32 {
 }
 
 switch_to_buffer :: proc(pane: ^Pane, buffer: ^Buffer) {
-    clear(&pane.cursors)
-    add_cursor(pane)
+    copy_cursors(pane, pane.buffer)
 
     if len(buffer.cursors) > 0 {
         delete(pane.cursors)
         pane.cursors = slice.clone_to_dynamic(buffer.cursors)
+    } else {
+        clear(&pane.cursors)
+        add_cursor(pane)
     }
 
     pane.buffer = buffer
     flag_buffer(buffer, {.Dirty})
-    flag_pane(pane, {.Need_Full_Repaint})
 }
 
 translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := -1) -> (result, last_column: int) {
@@ -508,6 +513,7 @@ translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := 
         coords := cursor_offset_to_coords(pane, lines, result)
         coords.row = min(coords.row + 1, len(lines))
         start, end := get_line_boundaries(coords.row, lines)
+
         for coords.row < len(lines) && end - start > 1 {
             coords.row += 1
             start, end = get_line_boundaries(coords.row, lines)
@@ -518,6 +524,7 @@ translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := 
         result = cursor_coords_to_offset(pane, lines, coords)
     case .beginning_of_line:
         coords := cursor_offset_to_coords(pane, lines, result)
+        last_column = -1
 
         if coords.column == 0 {
             for result < len(buf) && is_space(buf[result]) do result += 1
@@ -525,8 +532,6 @@ translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := 
             coords.column = 0
             result = cursor_coords_to_offset(pane, lines, coords)
         }
-
-        last_column = -1
     case .end_of_line:
         coords := cursor_offset_to_coords(pane, lines, result)
         _, end := get_line_boundaries(coords.row, lines)

@@ -57,7 +57,7 @@ set_color_texture :: #force_inline proc(face: Face_Color, texture: ^Texture) {
     sdl.SetTextureColorMod(texture, c.r, c.g, c.b)
 }
 
-set_colors :: #force_inline proc(textures: []^Texture, face: Face_Color) {
+set_colors :: #force_inline proc(face: Face_Color, textures: []^Texture) {
     for t in textures do set_color_texture(face, t)
 }
 
@@ -134,7 +134,7 @@ draw_gutter :: proc(pane: ^Pane) {
         text := string(pane.contents.buf[start:end])
         count := utf8.rune_count_in_string(text)
 
-        set_color(.ui_line_number_current_foreground, font.texture)
+        set_color(.ui_line_number_foreground_current, font.texture)
         if pane.x_offset > 0 {
             draw_text(font, pen, left_indicator)
         }
@@ -172,9 +172,9 @@ draw_gutter :: proc(pane: ^Pane) {
             if line_number >= last_line do break
 
             if slice.contains(current_rows[:], line_number) {
-                set_color(.ui_line_number_current_background)
+                set_color(.ui_line_number_background_current)
                 draw_rect(0, pen.y, gutter_size, regular_character_height)
-                set_color(.ui_line_number_current_foreground, font.texture)
+                set_color(.ui_line_number_foreground_current, font.texture)
             } else {
                 set_color(.ui_line_number_foreground, font.texture)
             }
@@ -225,10 +225,11 @@ draw_modeline :: proc(pane: ^Pane) {
 
     modeline_height := get_modeline_height()
     modeline_width := i32(pane.rect.w)
-    modeline_y_pos: i32 = settings.modeline_position == .top ? 0 : i32(pane.rect.h) - modeline_height
+    modeline_y_pos: i32 = 0
 
-    if global_widget.active && settings.modeline_position == .bottom {
-        modeline_y_pos -= WIDGET_HEIGHT
+    if settings.modeline_position == .bottom {
+        modeline_y_pos = i32(pane.rect.h) - modeline_height
+        if global_widget.active do modeline_y_pos -= i32(global_widget.rect.h)
     }
 
     y_offset_for_centering := (modeline_height - font.line_height)/2
@@ -241,9 +242,9 @@ draw_modeline :: proc(pane: ^Pane) {
     draw_rect(0, modeline_y_pos, modeline_width, modeline_height)
 
     if modified {
-        set_colors({font.texture, font_bold.texture}, modeline_highlight)
+        set_colors(modeline_highlight, {font.texture, font_bold.texture})
     } else {
-        set_colors({font.texture, font_bold.texture}, modeline_foreground)
+        set_colors(modeline_foreground, {font.texture, font_bold.texture})
     }
 
     status_str := fmt.tprintf(

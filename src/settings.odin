@@ -12,11 +12,12 @@ Face_Color :: enum {
     region,
 
     ui_border,
-    ui_fringe,
+    ui_selection_background,
+    ui_selection_foreground,
     ui_line_number_background,
     ui_line_number_foreground,
-    ui_line_number_current_background,
-    ui_line_number_current_foreground,
+    ui_line_number_background_current,
+    ui_line_number_foreground_current,
     ui_modeline_active_background,
     ui_modeline_active_foreground,
     ui_modeline_active_highlight,
@@ -72,6 +73,7 @@ settings_init :: proc() {
 
     colorscheme[.background]                        = hex_to_color(0x050505)
     colorscheme[.foreground]                        = hex_to_color(0xa08563)
+    colorscheme[.highlight]                         = hex_to_color(0xcd950c)
     colorscheme[.cursor_active]                     = hex_to_color(0xcd950c)
     colorscheme[.cursor_passive]                    = hex_to_color(0x98a098)
     colorscheme[.cursor_all]                        = hex_to_color(0x6b8e23)
@@ -79,11 +81,12 @@ settings_init :: proc() {
     colorscheme[.region]                            = hex_to_color(0x0a0b62)
 
     colorscheme[.ui_border]                         = hex_to_color(0x373b41)
-    colorscheme[.ui_fringe]                         = hex_to_color(0x050505)
+    colorscheme[.ui_selection_background]           = hex_to_color(0xd2d2d2)
+    colorscheme[.ui_selection_foreground]           = hex_to_color(0x010101)
     colorscheme[.ui_line_number_background]         = hex_to_color(0x050505)
     colorscheme[.ui_line_number_foreground]         = hex_to_color(0x373b41)
-    colorscheme[.ui_line_number_current_background] = hex_to_color(0x131313)
-    colorscheme[.ui_line_number_current_foreground] = hex_to_color(0x98a098)
+    colorscheme[.ui_line_number_background_current] = hex_to_color(0x131313)
+    colorscheme[.ui_line_number_foreground_current] = hex_to_color(0x98a098)
     colorscheme[.ui_modeline_active_background]     = hex_to_color(0x131313)
     colorscheme[.ui_modeline_active_foreground]     = hex_to_color(0xa08563)
     colorscheme[.ui_modeline_active_highlight]      = hex_to_color(0xcd950c)

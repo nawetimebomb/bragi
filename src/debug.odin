@@ -39,7 +39,7 @@ debug_draw :: proc() {
     pen := Vector2{10, 0}
     piece_index: int
 
-    set_colors({font_regular.texture, font_bold.texture}, .debug_foreground)
+    set_colors(.debug_foreground, {font_regular.texture, font_bold.texture})
 
     pen = draw_text(font_bold, pen, "-- General information --\n")
 

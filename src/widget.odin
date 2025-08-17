@@ -230,17 +230,17 @@ update_and_draw_widget :: proc() {
         global_widget.cursor_blink_timer = time.tick_now()
     }
 
-    // TODO(nawe) change buffer on selection
-    // switch v in global_widget.variant {
-    // case Widget_Find_Buffer:
-    //     if global_widget.selection > -1 {
-    //         buffer := v.items[global_widget.selection]
+    switch global_widget.action {
+    case .find_buffer:
+        if global_widget.selection > -1 {
+            item := global_widget.view_results[global_widget.selection]
+            buffer := item.value.(^Buffer)
 
-    //         if active_pane.buffer != buffer {
-    //             switch_to_buffer(active_pane, buffer)
-    //         }
-    //     }
-    // }
+            if active_pane.buffer != buffer {
+                switch_to_buffer(active_pane, buffer)
+            }
+        }
+    }
 
     set_target(global_widget.texture)
     set_color(.background)

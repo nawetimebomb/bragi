@@ -22,8 +22,8 @@ Buffer_Flag :: enum u8 {
 }
 
 Source_Buffer :: enum {
-    add,
-    original,
+    Add,
+    Original,
 }
 
 Buffer :: struct {
@@ -51,7 +51,7 @@ Buffer :: struct {
     redo, undo:       [dynamic]^History_State,
 
     name:             string,
-    file:             string,
+    filepath:         string,
     major_mode:       Major_Mode,
     flags:            Buffer_Flags,
     last_edit_time:   time.Tick,
@@ -94,12 +94,23 @@ buffer_get_or_create_empty :: proc() -> ^Buffer {
     return result
 }
 
-buffer_create_from_file :: proc(file: string, contents: []byte) -> ^Buffer {
-    log.debugf("creating buffer for file '{}'", file)
+buffer_get_or_create_from_file :: proc(fullpath: string, contents: []byte) -> ^Buffer {
+    for buffer in open_buffers {
+        if buffer.filepath == fullpath {
+            log.debugf("found buffer for '{}'", fullpath)
+            return buffer
+        }
+    }
+
+    return buffer_create_from_file(fullpath, contents)
+}
+
+buffer_create_from_file :: proc(fullpath: string, contents: []byte) -> ^Buffer {
+    log.debugf("creating buffer for file '{}'", fullpath)
     result := new(Buffer)
     buffer_init(result, contents)
-    result.file = strings.clone(file)
-    result.name = filepath.base(result.file)
+    result.filepath = strings.clone(fullpath)
+    result.name = filepath.base(result.filepath)
     append(&open_buffers, result)
     return result
 }
@@ -125,7 +136,7 @@ buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allo
     buffer.length_of_buffer = contents_length
 
     original_piece := Piece{
-        source = .original,
+        source = .Original,
         start  = 0,
         length = contents_length,
     }
@@ -142,7 +153,7 @@ buffer_destroy :: proc(buffer: ^Buffer) {
     delete(buffer.pieces)
     delete(buffer.undo)
     delete(buffer.redo)
-    if buffer.file != "" do delete(buffer.file)
+    if buffer.filepath != "" do delete(buffer.filepath)
     free(buffer)
 }
 
@@ -170,7 +181,7 @@ update_opened_buffers :: proc() {
                 data := &buffer.original_source.buf
                 total_length += piece.length
 
-                if piece.source == .add {
+                if piece.source == .Add {
                     data = &buffer.add_source.buf
                 }
 
@@ -288,7 +299,7 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     // If the cursor is at the end of a piece, and that also points to the end
     // of the add buffer, we just need to grow the length of that piece. This is
     // the most common operation while entering text in sequence.
-    if piece.source == .add && new_offset == end_of_piece && add_source_length == end_of_piece {
+    if piece.source == .Add && new_offset == end_of_piece && add_source_length == end_of_piece {
         piece.length += length_of_text
         return
     }
@@ -302,7 +313,7 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
         length = new_offset - piece.start,
     }
     middle := Piece{
-        source = .add,
+        source = .Add,
         start  = add_source_length,
         length = length_of_text,
     }

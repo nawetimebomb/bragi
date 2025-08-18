@@ -47,10 +47,11 @@ open_buffers:  [dynamic]^Buffer
 open_panes:    [dynamic]^Pane
 global_widget: Widget
 
-commands_map:      map[string]Command
-events_this_frame: [dynamic]Event
-last_keystroke:    time.Tick
-modifiers_queue:   [dynamic]string
+base_working_dir:    string
+commands_map:        map[string]Command
+events_this_frame:   [dynamic]Event
+last_keystroke:      time.Tick
+modifiers_queue:     [dynamic]string
 
 bragi_allocator: runtime.Allocator
 bragi_context:   runtime.Context
@@ -115,7 +116,7 @@ main :: proc() {
                 found := false
 
                 for buffer in open_buffers {
-                    if buffer.file == v.filepath {
+                    if buffer.filepath == v.filepath {
                         switch_to_buffer(active_pane, buffer)
                         found = true
                         break
@@ -243,8 +244,8 @@ main :: proc() {
 
     delete(open_buffers)
     delete(open_panes)
-
     delete(colorscheme)
+    delete(base_working_dir)
 
     platform_destroy()
 

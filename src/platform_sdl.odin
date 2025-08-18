@@ -8,6 +8,7 @@ package main
 
 import     "core:log"
 import     "core:os"
+import     "core:path/filepath"
 import     "core:reflect"
 import     "core:strings"
 
@@ -82,6 +83,16 @@ platform_init :: proc() {
             f32(window_width) / f32(base_width),
             f32(window_height) / f32(base_height),
         )
+    }
+
+    if ODIN_OS == .Windows {
+        base_working_dir = filepath.volume_name(os.get_current_directory())
+    } else {
+        base_working_dir = strings.clone("/")
+    }
+
+    if !os.is_dir(base_working_dir) {
+        log.errorf("base_working_dir '{}' is not a valid dir", base_working_dir)
     }
 }
 

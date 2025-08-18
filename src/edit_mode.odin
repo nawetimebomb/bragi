@@ -122,7 +122,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
         return true
 
     case .find_buffer: widget_open_find_buffer()
-    case .find_file:   unimplemented()
+    case .find_file:   widget_open_find_file()
 
     case .save_buffer:
     case .save_buffer_as:

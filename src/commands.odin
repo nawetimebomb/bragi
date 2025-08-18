@@ -78,12 +78,12 @@ commands_init :: proc() {
     commands_map["Ctrl-A"]       = .move_beginning_of_line
     commands_map["Ctrl-E"]       = .move_end_of_line
 
-    commands_map["Ctrl-Shift-A"]       = .select_all
+    commands_map["Ctrl-Shift-A"] = .select_all
     commands_map["Shift-Left"]   = .select_left
     commands_map["Shift-Right"]  = .select_right
 
-    commands_map["Alt-B"]       = .find_buffer
-    commands_map["Alt-F"]       = .find_file
+    commands_map["Alt-B"]        = .find_buffer
+    commands_map["Alt-F"]        = .find_file
 
     commands_map["Ctrl-W"]       = .kill_current_buffer
 

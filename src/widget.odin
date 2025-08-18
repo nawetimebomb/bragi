@@ -2,6 +2,8 @@ package main
 
 import "core:fmt"
 import "core:log"
+import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:time"
@@ -10,21 +12,23 @@ import "core:unicode/utf8"
 WIDGET_HEIGHT_IN_ROWS :: 15
 
 Widget_Action :: enum {
-    find_buffer,
+    Find_Buffer,
+    Find_File,
 }
 
 Widget :: struct {
-    action:              Widget_Action,
     active:              bool,
     cursor:              Cursor,
     cursor_showing:      bool,
     cursor_blink_timer:  time.Tick,
 
     // the selected line or -1 if selecting the prompt
+    action:              Widget_Action,
     selection:           int,
     all_results:         [dynamic]Widget_Result, // the one to keep
     view_results:        []Widget_Result, // the one to show, contains the filters
     prompt:              strings.Builder,
+    prompt_question:     string,
 
     font:                ^Font,
     texture:             ^Texture,
@@ -40,9 +44,16 @@ Widget_Result :: struct {
 
 Widget_Result_Value :: union {
     Widget_Result_Buffer,
+    Widget_Result_File,
 }
 
 Widget_Result_Buffer :: ^Buffer
+
+Widget_Result_File :: struct {
+    name:     string,
+    filepath: string,
+    is_dir:   bool,
+}
 
 widget_init :: proc() {
     global_widget.font = fonts_map[.UI_Regular]
@@ -61,8 +72,8 @@ update_widget_texture :: proc() {
 widget_open_find_buffer :: proc() {
     widget_open()
 
-    global_widget.action = .find_buffer
-    global_widget.all_results = make([dynamic]Widget_Result, 0, len(open_buffers))
+    global_widget.action = .Find_Buffer
+    global_widget.prompt_question = "Switch to"
 
     for buffer in open_buffers {
         if active_pane.buffer == buffer do continue
@@ -90,14 +101,81 @@ widget_open_find_buffer :: proc() {
     global_widget.view_results = slice.clone(global_widget.all_results[:])
 }
 
+widget_open_find_file :: proc() {
+    widget_open()
+
+    current_dir := base_working_dir
+    if active_pane.buffer.filepath != "" {
+        current_dir = filepath.dir(active_pane.buffer.filepath, context.temp_allocator)
+    }
+
+    if !os.is_dir(current_dir) {
+        current_dir = base_working_dir
+    }
+
+    strings.write_string(&global_widget.prompt, current_dir)
+    widget_find_file_open_and_read_dir(current_dir)
+
+    global_widget.action = .Find_File
+    global_widget.prompt_question = "Find file"
+
+}
+
+widget_find_file_open_and_read_dir :: proc(current_dir: string) {
+    // cleaning up because it was called from an already existing opened widget
+    if len(global_widget.all_results) > 0 {
+        delete(global_widget.view_results)
+        for r in global_widget.all_results {
+            delete(r.format)
+            #partial switch v in r.value {
+                case Widget_Result_File: delete(v.filepath)
+            }
+        }
+        clear(&global_widget.all_results)
+    }
+
+    dir_handle, dir_open_error := os.open(current_dir)
+    if dir_open_error != nil {
+        log.fatalf("failed to open directory '{}' with error {}", current_dir, dir_open_error)
+        widget_close()
+        return
+    }
+    defer os.close(dir_handle)
+    file_infos, read_dir_error := os.read_dir(dir_handle, 0, context.temp_allocator)
+
+    if read_dir_error != nil {
+        log.fatalf("failed to read directory '{}' with error {}", current_dir, read_dir_error)
+        widget_close()
+        return
+    }
+
+    for file_info in file_infos {
+        fullpath := strings.clone(file_info.fullpath)
+
+        append(&global_widget.all_results, Widget_Result{
+            format    = get_find_file_format(file_info),
+            highlight = {},
+            value     = Widget_Result_File{
+                filepath = fullpath,
+                name     = filepath.base(fullpath),
+                is_dir   = file_info.is_dir,
+            },
+        })
+    }
+
+    global_widget.view_results = slice.clone(global_widget.all_results[:])
+    global_widget.cursor.pos = len(global_widget.prompt.buf)
+    global_widget.cursor.sel = global_widget.cursor.pos
+}
+
 // NOTE(nawe) a generic procedure to make sure we clean up opened
 // widget (if any) and set the defaults again
 @(private="file")
 widget_open :: proc() {
     if global_widget.active do widget_close()
 
-    global_widget.cursor.pos = 0
-    global_widget.cursor.sel = 0
+    global_widget.all_results = make([dynamic]Widget_Result, 0, WIDGET_HEIGHT_IN_ROWS)
+    global_widget.cursor = {}
     global_widget.selection = -1
     global_widget.active = true
     flag_pane(active_pane, {.Need_Full_Repaint})
@@ -109,6 +187,12 @@ widget_close :: proc() {
 
     for r in global_widget.all_results {
         delete(r.format)
+
+        switch v in r.value {
+        case Widget_Result_Buffer:
+        case Widget_Result_File:
+            delete(v.filepath)
+        }
     }
 
     delete(global_widget.all_results)
@@ -181,7 +265,8 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
     }
 
     switch global_widget.action {
-    case .find_buffer: handled = find_buffer_keyboard_event_handler(event)
+    case .Find_Buffer: handled = find_buffer_keyboard_event_handler(event)
+    case .Find_File:   handled = find_file_keyboard_event_handler  (event)
     }
 
     return
@@ -217,6 +302,42 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
     return false
 }
 
+find_file_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
+    #partial switch event.key_code {
+        case .K_ENTER: {
+            if global_widget.selection > -1 {
+                result := global_widget.view_results[global_widget.selection]
+                file_info := result.value.(Widget_Result_File)
+
+                if file_info.is_dir {
+                    current_dir := filepath.clean(file_info.filepath, context.temp_allocator)
+                    strings.builder_reset(&global_widget.prompt)
+                    strings.write_string(&global_widget.prompt, current_dir)
+                    strings.write_string(&global_widget.prompt, "/")
+                    global_widget.selection = -1
+                    widget_find_file_open_and_read_dir(current_dir)
+                } else {
+                    data, success := os.read_entire_file(file_info.filepath, context.temp_allocator)
+                    if !success {
+                        log.fatalf("failed to read file '{}'", file_info.filepath)
+                        widget_close()
+                        return true
+                    }
+                    buffer := buffer_get_or_create_from_file(file_info.filepath, data)
+                    switch_to_buffer(active_pane, buffer)
+                    widget_close()
+                }
+
+                return true
+            } else {
+                unimplemented()
+            }
+        }
+    }
+
+    return false
+}
+
 update_and_draw_widget :: proc() {
     if !global_widget.active do return
 
@@ -230,8 +351,12 @@ update_and_draw_widget :: proc() {
         global_widget.cursor_blink_timer = time.tick_now()
     }
 
+    for global_widget.selection > WIDGET_HEIGHT_IN_ROWS - 2 + global_widget.y_offset do global_widget.y_offset += 1
+    for global_widget.selection < global_widget.y_offset do global_widget.y_offset -= 1
+    if  global_widget.selection <= 0 do global_widget.y_offset = 0
+
     switch global_widget.action {
-    case .find_buffer:
+    case .Find_Buffer:
         if global_widget.selection > -1 {
             item := global_widget.view_results[global_widget.selection]
             buffer := item.value.(^Buffer)
@@ -240,26 +365,32 @@ update_and_draw_widget :: proc() {
                 switch_to_buffer(active_pane, buffer)
             }
         }
+    case .Find_File:
     }
 
     set_target(global_widget.texture)
     set_color(.background)
     prepare_for_drawing()
+    prompt_ask_str := fmt.tprintf(
+        "{}/{}  {}: ",
+        global_widget.selection + 1,
+        len(global_widget.view_results),
+        global_widget.prompt_question,
+    )
 
-    prompt_ask_str: string
     font_regular := global_widget.font
     font_bold := fonts_map[.UI_Bold]
     line_height := font_regular.line_height
     left_padding := font_regular.xadvance
     results_pen := Vector2{left_padding, line_height}
 
-    prompt_ask_str = fmt.tprintf(
-        "{}/{}  Switch to: ",
-        global_widget.selection + 1,
-        len(global_widget.view_results),
-    )
+    results_pen.y -= i32(global_widget.y_offset) * line_height
 
     for result, index in global_widget.view_results {
+        if results_pen.y < line_height {
+            results_pen.y += line_height
+            continue
+        }
         if global_widget.selection == index {
             set_color(.ui_selection_background)
             draw_rect(0, results_pen.y, i32(global_widget.rect.w), line_height, true)
@@ -278,7 +409,7 @@ update_and_draw_widget :: proc() {
 
     if global_widget.selection == -1 {
         set_color(.ui_selection_background)
-        draw_rect(0, 0, i32(len(prompt_ask_str)) * left_padding, line_height, true)
+        draw_rect(0, 0, i32(len(prompt_ask_str)) * font_bold.xadvance, line_height, true)
         set_color(.ui_selection_foreground, font_bold.texture)
     } else {
         set_color(.highlight, font_bold.texture)
@@ -304,6 +435,14 @@ update_and_draw_widget :: proc() {
 get_find_buffer_format :: proc(buffer: ^Buffer) -> string {
     result := strings.builder_make(context.temp_allocator)
     strings.write_string(&result, buffer.name)
+    strings.write_byte(&result, '\n')
+    return strings.clone(strings.to_string(result))
+}
+
+get_find_file_format :: proc(file: os.File_Info) -> string {
+    result := strings.builder_make(context.temp_allocator)
+    strings.write_string(&result, file.name)
+    if file.is_dir do strings.write_string(&result, "/")
     strings.write_byte(&result, '\n')
     return strings.clone(strings.to_string(result))
 }

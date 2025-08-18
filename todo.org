@@ -1,0 +1,1 @@
+Mac/Bug: proper handling of left and right alt. Might need to internally rename the modifiers like Emacs does to Ctrl and Meta. Using Meta as the secondary modifier key. Meta would mean Alt for Windows/Linux and Alt for Mac. Also proper handling of the Command key. Check how Emacs handles CMD in Mac.

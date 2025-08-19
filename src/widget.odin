@@ -17,29 +17,30 @@ Widget_Action :: enum {
 }
 
 Widget :: struct {
-    active:              bool,
-    cursor:              Cursor,
-    cursor_showing:      bool,
-    cursor_blink_timer:  time.Tick,
+    active:                bool,
+    cursor:                Cursor,
+    cursor_showing:        bool,
+    cursor_blink_timer:    time.Tick,
 
     // the selected line or -1 if selecting the prompt
-    action:              Widget_Action,
-    selection:           int,
-    all_results:         [dynamic]Widget_Result, // the one to keep
-    view_results:        []Widget_Result, // the one to show, contains the filters
-    prompt:              strings.Builder,
-    prompt_question:     string,
+    action:                Widget_Action,
+    selection:             int,
+    all_results:           [dynamic]Widget_Result, // the one to keep
+    view_results:          []Widget_Result,        // the one to show, filtered and sorted
+    results_need_update:   bool,
+    prompt:                strings.Builder,
+    prompt_question:       string,
 
-    font:                ^Font,
-    texture:             ^Texture,
-    rect:                Rect,
-    y_offset:            int,
+    font:                  ^Font,
+    texture:               ^Texture,
+    rect:                  Rect,
+    y_offset:              int,
 }
 
 Widget_Result :: struct {
-    format:    string,
-    highlight: Range,
-    value:     Widget_Result_Value,
+    format:     string,
+    highlights: [dynamic]Range,
+    value:      Widget_Result_Value,
 }
 
 Widget_Result_Value :: union {
@@ -78,23 +79,20 @@ widget_open_find_buffer :: proc() {
     for buffer in open_buffers {
         if active_pane.buffer == buffer do continue
         append(&global_widget.all_results, Widget_Result{
-            format    = get_find_buffer_format(buffer),
-            highlight = {},
-            value     = buffer,
+            format     = get_find_buffer_format(buffer),
+            value      = buffer,
         })
     }
 
     // prefer most recent edited buffers... (not stable sorting but mostly cosmetic, not really important)
     slice.sort_by(global_widget.all_results[:], proc(a: Widget_Result, b: Widget_Result) -> bool {
-        current_tick := time.tick_now()
         buf1, buf2 := a.value.(^Buffer), b.value.(^Buffer)
-        return time.tick_diff(buf1.last_edit_time, current_tick) < time.tick_diff(buf2.last_edit_time, current_tick)
+        return time.tick_since(buf1.last_edit_time) < time.tick_since(buf2.last_edit_time)
     })
 
     // ...but append the current active buffer last
     append(&global_widget.all_results, Widget_Result{
         format    = get_find_buffer_format(active_pane.buffer),
-        highlight = {},
         value     = active_pane.buffer,
     })
 
@@ -124,7 +122,7 @@ widget_open_find_file :: proc() {
 widget_find_file_open_and_read_dir :: proc(current_dir: string) {
     // cleaning up because it was called from an already existing opened widget
     if len(global_widget.all_results) > 0 {
-        delete(global_widget.view_results)
+        clean_up_view_results()
         for r in global_widget.all_results {
             delete(r.format)
             #partial switch v in r.value {
@@ -154,7 +152,6 @@ widget_find_file_open_and_read_dir :: proc(current_dir: string) {
 
         append(&global_widget.all_results, Widget_Result{
             format    = get_find_file_format(file_info),
-            highlight = {},
             value     = Widget_Result_File{
                 filepath = fullpath,
                 name     = filepath.base(fullpath),
@@ -164,8 +161,41 @@ widget_find_file_open_and_read_dir :: proc(current_dir: string) {
     }
 
     global_widget.view_results = slice.clone(global_widget.all_results[:])
+
+    slice.sort_by_key(global_widget.view_results, proc(key: Widget_Result) -> string {
+        return key.format
+    })
+
     global_widget.cursor.pos = len(global_widget.prompt.buf)
     global_widget.cursor.sel = global_widget.cursor.pos
+}
+
+@(private="file")
+clean_up_view_results :: proc() {
+    for &result in global_widget.view_results {
+        delete(result.highlights)
+    }
+    delete(global_widget.view_results)
+}
+
+@(private="file")
+highlight_view_results :: proc() {
+    query := strings.to_string(global_widget.prompt)
+
+    for &result in global_widget.view_results {
+        test_str := result.format
+        start := strings.index(result.format, query)
+        original_len := len(result.format)
+        query_len := len(query)
+
+        for start != -1 && len(test_str) > query_len {
+            start = original_len - len(test_str) + start
+            end := start + query_len
+            append(&result.highlights, Range{start, end})
+            test_str = result.format[end:]
+            start = strings.index(test_str, query)
+        }
+    }
 }
 
 // NOTE(nawe) a generic procedure to make sure we clean up opened
@@ -196,7 +226,7 @@ widget_close :: proc() {
     }
 
     delete(global_widget.all_results)
-    delete(global_widget.view_results)
+    clean_up_view_results()
 
     strings.builder_destroy(&global_widget.prompt)
     update_all_pane_textures()
@@ -206,6 +236,7 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
     if event.is_text_input {
         inject_at(&global_widget.prompt.buf, global_widget.cursor.pos, ..transmute([]byte)event.text)
         global_widget.cursor.pos += len(event.text)
+        global_widget.results_need_update = true
         return true
     }
 
@@ -215,12 +246,14 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
             end := global_widget.cursor.pos
             remove_range(&global_widget.prompt.buf, start, end)
             global_widget.cursor.pos = start
+            global_widget.results_need_update = true
             return true
         }
         case .K_DELETE: {
             start := global_widget.cursor.pos
             end := min(global_widget.cursor.pos + 1, len(global_widget.prompt.buf))
             remove_range(&global_widget.prompt.buf, start, end)
+            global_widget.results_need_update = true
             return true
         }
     }
@@ -287,8 +320,10 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
                     log.error("can't submit buffer selection without a buffer name")
                     return true
                 }
-                // TODO(nawe) create new named buffer
-                unimplemented()
+                buffer := buffer_get_or_create_empty(strings.to_string(global_widget.prompt))
+                switch_to_buffer(active_pane, buffer)
+                widget_close()
+                return true
             }
         }
     }
@@ -357,6 +392,21 @@ update_and_draw_widget :: proc() {
 
     switch global_widget.action {
     case .Find_Buffer:
+        if global_widget.results_need_update {
+            global_widget.results_need_update = false
+            clean_up_view_results()
+
+            if len(global_widget.prompt.buf) > 0 {
+                global_widget.view_results = slice.filter(global_widget.all_results[:], proc(result: Widget_Result) -> bool {
+                    return strings.contains(result.format, strings.to_string(global_widget.prompt))
+                })
+                highlight_view_results()
+            } else {
+                global_widget.view_results = slice.clone(global_widget.all_results[:])
+            }
+            global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
+        }
+
         if global_widget.selection > -1 {
             item := global_widget.view_results[global_widget.selection]
             buffer := item.value.(^Buffer)
@@ -386,19 +436,25 @@ update_and_draw_widget :: proc() {
 
     results_pen.y -= i32(global_widget.y_offset) * line_height
 
-    for result, index in global_widget.view_results {
+    for &result, index in global_widget.view_results {
+        if results_pen.y > WIDGET_HEIGHT_IN_ROWS * line_height do break
+
         if results_pen.y < line_height {
             results_pen.y += line_height
             continue
         }
-        if global_widget.selection == index {
+
+        is_selected := global_widget.selection == index
+
+        if is_selected {
             set_color(.ui_selection_background)
             draw_rect(0, results_pen.y, i32(global_widget.rect.w), line_height, true)
-            set_color(.ui_selection_foreground, font_regular.texture)
-        } else {
-            set_color(.foreground, font_regular.texture)
         }
-        results_pen = draw_text(font_regular, results_pen, result.format)
+
+        results_pen = draw_highlighted_text(
+            font_regular, font_bold, .foreground, .ui_selection_background, .ui_selection_foreground,
+            results_pen, result.format, result.highlights[:], is_selected,
+        )
     }
 
     prompt_query_str := strings.to_string(global_widget.prompt)
@@ -433,8 +489,18 @@ update_and_draw_widget :: proc() {
 }
 
 get_find_buffer_format :: proc(buffer: ^Buffer) -> string {
+    MAX_NAME_LENGTH :: 24
+    MIN_PADDING     :: 5
+
     result := strings.builder_make(context.temp_allocator)
-    strings.write_string(&result, buffer.name)
+    truncated_name := buffer.name
+
+    if len(buffer.name) > MAX_NAME_LENGTH {
+        truncated_name = fmt.tprintf("{}...", buffer.name[:MAX_NAME_LENGTH - MIN_PADDING])
+    }
+
+    strings.write_string(&result, strings.left_justify(truncated_name, MAX_NAME_LENGTH, " ", context.temp_allocator))
+    strings.write_string(&result, buffer.filepath)
     strings.write_byte(&result, '\n')
     return strings.clone(strings.to_string(result))
 }

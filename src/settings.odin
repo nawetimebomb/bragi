@@ -81,8 +81,8 @@ settings_init :: proc() {
     colorscheme[.region]                            = hex_to_color(0x0a0b62)
 
     colorscheme[.ui_border]                         = hex_to_color(0x373b41)
-    colorscheme[.ui_selection_background]           = hex_to_color(0xd2d2d2)
-    colorscheme[.ui_selection_foreground]           = hex_to_color(0x010101)
+    colorscheme[.ui_selection_background]           = hex_to_color(0x0a0b62)
+    colorscheme[.ui_selection_foreground]           = hex_to_color(0xd2d2d2)
     colorscheme[.ui_line_number_background]         = hex_to_color(0x050505)
     colorscheme[.ui_line_number_foreground]         = hex_to_color(0x373b41)
     colorscheme[.ui_line_number_background_current] = hex_to_color(0x131313)

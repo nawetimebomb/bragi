@@ -77,19 +77,19 @@ Major_Mode_Bragi :: struct {}
 
 Major_Mode_Odin :: struct {}
 
-buffer_get_or_create_empty :: proc() -> ^Buffer {
+buffer_get_or_create_empty :: proc(name: string = "*scratchpad*") -> ^Buffer {
     for buffer in open_buffers {
-        if .Scratch in buffer.flags {
-            log.debug("using existing scratchpad buffer")
+        if buffer.name == name {
+            log.debugf("using existing buffer with name '{}'", name)
             return buffer
         }
     }
 
-    log.debug("creating new scratchpad buffer")
+    log.debugf("creating new buffer with name '{}'", name)
     result := new(Buffer)
     buffer_init(result, {})
-    result.name = "*scratchpad*"
-    flag_buffer(result, {.Scratch})
+    result.name = strings.clone(name)
+    if name == "*scratchpad*" do flag_buffer(result, {.Scratch})
     append(&open_buffers, result)
     return result
 }
@@ -110,7 +110,7 @@ buffer_create_from_file :: proc(fullpath: string, contents: []byte) -> ^Buffer {
     result := new(Buffer)
     buffer_init(result, contents)
     result.filepath = strings.clone(fullpath)
-    result.name = filepath.base(result.filepath)
+    result.name = strings.clone(filepath.base(result.filepath))
     append(&open_buffers, result)
     return result
 }
@@ -153,6 +153,7 @@ buffer_destroy :: proc(buffer: ^Buffer) {
     delete(buffer.pieces)
     delete(buffer.undo)
     delete(buffer.redo)
+    delete(buffer.name)
     if buffer.filepath != "" do delete(buffer.filepath)
     free(buffer)
 }

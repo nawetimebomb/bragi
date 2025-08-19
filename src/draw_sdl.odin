@@ -293,6 +293,56 @@ draw_line :: #force_inline proc(x1, y1, x2, y2: i32) {
     sdl.RenderLine(renderer, f32(x1), f32(y1), f32(x2), f32(y2))
 }
 
+draw_highlighted_text :: proc(
+    regular_font: ^Font, highlight_font: ^Font,
+    regular_face, highlight_bg_face, highlight_fg_face: Face_Color,
+    pen: Vector2, text: string, highlights: []Range, selected := false,
+) -> (pen2: Vector2) {
+    sx, sy := pen.x, pen.y
+
+    is_highlighted :: proc(highlights: []Range, offset: int) -> bool {
+        for h in highlights {
+            if h.start == h.end do continue
+            if offset >= h.start && offset < h.end do return true
+        }
+        return false
+    }
+
+    for r, offset in text {
+        highlighted := is_highlighted(highlights, offset)
+        face := selected ? highlight_fg_face : regular_face
+        font := highlighted ? highlight_font : regular_font
+
+        if r == '\t' {
+            // TODO(nawe) add tab width
+            sx += 4 * font.xadvance
+            continue
+        }
+
+        if r == '\n' {
+            sx = pen.x
+            sy += font.line_height
+            continue
+        }
+
+        set_color(face, font.texture)
+        glyph := find_or_create_glyph(font, r)
+
+        if highlighted && !selected {
+            set_color(highlight_bg_face)
+            draw_rect(sx, sy, glyph.w, glyph.h)
+            set_color(highlight_fg_face, font.texture)
+        }
+
+        src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+        dest := make_rect(sx, sy, glyph.w, glyph.h)
+        draw_texture(font.texture, &src, &dest)
+        sx += glyph.xadvance
+    }
+
+    return {sx, sy}
+}
+
 draw_text :: proc(font: ^Font, pen: Vector2, text: string) -> (pen2: Vector2) {
     sx, sy := pen.x, pen.y
 

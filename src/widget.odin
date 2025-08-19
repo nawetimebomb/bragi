@@ -112,6 +112,17 @@ widget_open_find_file :: proc() {
     }
 
     strings.write_string(&global_widget.prompt, current_dir)
+
+    when ODIN_OS == .Windows {
+        if !strings.ends_with(current_dir, "\\") {
+            strings.write_string(&global_widget.prompt, "\\")
+        }
+    } else {
+        if !strings.ends_with(current_dir, "/") {
+            strings.write_string(&global_widget.prompt, "/")
+        }
+    }
+
     _widget_find_file_open_and_read_dir(current_dir)
 
     global_widget.action = .Find_File

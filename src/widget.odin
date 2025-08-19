@@ -92,8 +92,8 @@ widget_open_find_buffer :: proc() {
 
     // ...but append the current active buffer last
     append(&global_widget.all_results, Widget_Result{
-        format    = get_find_buffer_format(active_pane.buffer),
-        value     = active_pane.buffer,
+        format = get_find_buffer_format(active_pane.buffer),
+        value  = active_pane.buffer,
     })
 
     global_widget.view_results = slice.clone(global_widget.all_results[:])
@@ -160,21 +160,63 @@ widget_find_file_open_and_read_dir :: proc(current_dir: string) {
         })
     }
 
-    global_widget.view_results = slice.clone(global_widget.all_results[:])
-
-    slice.sort_by_key(global_widget.view_results, proc(key: Widget_Result) -> string {
+    slice.sort_by_key(global_widget.all_results[:], proc(key: Widget_Result) -> string {
         return key.format
     })
+
+    global_widget.view_results = slice.clone(global_widget.all_results[:])
 
     global_widget.cursor.pos = len(global_widget.prompt.buf)
     global_widget.cursor.sel = global_widget.cursor.pos
 }
 
 @(private="file")
-clean_up_view_results :: proc() {
-    for &result in global_widget.view_results {
-        delete(result.highlights)
+_get_filtered_all_results_with_current_query :: proc(test_query: string) -> []Widget_Result{
+    profiling_start("filter all results with query")
+    view_results_temp := make([dynamic]Widget_Result, 0, len(global_widget.all_results), context.temp_allocator)
+    queries := strings.split(test_query, " ", context.temp_allocator)
+
+    for item in global_widget.all_results {
+        result := item
+        should_process := true
+
+        for query in queries {
+            if len(query) == 0 do continue
+            if !strings.contains(item.format, query) {
+                should_process = false
+                break
+            }
+        }
+
+        // skip as one of the query components is not present in this result
+        if !should_process do continue
+
+        for query in queries {
+            if len(query) == 0 do continue
+            test_str := item.format
+            start := strings.index(item.format, query)
+            original_len := len(item.format)
+            query_len := len(query)
+
+            for start != -1 && len(test_str) > query_len {
+                start += original_len - len(test_str)
+                end := start + query_len
+                append(&result.highlights, Range{start, end})
+                test_str = item.format[end:]
+                start = strings.index(test_str, query)
+            }
+        }
+
+        if len(result.highlights) > 0 do append(&view_results_temp, result)
     }
+    profiling_end()
+
+    return slice.clone(view_results_temp[:])
+}
+
+@(private="file")
+clean_up_view_results :: #force_inline proc() {
+    for &result in global_widget.view_results do delete(result.highlights)
     delete(global_widget.view_results)
 }
 
@@ -372,56 +414,6 @@ update_and_draw_widget :: proc() {
 
     switch global_widget.action {
     case .Find_Buffer:
-        if global_widget.results_need_update {
-            global_widget.results_need_update = false
-            clean_up_view_results()
-
-            if len(global_widget.prompt.buf) > 0 {
-                profiling_start("buffer search widget")
-                view_results_temp := make([dynamic]Widget_Result, 0, len(global_widget.all_results), context.temp_allocator)
-                queries := strings.split(strings.to_string(global_widget.prompt), " ", context.temp_allocator)
-
-                for item in global_widget.all_results {
-                    result := item
-                    should_process := true
-
-                    for query in queries {
-                        if len(query) == 0 do continue
-                        if !strings.contains(item.format, query) {
-                            should_process = false
-                            break
-                        }
-                    }
-
-                    if !should_process do continue
-
-                    for query in queries {
-                        if len(query) == 0 do continue
-                        test_str := item.format
-                        start := strings.index(item.format, query)
-                        original_len := len(item.format)
-                        query_len := len(query)
-
-                        for start != -1 && len(test_str) > query_len {
-                            start += original_len - len(test_str)
-                            end := start + query_len
-                            append(&result.highlights, Range{start, end})
-                            test_str = item.format[end:]
-                            start = strings.index(test_str, query)
-                        }
-                    }
-
-                    if len(result.highlights) > 0 do append(&view_results_temp, result)
-                }
-
-                global_widget.view_results = slice.clone(view_results_temp[:])
-                profiling_end()
-            } else {
-                global_widget.view_results = slice.clone(global_widget.all_results[:])
-            }
-            global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
-        }
-
         if global_widget.selection > -1 {
             item := global_widget.view_results[global_widget.selection]
             buffer := item.value.(^Buffer)
@@ -430,7 +422,54 @@ update_and_draw_widget :: proc() {
                 switch_to_buffer(active_pane, buffer)
             }
         }
+
+        if global_widget.results_need_update {
+            global_widget.results_need_update = false
+            clean_up_view_results()
+            query := strings.to_string(global_widget.prompt)
+
+            if len(query) > 0 {
+                global_widget.view_results = _get_filtered_all_results_with_current_query(query)
+            } else {
+                global_widget.view_results = slice.clone(global_widget.all_results[:])
+            }
+            global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
+        }
     case .Find_File:
+        if global_widget.results_need_update {
+            global_widget.results_need_update = false
+            query := strings.to_string(global_widget.prompt)
+
+            if len(query) > 0 {
+                current_dir := filepath.dir(query, context.temp_allocator)
+                matches_previous_dir := false
+
+                if len(global_widget.all_results) > 0 {
+                    previous_result_to_test := global_widget.all_results[0]
+                    file_to_test := previous_result_to_test.value.(Widget_Result_File)
+                    previous_dir := filepath.dir(file_to_test.filepath, context.temp_allocator)
+                    matches_previous_dir = current_dir == previous_dir
+                }
+
+                if !matches_previous_dir {
+                    widget_find_file_open_and_read_dir(current_dir)
+                } else {
+                    clean_up_view_results()
+                    // only care about the last part as it is the part shown in the format
+                    _, last_part_of_query := filepath.split(query)
+                    global_widget.view_results = _get_filtered_all_results_with_current_query(last_part_of_query)
+                    global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
+                }
+            } else {
+                clean_up_view_results()
+                if len(global_widget.all_results) > 0 {
+                    global_widget.view_results = slice.clone(global_widget.all_results[:])
+                } else {
+                    strings.write_string(&global_widget.prompt, base_working_dir)
+                    widget_find_file_open_and_read_dir(base_working_dir)
+                }
+            }
+        }
     }
 
     set_target(global_widget.texture)

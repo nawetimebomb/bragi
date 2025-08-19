@@ -178,26 +178,6 @@ clean_up_view_results :: proc() {
     delete(global_widget.view_results)
 }
 
-@(private="file")
-highlight_view_results :: proc() {
-    query := strings.to_string(global_widget.prompt)
-
-    for &result in global_widget.view_results {
-        test_str := result.format
-        start := strings.index(result.format, query)
-        original_len := len(result.format)
-        query_len := len(query)
-
-        for start != -1 && len(test_str) > query_len {
-            start = original_len - len(test_str) + start
-            end := start + query_len
-            append(&result.highlights, Range{start, end})
-            test_str = result.format[end:]
-            start = strings.index(test_str, query)
-        }
-    }
-}
-
 // NOTE(nawe) a generic procedure to make sure we clean up opened
 // widget (if any) and set the defaults again
 @(private="file")
@@ -397,10 +377,45 @@ update_and_draw_widget :: proc() {
             clean_up_view_results()
 
             if len(global_widget.prompt.buf) > 0 {
-                global_widget.view_results = slice.filter(global_widget.all_results[:], proc(result: Widget_Result) -> bool {
-                    return strings.contains(result.format, strings.to_string(global_widget.prompt))
-                })
-                highlight_view_results()
+                profiling_start("buffer search widget")
+                view_results_temp := make([dynamic]Widget_Result, 0, len(global_widget.all_results), context.temp_allocator)
+                queries := strings.split(strings.to_string(global_widget.prompt), " ", context.temp_allocator)
+
+                for item in global_widget.all_results {
+                    result := item
+                    should_process := true
+
+                    for query in queries {
+                        if len(query) == 0 do continue
+                        if !strings.contains(item.format, query) {
+                            should_process = false
+                            break
+                        }
+                    }
+
+                    if !should_process do continue
+
+                    for query in queries {
+                        if len(query) == 0 do continue
+                        test_str := item.format
+                        start := strings.index(item.format, query)
+                        original_len := len(item.format)
+                        query_len := len(query)
+
+                        for start != -1 && len(test_str) > query_len {
+                            start += original_len - len(test_str)
+                            end := start + query_len
+                            append(&result.highlights, Range{start, end})
+                            test_str = item.format[end:]
+                            start = strings.index(test_str, query)
+                        }
+                    }
+
+                    if len(result.highlights) > 0 do append(&view_results_temp, result)
+                }
+
+                global_widget.view_results = slice.clone(view_results_temp[:])
+                profiling_end()
             } else {
                 global_widget.view_results = slice.clone(global_widget.all_results[:])
             }

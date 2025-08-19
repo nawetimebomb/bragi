@@ -71,7 +71,7 @@ update_widget_texture :: proc() {
 }
 
 widget_open_find_buffer :: proc() {
-    widget_open()
+    _widget_open()
 
     global_widget.action = .Find_Buffer
     global_widget.prompt_question = "Switch to"
@@ -100,7 +100,7 @@ widget_open_find_buffer :: proc() {
 }
 
 widget_open_find_file :: proc() {
-    widget_open()
+    _widget_open()
 
     current_dir := base_working_dir
     if active_pane.buffer.filepath != "" {
@@ -112,17 +112,18 @@ widget_open_find_file :: proc() {
     }
 
     strings.write_string(&global_widget.prompt, current_dir)
-    widget_find_file_open_and_read_dir(current_dir)
+    _widget_find_file_open_and_read_dir(current_dir)
 
     global_widget.action = .Find_File
     global_widget.prompt_question = "Find file"
 
 }
 
-widget_find_file_open_and_read_dir :: proc(current_dir: string) {
+@(private="file")
+_widget_find_file_open_and_read_dir :: proc(current_dir: string) {
     // cleaning up because it was called from an already existing opened widget
     if len(global_widget.all_results) > 0 {
-        clean_up_view_results()
+        _clean_up_view_results()
         for r in global_widget.all_results {
             delete(r.format)
             #partial switch v in r.value {
@@ -215,7 +216,7 @@ _get_filtered_all_results_with_current_query :: proc(test_query: string) -> []Wi
 }
 
 @(private="file")
-clean_up_view_results :: #force_inline proc() {
+_clean_up_view_results :: #force_inline proc() {
     for &result in global_widget.view_results do delete(result.highlights)
     delete(global_widget.view_results)
 }
@@ -223,7 +224,7 @@ clean_up_view_results :: #force_inline proc() {
 // NOTE(nawe) a generic procedure to make sure we clean up opened
 // widget (if any) and set the defaults again
 @(private="file")
-widget_open :: proc() {
+_widget_open :: proc() {
     if global_widget.active do widget_close()
 
     global_widget.all_results = make([dynamic]Widget_Result, 0, WIDGET_HEIGHT_IN_ROWS)
@@ -248,7 +249,7 @@ widget_close :: proc() {
     }
 
     delete(global_widget.all_results)
-    clean_up_view_results()
+    _clean_up_view_results()
 
     strings.builder_destroy(&global_widget.prompt)
     update_all_pane_textures()
@@ -372,7 +373,7 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
                     strings.write_string(&global_widget.prompt, current_dir)
                     strings.write_string(&global_widget.prompt, "/")
                     global_widget.selection = -1
-                    widget_find_file_open_and_read_dir(current_dir)
+                    _widget_find_file_open_and_read_dir(current_dir)
                 } else {
                     data, success := os.read_entire_file(file_info.filepath, context.temp_allocator)
                     if !success {
@@ -425,7 +426,7 @@ update_and_draw_widget :: proc() {
 
         if global_widget.results_need_update {
             global_widget.results_need_update = false
-            clean_up_view_results()
+            _clean_up_view_results()
             query := strings.to_string(global_widget.prompt)
 
             if len(query) > 0 {
@@ -439,6 +440,20 @@ update_and_draw_widget :: proc() {
         if global_widget.results_need_update {
             global_widget.results_need_update = false
             query := strings.to_string(global_widget.prompt)
+            query_starting_index := strings.index(query, "/~/")
+
+            if query_starting_index != -1 {
+                query_first_part: string
+
+                when ODIN_OS == .Windows {
+                    query_first_part = base_working_dir
+                } else {
+                    value, found := os.lookup_env("HOME", context.temp_allocator)
+                    query_first_part = found ? value : base_working_dir
+                }
+
+                query = fmt.tprintf("{}/{}", query_first_part, query[query_starting_index + 3:])
+            }
 
             if len(query) > 0 {
                 current_dir := filepath.dir(query, context.temp_allocator)
@@ -452,21 +467,33 @@ update_and_draw_widget :: proc() {
                 }
 
                 if !matches_previous_dir {
-                    widget_find_file_open_and_read_dir(current_dir)
-                } else {
-                    clean_up_view_results()
-                    // only care about the last part as it is the part shown in the format
-                    _, last_part_of_query := filepath.split(query)
-                    global_widget.view_results = _get_filtered_all_results_with_current_query(last_part_of_query)
-                    global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
+                    if os.is_dir(current_dir) {
+                        _widget_find_file_open_and_read_dir(current_dir)
+                    }
                 }
+
+                _clean_up_view_results()
+
+                // only care about the last part as it is the part shown in the format
+                query_replaced, _ := strings.replace_all(query, "\\", "/", context.temp_allocator)
+                last_slash_index := max(strings.last_index_byte(query_replaced, '/'), 0)
+                last_part_of_query := query[last_slash_index + 1:]
+
+                if len(last_part_of_query) > 0 {
+                    global_widget.view_results = _get_filtered_all_results_with_current_query(last_part_of_query)
+                } else {
+                    global_widget.view_results = slice.clone(global_widget.all_results[:])
+                }
+
+                global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
             } else {
-                clean_up_view_results()
+                _clean_up_view_results()
+
                 if len(global_widget.all_results) > 0 {
                     global_widget.view_results = slice.clone(global_widget.all_results[:])
                 } else {
                     strings.write_string(&global_widget.prompt, base_working_dir)
-                    widget_find_file_open_and_read_dir(base_working_dir)
+                    _widget_find_file_open_and_read_dir(base_working_dir)
                 }
             }
         }

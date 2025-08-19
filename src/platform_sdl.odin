@@ -17,6 +17,8 @@ import sdl "vendor:sdl3"
 window: ^sdl.Window
 renderer: ^sdl.Renderer
 
+_ :: filepath
+
 platform_init :: proc() {
     WINDOW_FLAGS  :: sdl.WindowFlags{.RESIZABLE, .HIGH_PIXEL_DENSITY}
 
@@ -85,7 +87,7 @@ platform_init :: proc() {
         )
     }
 
-    if ODIN_OS == .Windows {
+    when ODIN_OS == .Windows {
         base_working_dir = filepath.volume_name(os.get_current_directory())
     } else {
         base_working_dir = strings.clone("/")

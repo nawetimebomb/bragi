@@ -60,7 +60,7 @@ debug_draw :: proc() {
     pen = draw_text(font_regular, pen, pane_info_str)
 
     for cursor, cursor_index in pane.cursors {
-        pen = draw_text(font_bold, pen, fmt.tprintf("-- Cursor {} --\n", cursor_index))
+        pen = draw_text(font_bold, pen, fmt.tprintf("-- Cursor {} --\n", cursor_index + 1))
         current_byte := 0 if cursor.pos >= len(pane.contents.buf) else pane.contents.buf[cursor.pos]
 
         coords := cursor_offset_to_coords(pane, lines, cursor.pos)

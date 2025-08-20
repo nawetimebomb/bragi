@@ -15,6 +15,8 @@ Command :: enum u32 {
 
     toggle_selection_mode,
 
+    clone_cursor_down,
+
     move_start,
     move_end,
     move_left,
@@ -77,7 +79,7 @@ commands_destroy :: proc() {
     delete(modifiers_queue)
 }
 
-map_keystroke_to_command :: proc(key: Key_Code, modifiers: Modifiers_Set) -> Command {
+map_keystroke_to_command :: proc(key: Key_Code, modifiers: Modifiers_Set, loc := #caller_location) -> (Command, string) {
     key_combo := strings.builder_make(context.temp_allocator)
 
     for len(modifiers_queue) > 0 {
@@ -93,21 +95,23 @@ map_keystroke_to_command :: proc(key: Key_Code, modifiers: Modifiers_Set) -> Com
     if .Super   in modifiers do strings.write_string(&key_combo, "Super-")
 
     strings.write_string(&key_combo, input_key_code_to_string(key))
+    cmd_key_combo := strings.to_string(key_combo)
 
-    cmd, ok := commands_map[strings.to_string(key_combo)]
+    cmd, ok := commands_map[cmd_key_combo]
+
     if ok {
-        if cmd == .modifier {
-            strings.write_string(&key_combo, "-")
-            append(&modifiers_queue, strings.clone(strings.to_string(key_combo)))
-            return .modifier
-        } else {
-            return cmd
-        }
+        return cmd, cmd_key_combo
     }
 
-    return .noop
+    return .noop, cmd_key_combo
 }
 
 quit_mode_command :: proc() {
     widget_close()
+
+    if len(active_pane.cursors) > 1 {
+        last_cursor_pos := active_pane.cursors[len(active_pane.cursors) - 1].pos
+        clear(&active_pane.cursors)
+        add_cursor(active_pane, last_cursor_pos)
+    }
 }

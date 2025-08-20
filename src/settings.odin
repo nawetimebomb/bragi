@@ -164,10 +164,10 @@ _settings_setup_emacs_keybindings :: proc() {
     commands_map["Ctrl-G"] = .quit_mode
     commands_map["Ctrl-Space"] = .toggle_selection_mode
 
-    commands_map["Ctrl-X-B"] = .find_buffer
+    commands_map["Ctrl-X-B"]      = .find_buffer
     commands_map["Ctrl-X-Ctrl-B"] = .find_buffer
     commands_map["Ctrl-X-Ctrl-F"] = .find_file
-    commands_map["Ctrl-X-K"] = .close_current_buffer
+    commands_map["Ctrl-X-K"]      = .close_current_buffer
     commands_map["Ctrl-X-Ctrl-S"] = .save_buffer
     commands_map["Ctrl-X-Ctrl-W"] = .save_buffer_as
 
@@ -188,6 +188,8 @@ _settings_setup_emacs_keybindings :: proc() {
     commands_map["Alt-}"]  = .move_next_paragraph
     commands_map["Ctrl-A"] = .move_beginning_of_line
     commands_map["Ctrl-E"] = .move_end_of_line
+
+    commands_map["Alt-N"] = .clone_cursor_down
 }
 
 @(private="file")

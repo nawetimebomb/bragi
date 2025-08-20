@@ -271,7 +271,7 @@ widget_close :: proc() {
     update_all_pane_textures()
 }
 
-widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) {
+widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (handled: bool) {
     if event.is_text_input {
         inject_at(&global_widget.prompt.buf, global_widget.cursor.pos, ..transmute([]byte)event.text)
         global_widget.cursor.pos += len(event.text)
@@ -296,8 +296,6 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
             return true
         }
     }
-
-    cmd := map_keystroke_to_command(event.key_code, event.modifiers)
 
     #partial switch cmd {
         case .move_up: {
@@ -337,14 +335,14 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
     }
 
     switch global_widget.action {
-    case .Find_Buffer: handled = find_buffer_keyboard_event_handler(event)
-    case .Find_File:   handled = find_file_keyboard_event_handler  (event)
+    case .Find_Buffer: handled = find_buffer_keyboard_event_handler(event, cmd)
+    case .Find_File:   handled = find_file_keyboard_event_handler  (event, cmd)
     }
 
     return
 }
 
-find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
+find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
     #partial switch event.key_code {
         case .K_ENTER, .K_TAB: {
             if global_widget.selection > -1 {
@@ -367,8 +365,6 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
         }
     }
 
-    cmd := map_keystroke_to_command(event.key_code, event.modifiers)
-
     #partial switch cmd {
         case .modifier: return true // handled as a modifier which is valid in this context
     }
@@ -376,7 +372,7 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
     return false
 }
 
-find_file_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
+find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
     #partial switch event.key_code {
         case .K_ENTER, .K_TAB: {
             if global_widget.selection > -1 {
@@ -421,7 +417,7 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
 
                         if file_info.name == name_from_fullpath {
                             global_widget.selection = index
-                            return find_file_keyboard_event_handler(event)
+                            return find_file_keyboard_event_handler(event, cmd)
                         }
                     }
 

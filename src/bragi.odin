@@ -2,6 +2,7 @@ package main
 
 import "base:runtime"
 
+import "core:fmt"
 import "core:log"
 import "core:mem"
 import "core:os"
@@ -157,9 +158,30 @@ main :: proc() {
                     }
                 }
 
-                switch {
-                case global_widget.active && !handled:  handled = widget_keyboard_event_handler(v)
-                case !global_widget.active && !handled: handled = edit_mode_keyboard_event_handler(v)
+                cmd: Command = .noop
+                key_combo: string
+
+                if !v.is_text_input && !handled {
+                    cmd, key_combo = map_keystroke_to_command(v.key_code, v.modifiers)
+
+                    #partial switch cmd {
+                        case .modifier: {
+                            append(&modifiers_queue, fmt.aprintf("{}-", key_combo))
+                            handled = true
+                        }
+                        case .quit_mode: {
+                            quit_mode_command()
+                            handled = true
+                        }
+                    }
+                }
+
+                if !handled {
+                    if global_widget.active {
+                        handled = widget_keyboard_event_handler(v, cmd)
+                    } else {
+                        handled = edit_mode_keyboard_event_handler(v, cmd)
+                    }
                 }
 
                 // NOTE(nawe) this event was already handled by the

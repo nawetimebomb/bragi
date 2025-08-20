@@ -139,6 +139,14 @@ buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allo
     append(&buffer.pieces, original_piece)
 }
 
+buffer_index :: proc(buffer: ^Buffer) -> int {
+    for other, index in open_buffers {
+        if other == buffer do return index
+    }
+
+    unreachable()
+}
+
 buffer_destroy :: proc(buffer: ^Buffer) {
     strings.builder_destroy(&buffer.original_source)
     strings.builder_destroy(&buffer.add_source)

@@ -431,7 +431,9 @@ get_modeline_height :: #force_inline proc() -> i32 {
 }
 
 switch_to_buffer :: proc(pane: ^Pane, buffer: ^Buffer) {
-    copy_cursors(pane, pane.buffer)
+    if pane.buffer != nil {
+        copy_cursors(pane, pane.buffer)
+    }
 
     if len(buffer.cursors) > 0 {
         delete(pane.cursors)

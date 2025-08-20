@@ -69,7 +69,9 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
         }
         return true
 
-    case .quit_mode:
+    case .quit_mode: quit_mode_command()
+
+    case .toggle_selection_mode:
 
     case .select_all:
         clear(&pane.cursors)
@@ -114,19 +116,60 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
         move_to(pane, .end_of_line)
         return true
 
+    case .select_start:
+        select_to(pane, .start)
+        return true
+    case .select_end:
+        select_to(pane, .end)
+        return true
     case .select_left:
         select_to(pane, .left)
         return true
     case .select_right:
         select_to(pane, .right)
         return true
+    case .select_down:
+        select_to(pane, .down)
+        return true
+    case .select_up:
+        select_to(pane, .up)
+        return true
+    case .select_prev_word:
+        select_to(pane, .prev_word)
+        return true
+    case .select_next_word:
+        select_to(pane, .next_word)
+        return true
+    case .select_prev_paragraph:
+        select_to(pane, .prev_paragraph)
+        return true
+    case .select_next_paragraph:
+        select_to(pane, .next_paragraph)
+        return true
+    case .select_beginning_of_line:
+        select_to(pane, .beginning_of_line)
+        return true
+    case .select_end_of_line:
+        select_to(pane, .end_of_line)
+        return true
 
     case .find_buffer: widget_open_find_buffer()
     case .find_file:   widget_open_find_file()
 
+    case .close_current_buffer:
+        index := buffer_index(buffer)
+        ordered_remove(&open_buffers, index)
+        buffer_destroy(buffer)
+        active_pane.buffer = nil
+        if len(open_buffers) == 0 {
+            switch_to_buffer(active_pane, buffer_get_or_create_empty())
+        } else {
+            index = clamp(index, 0, len(open_buffers) - 1)
+            switch_to_buffer(active_pane, open_buffers[index])
+        }
+        return true
     case .save_buffer:
     case .save_buffer_as:
-    case .kill_current_buffer:
 
     case .search_backward:
     case .search_forward:

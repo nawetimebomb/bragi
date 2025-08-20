@@ -13,6 +13,8 @@ Command :: enum u32 {
 
     quit_mode, // resets all modes
 
+    toggle_selection_mode,
+
     move_start,
     move_end,
     move_left,
@@ -27,13 +29,23 @@ Command :: enum u32 {
     move_end_of_line,
 
     select_all,
+    select_start,
+    select_end,
     select_left,
     select_right,
+    select_down,
+    select_up,
+    select_prev_word,
+    select_next_word,
+    select_prev_paragraph,
+    select_next_paragraph,
+    select_beginning_of_line,
+    select_end_of_line,
 
     find_buffer,
     find_file,
 
-    kill_current_buffer,
+    close_current_buffer,
     save_buffer,
     save_buffer_as,
 
@@ -58,46 +70,6 @@ Command :: enum u32 {
 
 commands_init :: proc() {
     log.warn("setting default commands, this should be replaced for commands in settings.bragi")
-
-    commands_map["Ctrl-X"]       = .modifier
-    commands_map["Ctrl-X-2"]     = .new_pane_to_the_right
-    commands_map["Ctrl-+"]       = .increase_font_size
-    commands_map["Ctrl--"]       = .decrease_font_size
-    commands_map["Ctrl-0"]       = .reset_font_size
-
-    commands_map["Home"]         = .move_start
-    commands_map["End"]          = .move_end
-    commands_map["Left"]         = .move_left
-    commands_map["Right"]        = .move_right
-    commands_map["Down"]         = .move_down
-    commands_map["Up"]           = .move_up
-    commands_map["Ctrl-Left"]    = .move_prev_word
-    commands_map["Ctrl-Right"]   = .move_next_word
-    commands_map["Ctrl-Up"]      = .move_prev_paragraph
-    commands_map["Ctrl-Down"]    = .move_next_paragraph
-    commands_map["Ctrl-A"]       = .move_beginning_of_line
-    commands_map["Ctrl-E"]       = .move_end_of_line
-
-    commands_map["Ctrl-Shift-A"] = .select_all
-    commands_map["Shift-Left"]   = .select_left
-    commands_map["Shift-Right"]  = .select_right
-
-    commands_map["Alt-B"]        = .find_buffer
-    commands_map["Alt-F"]        = .find_file
-
-    commands_map["Ctrl-W"]       = .kill_current_buffer
-
-    commands_map["Ctrl-3"]       = .new_pane_to_the_right
-
-    commands_map["Ctrl-Z"]       = .undo
-    commands_map["Ctrl-Shift-Z"] = .redo
-
-    commands_map["Ctrl-C"]       = .copy_region
-    commands_map["Ctrl-Shift-C"] = .copy_line
-    // commands_map["Ctrl-X"]       = .cut_region
-    // commands_map["Ctrl-Shift-X"] = .cut_line
-    commands_map["Ctrl-V"]       = .paste
-    commands_map["Ctrl-Shift-V"] = .paste_from_history
 }
 
 commands_destroy :: proc() {

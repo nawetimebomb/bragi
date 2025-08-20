@@ -346,7 +346,7 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard) -> (handled: bool) 
 
 find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
     #partial switch event.key_code {
-        case .K_ENTER: {
+        case .K_ENTER, .K_TAB: {
             if global_widget.selection > -1 {
                 result := global_widget.view_results[global_widget.selection]
                 buffer := result.value.(^Buffer)
@@ -378,7 +378,7 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
 
 find_file_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
     #partial switch event.key_code {
-        case .K_ENTER: {
+        case .K_ENTER, .K_TAB: {
             if global_widget.selection > -1 {
                 result := global_widget.view_results[global_widget.selection]
                 file_info := result.value.(Widget_Result_File)
@@ -484,7 +484,7 @@ update_and_draw_widget :: proc() {
             query := strings.to_string(global_widget.prompt)
             query_starting_index := strings.index(query, "/~/")
 
-            if query_starting_index != -1 {
+            if query_starting_index != -1 || strings.starts_with(query, "~/") {
                 query_first_part: string
 
                 when ODIN_OS == .Windows {

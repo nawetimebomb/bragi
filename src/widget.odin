@@ -144,6 +144,11 @@ _widget_find_file_open_and_read_dir :: proc(current_dir: string) {
         clear(&global_widget.all_results)
     }
 
+    if !os.is_dir(current_dir) {
+        global_widget.view_results = slice.clone(global_widget.all_results[:])
+        return
+    }
+
     dir_handle, dir_open_error := os.open(current_dir)
     if dir_open_error != nil {
         log.fatalf("failed to open directory '{}' with error {}", current_dir, dir_open_error)
@@ -399,7 +404,33 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard) -> bool {
 
                 return true
             } else {
-                unimplemented()
+                fullpath := strings.to_string(global_widget.prompt)
+                _, name_from_fullpath := filepath.split(fullpath)
+
+                if len(fullpath) == 0 || len(name_from_fullpath) == 0 {
+                    log.errorf("cannot create empty file")
+                    return true
+                } else {
+                    // if the prompt is a file that is being viewed
+                    // but is not selected, search it, select it and
+                    // resubmit the event.
+                    log.debug(name_from_fullpath)
+
+                    for result, index in global_widget.view_results {
+                        file_info := result.value.(Widget_Result_File)
+
+                        if file_info.name == name_from_fullpath {
+                            global_widget.selection = index
+                            return find_file_keyboard_event_handler(event)
+                        }
+                    }
+
+                    // if it wasn't, create the buffer for the new file.
+                    buffer := buffer_get_or_create_from_file(fullpath, {})
+                    switch_to_buffer(active_pane, buffer)
+                    widget_close()
+                    return true
+                }
             }
         }
     }
@@ -464,6 +495,8 @@ update_and_draw_widget :: proc() {
                 }
 
                 query = fmt.tprintf("{}/{}", query_first_part, query[query_starting_index + 3:])
+                strings.builder_reset(&global_widget.prompt)
+                strings.write_string(&global_widget.prompt, query)
             }
 
             if len(query) > 0 {
@@ -478,9 +511,7 @@ update_and_draw_widget :: proc() {
                 }
 
                 if !matches_previous_dir {
-                    if os.is_dir(current_dir) {
-                        _widget_find_file_open_and_read_dir(current_dir)
-                    }
+                    _widget_find_file_open_and_read_dir(current_dir)
                 }
 
                 _clean_up_view_results()

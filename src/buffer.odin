@@ -102,10 +102,6 @@ buffer_get_or_create_from_file :: proc(fullpath: string, contents: []byte) -> ^B
         }
     }
 
-    return buffer_create_from_file(fullpath, contents)
-}
-
-buffer_create_from_file :: proc(fullpath: string, contents: []byte) -> ^Buffer {
     log.debugf("creating buffer for file '{}'", fullpath)
     result := new(Buffer)
     buffer_init(result, contents)

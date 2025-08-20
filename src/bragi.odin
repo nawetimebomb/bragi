@@ -124,7 +124,7 @@ main :: proc() {
                 }
 
                 if !found {
-                    buffer := buffer_create_from_file(v.filepath, v.data)
+                    buffer := buffer_get_or_create_from_file(v.filepath, v.data)
                     switch_to_buffer(active_pane, buffer)
                 }
 

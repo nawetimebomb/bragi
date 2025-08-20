@@ -40,7 +40,7 @@ platform_init :: proc() {
 
     when ODIN_DEBUG {
         sdl.SetLogPriorities(.ERROR)
-        sdl.SetLogOutputFunction(platform_sdl_debug_log, nil)
+        sdl.SetLogOutputFunction(_platform_sdl_debug_log, nil)
     }
 
     log.debug("initializing SDL")
@@ -106,7 +106,7 @@ platform_destroy :: proc() {
 }
 
 @(private="file")
-platform_sdl_debug_log :: proc "c" (
+_platform_sdl_debug_log :: proc "c" (
     userdata: rawptr, category: sdl.LogCategory,
     priority: sdl.LogPriority, message: cstring,
 ) {

@@ -169,7 +169,7 @@ buffer_save :: proc(buffer: ^Buffer) {
         strings.write_string(&buffer.text_content, temp_str)
     }
 
-    unflag_buffer(buffer, {.Modified})
+    unflag_buffer(buffer, {.CRLF, .Modified})
 
     if !os.exists(buffer.filepath) {
         // since the file doesn't exists, we might need to also make the directory

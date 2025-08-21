@@ -46,7 +46,7 @@ debug_draw :: proc() {
     pen = draw_text(font_bold, pen, "Current Buffer\n")
     buffer_info_str := fmt.tprintf(
         "Name: {}\nLength: {}\nPieces: {}\nLines: {}\n",
-        pane.buffer.name, len(pane.contents.buf), len(pane.buffer.pieces),
+        pane.buffer.name, len(pane.contents), len(pane.buffer.pieces),
         len(pane.line_starts),
     )
     pen = draw_text(font_regular, pen, buffer_info_str)
@@ -61,7 +61,7 @@ debug_draw :: proc() {
 
     for cursor, cursor_index in pane.cursors {
         pen = draw_text(font_bold, pen, fmt.tprintf("-- Cursor {} --\n", cursor_index + 1))
-        current_byte := 0 if cursor.pos >= len(pane.contents.buf) else pane.contents.buf[cursor.pos]
+        current_byte := 0 if cursor.pos >= len(pane.contents) else pane.contents[cursor.pos]
 
         coords := cursor_offset_to_coords(pane, lines, cursor.pos)
         cursor_pos_str := fmt.tprintf(

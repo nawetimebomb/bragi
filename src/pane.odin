@@ -1,9 +1,9 @@
 package main
 
+import "core:encoding/uuid"
 import "core:fmt"
 import "core:log"
 import "core:slice"
-import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
 
@@ -33,6 +33,7 @@ Translation :: enum u16 {
 }
 
 Pane :: struct {
+    uuid:                uuid.Identifier,
     cursors:             [dynamic]Cursor,
     cursor_selecting:    bool,
     cursor_showing:      bool,
@@ -40,7 +41,7 @@ Pane :: struct {
     cursor_blink_timer:  time.Tick,
 
     buffer:              ^Buffer,
-    contents:            strings.Builder,
+    contents:            string,
     line_starts:         [dynamic]int,
     wrapped_line_starts: [dynamic]int,
     local_font_size:     i32,
@@ -84,6 +85,7 @@ pane_create :: proc(buffer: ^Buffer = nil) -> ^Pane {
     log.debug("creating new pane")
     result := new(Pane)
 
+    result.uuid = uuid.generate_v6()
     result.cursor_showing = true
     result.cursor_blink_count = 0
     result.cursor_blink_timer = time.tick_now()
@@ -104,7 +106,6 @@ pane_create :: proc(buffer: ^Buffer = nil) -> ^Pane {
 
 pane_destroy :: proc(pane: ^Pane) {
     pane.buffer = nil
-    strings.builder_destroy(&pane.contents)
     delete(pane.cursors)
     delete(pane.line_starts)
     delete(pane.wrapped_line_starts)
@@ -326,8 +327,8 @@ prepare_cursor_for_drawing :: #force_inline proc(
     pen.y += i32(coords.row - pane.y_offset) * font.character_height
     rune_behind_cursor = ' '
 
-    if cursor.pos < len(pane.contents.buf) {
-        rune_behind_cursor = utf8.rune_at(strings.to_string(pane.contents), cursor.pos)
+    if cursor.pos < len(pane.contents) {
+        rune_behind_cursor = utf8.rune_at(pane.contents, cursor.pos)
     }
 
     return false, pen, rune_behind_cursor
@@ -343,7 +344,7 @@ is_within_viewport :: #force_inline proc(pane: ^Pane, coords: Coords) -> bool {
 cursor_offset_to_coords :: #force_inline proc(pane: ^Pane, lines: []int, offset: int) -> (result: Coords) {
     result.row = get_line_index(offset, lines)
     start, end := get_line_boundaries(result.row, lines)
-    buf := pane.contents.buf[start:end]
+    buf := pane.contents[start:end]
     index := 0
 
     for index < offset - start {
@@ -358,7 +359,7 @@ cursor_offset_to_coords :: #force_inline proc(pane: ^Pane, lines: []int, offset:
 cursor_coords_to_offset :: #force_inline proc(pane: ^Pane, lines: []int, coords: Coords) -> (offset: int) {
     offset = lines[coords.row]
     column := coords.column
-    buf := pane.contents.buf
+    buf := pane.contents
 
     for column > 0 {
         column -= 1
@@ -381,15 +382,13 @@ get_line_index :: #force_inline proc(offset: int, lines: []int) -> (line_index: 
 }
 
 get_line_text :: #force_inline proc(pane: ^Pane, line_index: int, lines: []int) -> (result: string) {
-    result = strings.to_string(pane.contents)
     start, end := get_line_boundaries(line_index, lines)
-    return result[start:end]
+    return pane.contents[start:end]
 }
 
 get_line_text_until_offset :: #force_inline proc(pane: ^Pane, line_index: int, lines: []int, offset: int) -> string {
-    result := strings.to_string(pane.contents)
     start, _ := get_line_boundaries(line_index, lines)
-    return result[start:offset]
+    return pane.contents[start:offset]
 }
 
 get_line_boundaries :: #force_inline proc(line_index: int, lines: []int) -> (start, end: int) {
@@ -418,7 +417,7 @@ sorted_cursor :: #force_inline proc(cursor: Cursor) -> (low, high: int) {
 }
 
 is_pane_focused :: proc(pane: ^Pane) -> bool {
-    return !global_widget.active && active_pane == pane
+    return !global_widget.active && active_pane.uuid == pane.uuid
 }
 
 get_gutter_size :: proc(pane: ^Pane) -> (gutter_size: i32) {
@@ -465,7 +464,7 @@ translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := 
         return is_space(b) || b == '_'
     }
 
-    buf := strings.to_string(pane.contents)
+    buf := pane.contents
     result = clamp(pos, 0, len(buf))
     lines := get_lines_array(pane)
 

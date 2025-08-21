@@ -195,7 +195,13 @@ _settings_setup_emacs_keybindings :: proc() {
     commands_map["Ctrl-D"] = .remove_right
     commands_map["Ctrl-K"] = .cut_line
 
-    commands_map["Ctrl-Shift-Tab"] = .prev_cursor
+    commands_map["Ctrl-X-3"] = .new_pane_to_the_right
+    commands_map["Alt-O"]    = .other_pane
+    commands_map["Ctrl-X-O"] = .other_pane
+    commands_map["Ctrl-X-0"] = .close_this_pane
+    commands_map["Ctrl-X-1"] = .close_other_panes
+
+    commands_map["Ctrl-LeftTab"] = .prev_cursor
     commands_map["Ctrl-Tab"]       = .next_cursor
     commands_map["Ctrl-Shift-A"]   = .all_cursors
 

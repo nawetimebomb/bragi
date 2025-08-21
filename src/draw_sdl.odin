@@ -135,7 +135,7 @@ draw_gutter :: proc(pane: ^Pane) {
     draw_gutter_extension :: proc(pane: ^Pane, font: ^Font, pen: Vector2, line_number: int, lines: []int) {
         left_indicator, right_indicator := get_gutter_indicators(font)
         start, end := get_line_boundaries(line_number, lines)
-        text := string(pane.contents.buf[start:end])
+        text := pane.contents[start:end]
         count := utf8.rune_count_in_string(text)
 
         set_color(.ui_line_number_foreground_current, font.texture)

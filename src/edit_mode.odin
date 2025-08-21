@@ -1,5 +1,6 @@
 package main
 
+import "core:encoding/uuid"
 import "core:log"
 import "core:slice"
 
@@ -197,7 +198,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
 
     case .select_all:
         clear(&pane.cursors)
-        add_cursor(pane, len(pane.contents.buf))
+        add_cursor(pane, len(pane.contents))
         pane.cursors[0].pos = 0
         return true
     case .select_start:
@@ -262,19 +263,69 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         }
         return true
     case .save_buffer:
+
     case .save_buffer_as:
 
     case .search_backward:
     case .search_forward:
 
-    case .delete_this_pane:
-    case .delete_other_pane:
+    case .close_this_pane:
+        if len(open_panes) == 1 do return true
+        pane_index_to_close := -1
+        for other, index in open_panes {
+            if active_pane.uuid == other.uuid {
+                pane_index_to_close = index
+                break
+            }
+        }
+        new_pane_index := pane_index_to_close < len(open_panes) - 1 ? pane_index_to_close + 1 : 0
+        old_pane := active_pane
+        active_pane = open_panes[new_pane_index]
+        ordered_remove(&open_panes, pane_index_to_close)
+        pane_destroy(old_pane)
+        update_all_pane_textures()
+        return true
+    case .close_other_panes:
+        if len(open_panes) == 1 do return true
+        ids_to_remove := make([dynamic]uuid.Identifier, 0, len(open_panes), context.temp_allocator)
+        for other in open_panes {
+            if active_pane.uuid != other.uuid do append(&ids_to_remove, other.uuid)
+        }
+        for len(ids_to_remove) > 0 {
+            pane_id := pop(&ids_to_remove)
+
+            for other, index in open_panes {
+                if other.uuid == pane_id {
+                    unordered_remove(&open_panes, index)
+                    pane_destroy(other)
+                    break
+                }
+            }
+        }
+
+        update_all_pane_textures()
+        return true
     case .new_pane_to_the_right:
         result := pane_create()
         switch_to_buffer(result, buffer)
         active_pane = result
         return true
     case .other_pane:
+        if len(open_panes) == 1 do return true
+        other_pane_index := -1
+        for other, index in open_panes {
+            if active_pane.uuid == other.uuid {
+                other_pane_index = index
+                break
+            }
+        }
+        other_pane_index = other_pane_index < len(open_panes) - 1 ? other_pane_index + 1 : 0
+        old_pane := active_pane
+        active_pane = open_panes[other_pane_index]
+        // repaiting the old pane and the new pane
+        flag_pane(old_pane, {.Need_Full_Repaint})
+        flag_pane(active_pane, {.Need_Full_Repaint})
+        return true
 
     case .undo:
         copy_cursors(pane, buffer)
@@ -345,7 +396,7 @@ clone_to :: proc(pane: ^Pane, t: Translation) {
         case .end_of_line: unimplemented()
         case .up:
             cursor_to_clone: Cursor
-            lo_pos := len(pane.contents.buf)
+            lo_pos := len(pane.contents)
 
             for cursor in pane.cursors {
                 lo_pos = min(lo_pos, cursor.pos)

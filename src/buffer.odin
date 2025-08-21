@@ -2,6 +2,7 @@ package main
 
 import "base:runtime"
 
+import "core:encoding/uuid"
 import "core:log"
 import "core:mem"
 import "core:path/filepath"
@@ -28,6 +29,7 @@ Source_Buffer :: enum {
 
 Buffer :: struct {
     allocator:        runtime.Allocator,
+    uuid:             uuid.Identifier,
 
     // NOTE(nawe) this cursor array should ALWAYS be a view to the
     // pane cursors array, hence there's no allocation happening. This
@@ -113,6 +115,7 @@ buffer_get_or_create_from_file :: proc(fullpath: string, contents: []byte) -> ^B
 
 buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allocator) {
     buffer.allocator = allocator
+    buffer.uuid = uuid.generate_v6()
     buffer.original_source = strings.builder_make_len_cap(0, len(contents))
     buffer.add_source = strings.builder_make()
     buffer.history_enabled = true
@@ -141,7 +144,7 @@ buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allo
 
 buffer_index :: proc(buffer: ^Buffer) -> int {
     for other, index in open_buffers {
-        if other == buffer do return index
+        if buffer.uuid == other.uuid do return index
     }
 
     unreachable()
@@ -168,7 +171,7 @@ update_opened_buffers :: proc() {
         is_active_in_panes := false
 
         for pane in open_panes {
-            if pane.buffer == buffer {
+            if pane.buffer.uuid == buffer.uuid {
                 is_active_in_panes = true
                 break
             }
@@ -183,7 +186,6 @@ update_opened_buffers :: proc() {
             lines_array := make([dynamic]int, context.temp_allocator)
 
             for piece in buffer.pieces {
-
                 start, end := piece.start, piece.start + piece.length
 
                 switch piece.source {
@@ -204,8 +206,7 @@ update_opened_buffers :: proc() {
             for pane in open_panes {
                 if pane.buffer != buffer do continue
                 delete(pane.line_starts)
-                strings.builder_reset(&pane.contents)
-                strings.write_string(&pane.contents, strings.to_string(buffer.text_content))
+                pane.contents = strings.to_string(buffer.text_content)
                 pane.line_starts = slice.clone_to_dynamic(lines_array[:])
                 if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
                 flag_pane(pane, {.Need_Full_Repaint})

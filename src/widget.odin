@@ -77,7 +77,7 @@ widget_open_find_buffer :: proc() {
     global_widget.prompt_question = "Switch to"
 
     for buffer in open_buffers {
-        if active_pane.buffer == buffer do continue
+        if active_pane.buffer.uuid == buffer.uuid do continue
         append(&global_widget.all_results, Widget_Result{
             format     = get_find_buffer_format(buffer),
             value      = buffer,

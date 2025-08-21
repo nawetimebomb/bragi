@@ -75,8 +75,8 @@ Command :: enum u32 {
     search_backward,
     search_forward,
 
-    delete_this_pane,
-    delete_other_pane,
+    close_this_pane,
+    close_other_panes,
     new_pane_to_the_right,
     other_pane,
 

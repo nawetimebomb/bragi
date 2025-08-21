@@ -14,6 +14,7 @@ WIDGET_HEIGHT_IN_ROWS :: 15
 Widget_Action :: enum {
     Find_Buffer,
     Find_File,
+    Save_File_As,
 }
 
 Widget :: struct {
@@ -30,6 +31,7 @@ Widget :: struct {
     results_need_update:   bool,
     prompt:                strings.Builder,
     prompt_question:       string,
+    ask_for_confirmation:  bool,
 
     font:                  ^Font,
     texture:               ^Texture,
@@ -127,7 +129,15 @@ widget_open_find_file :: proc() {
 
     global_widget.action = .Find_File
     global_widget.prompt_question = "Find file"
+}
 
+widget_open_save_file_as :: proc() {
+    // this is like find file, but with a different prompt and a
+    // different submit functionality. This will basically set the
+    // current buffer's filepath to whatever the user selects.
+    widget_open_find_file()
+    global_widget.action = .Save_File_As
+    global_widget.prompt_question = "Save file as"
 }
 
 @(private="file")
@@ -247,6 +257,7 @@ _widget_open :: proc() {
     global_widget.cursor = {}
     global_widget.selection = -1
     global_widget.active = true
+    global_widget.ask_for_confirmation = false
     flag_pane(active_pane, {.Need_Full_Repaint})
 }
 
@@ -279,9 +290,26 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (h
         return true
     }
 
+    word_separation_bytes := [?]byte{'\\', '/', '_', ' '}
+    query := strings.to_string(global_widget.prompt)
+
+    if global_widget.ask_for_confirmation && event.key_code != .K_ENTER {
+        global_widget.ask_for_confirmation = false
+    }
+
+    // TODO(nawe) should use the translate_position here instead (or
+    // make a single-line version of it). The fact that I'm
+    // duplicating the code it makes it difficult to address and
+    // maintain.
     #partial switch event.key_code {
         case .K_BACKSPACE: {
             start := max(global_widget.cursor.pos - 1, 0)
+
+            if .Ctrl in event.modifiers || .Alt in event.modifiers {
+                for start > 0 && slice.contains(word_separation_bytes[:], query[start-1]) do start -= 1
+                for start > 0 && !slice.contains(word_separation_bytes[:], query[start-1]) do start -= 1
+            }
+
             end := global_widget.cursor.pos
             remove_range(&global_widget.prompt.buf, start, end)
             global_widget.cursor.pos = start
@@ -290,7 +318,12 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (h
         }
         case .K_DELETE: {
             start := global_widget.cursor.pos
-            end := min(global_widget.cursor.pos + 1, len(global_widget.prompt.buf))
+            end := min(global_widget.cursor.pos + 1, len(query))
+
+            if .Ctrl in event.modifiers || .Alt in event.modifiers {
+                end = len(query)
+            }
+
             remove_range(&global_widget.prompt.buf, start, end)
             global_widget.results_need_update = true
             return true
@@ -335,8 +368,9 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (h
     }
 
     switch global_widget.action {
-    case .Find_Buffer: handled = find_buffer_keyboard_event_handler(event, cmd)
-    case .Find_File:   handled = find_file_keyboard_event_handler  (event, cmd)
+    case .Find_Buffer:  handled = find_buffer_keyboard_event_handler (event, cmd)
+    case .Find_File:    handled = find_file_keyboard_event_handler   (event, cmd)
+    case .Save_File_As: handled = save_file_as_keyboard_event_handler(event, cmd)
     }
 
     return
@@ -410,16 +444,15 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
                     // if the prompt is a file that is being viewed
                     // but is not selected, search it, select it and
                     // resubmit the event.
-                    log.debug(name_from_fullpath)
-
                     for result, index in global_widget.view_results {
                         file_info := result.value.(Widget_Result_File)
 
-                        if file_info.name == name_from_fullpath {
+                        if file_info.filepath == fullpath {
                             global_widget.selection = index
                             return find_file_keyboard_event_handler(event, cmd)
                         }
                     }
+
 
                     // if it wasn't, create the buffer for the new file.
                     buffer := buffer_get_or_create_from_file(fullpath, {})
@@ -427,6 +460,75 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
                     widget_close()
                     return true
                 }
+            }
+        }
+    }
+
+    return false
+}
+
+save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
+    do_save_buffer_stuff :: proc(new_fullpath: string) {
+        delete(active_pane.buffer.filepath)
+        delete(active_pane.buffer.name)
+        active_pane.buffer.filepath = strings.clone(new_fullpath)
+        active_pane.buffer.name = strings.clone(filepath.base(new_fullpath))
+        buffer_save(active_pane.buffer)
+        widget_close()
+    }
+
+    #partial switch event.key_code {
+        case .K_ENTER, .K_TAB: {
+            new_fullpath := strings.to_string(global_widget.prompt)
+
+            if global_widget.ask_for_confirmation && event.key_code == .K_ENTER {
+                do_save_buffer_stuff(new_fullpath)
+                return true
+            }
+
+            if global_widget.selection > -1 {
+                result := global_widget.view_results[global_widget.selection]
+                file_info := result.value.(Widget_Result_File)
+
+                if file_info.is_dir {
+                    current_dir := filepath.clean(file_info.filepath, context.temp_allocator)
+                    strings.builder_reset(&global_widget.prompt)
+                    strings.write_string(&global_widget.prompt, current_dir)
+                    strings.write_string(&global_widget.prompt, "/")
+                    global_widget.selection = -1
+                    _widget_find_file_open_and_read_dir(current_dir)
+                } else {
+                    strings.builder_reset(&global_widget.prompt)
+                    strings.write_string(&global_widget.prompt, file_info.filepath)
+                    global_widget.cursor.pos = len(global_widget.prompt.buf)
+                    global_widget.cursor.sel = len(global_widget.prompt.buf)
+                    global_widget.selection = -1
+                    global_widget.ask_for_confirmation = true
+                }
+
+                return true
+            } else {
+                _, name_from_fullpath := filepath.split(new_fullpath)
+
+                if len(new_fullpath) == 0 || len(name_from_fullpath) == 0 {
+                    log.errorf("cannot create empty file")
+                    return true
+                } else {
+                    // if the prompt already exists in the results, select
+                    // it and resubmit the event
+                    for result, index in global_widget.view_results {
+                        file_info := result.value.(Widget_Result_File)
+
+                        if file_info.filepath == new_fullpath {
+                            global_widget.selection = index
+                            return save_file_as_keyboard_event_handler(event, cmd)
+                        }
+                    }
+
+                    do_save_buffer_stuff(new_fullpath)
+                }
+
+                return true
             }
         }
     }
@@ -474,7 +576,7 @@ update_and_draw_widget :: proc() {
             }
             global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
         }
-    case .Find_File:
+    case .Find_File, .Save_File_As:
         if global_widget.results_need_update {
             global_widget.results_need_update = false
             query := strings.to_string(global_widget.prompt)
@@ -513,7 +615,7 @@ update_and_draw_widget :: proc() {
                 _clean_up_view_results()
 
                 // only care about the last part as it is the part shown in the format
-                query_replaced, _ := strings.replace_all(query, "\\", "/", context.temp_allocator)
+                query_replaced, _ := filepath.to_slash(query, context.temp_allocator)
                 last_slash_index := max(strings.last_index_byte(query_replaced, '/'), 0)
                 last_part_of_query := query[last_slash_index + 1:]
 
@@ -582,26 +684,39 @@ update_and_draw_widget :: proc() {
     draw_line(0, 0, i32(global_widget.rect.w), 0)
     draw_line(0, line_height, i32(global_widget.rect.w), line_height)
 
-    if global_widget.selection == -1 {
-        set_color(.ui_selection_background)
-        draw_rect(0, 0, i32(len(prompt_ask_str)) * font_bold.xadvance, line_height, true)
-        set_color(.ui_selection_foreground, font_bold.texture)
+    if global_widget.ask_for_confirmation {
+        question: string
+
+        switch global_widget.action {
+        case .Find_Buffer:
+        case .Find_File:
+        case .Save_File_As: question = fmt.tprintf("Overwrite: {}? ", prompt_query_str)
+        }
+
+        set_colors(.highlight, {font_bold.texture, font_regular.texture})
+        prompt_pen := draw_text(font_bold, {left_padding, 0}, question)
+        draw_text(font_regular, prompt_pen, "<ENTER>")
     } else {
-        set_color(.highlight, font_bold.texture)
+        if global_widget.selection == -1 {
+            set_color(.ui_selection_background)
+            draw_rect(0, 0, i32(len(prompt_ask_str)) * font_bold.xadvance, line_height, true)
+            set_color(.ui_selection_foreground, font_bold.texture)
+        } else {
+            set_color(.highlight, font_bold.texture)
+        }
+
+        set_color(.foreground, font_regular.texture)
+        prompt_ask_pen := draw_text(font_bold, {left_padding, 0}, prompt_ask_str)
+        draw_text(font_regular, prompt_ask_pen, prompt_query_str)
+
+        cursor_pen := prompt_ask_pen
+        cursor_pen.x += prepare_text(font_regular, prompt_query_str[:global_widget.cursor.pos])
+        rune_behind_cursor := ' '
+        if global_widget.cursor.pos < len(prompt_query_str) {
+            rune_behind_cursor = utf8.rune_at(prompt_query_str, global_widget.cursor.pos)
+        }
+        draw_cursor(font_regular, cursor_pen, rune_behind_cursor, global_widget.cursor_showing, true, true)
     }
-
-    set_color(.foreground, font_regular.texture)
-    prompt_ask_pen := draw_text(font_bold, {left_padding, 0}, prompt_ask_str)
-    draw_text(font_regular, prompt_ask_pen, prompt_query_str)
-
-    cursor_pen := prompt_ask_pen
-    cursor_pen.x += prepare_text(font_regular, prompt_query_str[:global_widget.cursor.pos])
-    rune_behind_cursor := ' '
-    if global_widget.cursor.pos < len(prompt_query_str) {
-        rune_behind_cursor = utf8.rune_at(prompt_query_str, global_widget.cursor.pos)
-    }
-    draw_cursor(font_regular, cursor_pen, rune_behind_cursor, global_widget.cursor_showing, true, true)
-
 
     set_target()
     draw_texture(global_widget.texture, nil, &global_widget.rect)

@@ -174,17 +174,10 @@ buffer_save :: proc(buffer: ^Buffer) {
     if !os.exists(buffer.filepath) {
         // since the file doesn't exists, we might need to also make the directory
         expected_dir := filepath.dir(buffer.filepath, context.temp_allocator)
-        if !os.exists(expected_dir) {
-            error := os.make_directory(expected_dir)
+        error := _maybe_make_directories_recursive(expected_dir)
 
-            if error != nil {
-                log.fatalf("could not create directory '{}' for buffer '{}' due to {}", expected_dir, buffer.name, error)
-                return
-            }
-        }
-
-        if !os.is_dir(expected_dir) {
-            log.fatalf("the path to directory in buffer '{}' is not an actual directory '{}'", buffer.name, buffer.filepath)
+        if error != nil {
+            log.fatalf("could not make directories for buffer '{}' at {} with error {}", buffer.name, buffer.filepath, error)
             return
         }
     }
@@ -196,6 +189,17 @@ buffer_save :: proc(buffer: ^Buffer) {
     }
 
     log.debugf("wrote {}", buffer.filepath)
+}
+
+@(private="file")
+_maybe_make_directories_recursive :: proc(check_dir: string) -> os.Error {
+    if !os.exists(check_dir) {
+        _maybe_make_directories_recursive(filepath.dir(check_dir, context.temp_allocator))
+        error := os.make_directory(check_dir)
+        return error
+    }
+
+    return nil
 }
 
 buffer_destroy :: proc(buffer: ^Buffer) {

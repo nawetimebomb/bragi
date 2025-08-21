@@ -5,6 +5,7 @@ import "base:runtime"
 import "core:encoding/uuid"
 import "core:log"
 import "core:mem"
+import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
@@ -148,6 +149,53 @@ buffer_index :: proc(buffer: ^Buffer) -> int {
     }
 
     unreachable()
+}
+
+buffer_save :: proc(buffer: ^Buffer) {
+    if .Modified not_in buffer.flags {
+        log.debug("no changes need to be saved")
+        return
+    }
+
+    // ensure file ends in newline to be POSIX compliant
+    temp_builder := strings.builder_make(context.temp_allocator)
+    buffer_len := len(buffer.text_content.buf)
+    buf := buffer.text_content.buf
+    if buf[buffer_len - 1] != '\n' do strings.write_byte(&temp_builder, '\n')
+
+    if len(temp_builder.buf) > 0 {
+        temp_str := strings.to_string(temp_builder)
+        insert_at(buffer, buffer_len, temp_str)
+        strings.write_string(&buffer.text_content, temp_str)
+    }
+
+    unflag_buffer(buffer, {.Modified})
+
+    if !os.exists(buffer.filepath) {
+        // since the file doesn't exists, we might need to also make the directory
+        expected_dir := filepath.dir(buffer.filepath, context.temp_allocator)
+        if !os.exists(expected_dir) {
+            error := os.make_directory(expected_dir)
+
+            if error != nil {
+                log.fatalf("could not create directory '{}' for buffer '{}' due to {}", expected_dir, buffer.name, error)
+                return
+            }
+        }
+
+        if !os.is_dir(expected_dir) {
+            log.fatalf("the path to directory in buffer '{}' is not an actual directory '{}'", buffer.name, buffer.filepath)
+            return
+        }
+    }
+
+    error := os.write_entire_file_or_err(buffer.filepath, buffer.text_content.buf[:])
+    if error != nil {
+        log.fatalf("could not save buffer '{}' at {} due to {}", buffer.name, buffer.filepath, error)
+        return
+    }
+
+    log.debugf("wrote {}", buffer.filepath)
 }
 
 buffer_destroy :: proc(buffer: ^Buffer) {

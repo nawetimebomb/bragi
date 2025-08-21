@@ -263,8 +263,17 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         }
         return true
     case .save_buffer:
+        if buffer.filepath == "" {
+            // TODO(nawe) should open the file selector to allow and select the file
+            unimplemented()
+        } else {
+            buffer_save(buffer)
+        }
+
+        return true
 
     case .save_buffer_as:
+        unimplemented()
 
     case .search_backward:
     case .search_forward:

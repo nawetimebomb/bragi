@@ -189,7 +189,20 @@ draw_gutter :: proc(pane: ^Pane) {
                 len(size_test_str) + GUTTER_LINE_NUMBER_JUSTIFY,
                 " ", context.temp_allocator,
             )
-            draw_text(font, pen, line_number_str)
+
+            // hiding the line number if it's the last line and it's
+            // empty, like Emacs does. Because we're POSIX-compliant,
+            // Bragi adds an empty line feed if the user hasn't done
+            // it, and it's a good idea to not show the number to not
+            // confuse the user. It will start showing if the line has
+            // any text in it.
+            show_line_number := true
+            if line_number == last_line -1 {
+                line_text := get_line_text(pane, line_number, buffer_lines)
+                show_line_number = len(line_text) > 0
+            }
+
+            if show_line_number do draw_text(font, pen, line_number_str)
             draw_gutter_extension(pane, font, pen, line_number, buffer_lines)
             pen.y += regular_character_height - y_offset_for_centering
         }

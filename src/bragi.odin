@@ -14,14 +14,16 @@ AUTHOR  :: "Nahuel J. Sacchetti"
 URL     :: "https://github.com/nawetimebomb/bragi"
 VERSION :: "0.01"
 
+RUN_TREE_DIR :: "../res"
+
 FONT_EDITOR_NAME    :: "chivo-mono.ttf"
-FONT_EDITOR_DATA    :: #load("../res/fonts/chivo-mono.ttf")
+FONT_EDITOR_DATA    :: #load(RUN_TREE_DIR + "/fonts/chivo-mono.ttf")
 FONT_UI_NAME        :: "roboto-regular.ttf"
-FONT_UI_DATA        :: #load("../res/fonts/roboto-regular.ttf")
+FONT_UI_DATA        :: #load(RUN_TREE_DIR + "/fonts/roboto-regular.ttf")
 FONT_UI_ITALIC_NAME :: "roboto-italic.ttf"
-FONT_UI_ITALIC_DATA :: #load("../res/fonts/roboto-italic.ttf")
+FONT_UI_ITALIC_DATA :: #load(RUN_TREE_DIR + "/fonts/roboto-italic.ttf")
 FONT_UI_BOLD_NAME   :: "roboto-semibold.ttf"
-FONT_UI_BOLD_DATA   :: #load("../res/fonts/roboto-bold.ttf")
+FONT_UI_BOLD_DATA   :: #load(RUN_TREE_DIR + "/fonts/roboto-bold.ttf")
 
 MINIMUM_WINDOW_SIZE :: 800
 DEFAULT_WINDOW_SIZE :: 1080
@@ -36,7 +38,7 @@ mouse_y: i32
 
 frame_delta_time: time.Duration
 
-DEFAULT_SETTINGS_DATA :: #load("../res/settings.bragi")
+DEFAULT_SETTINGS_DATA :: #load(RUN_TREE_DIR + "/settings.bragi")
 SETTINGS_FILENAME     :: "settings.bragi"
 
 settings_file: os.Handle

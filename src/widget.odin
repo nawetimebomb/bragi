@@ -600,7 +600,7 @@ update_and_draw_widget :: proc() {
     if global_widget.cursor.pos < len(prompt_query_str) {
         rune_behind_cursor = utf8.rune_at(prompt_query_str, global_widget.cursor.pos)
     }
-    draw_cursor(font_regular, cursor_pen, rune_behind_cursor, global_widget.cursor_showing, true)
+    draw_cursor(font_regular, cursor_pen, rune_behind_cursor, global_widget.cursor_showing, true, true)
 
 
     set_target()

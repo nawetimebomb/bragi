@@ -15,14 +15,32 @@ Command :: enum u32 {
 
     toggle_selection_mode,
 
+    remove_left,
+    remove_right,
+
+    clone_cursor_start,
+    clone_cursor_end,
+    clone_cursor_up,
     clone_cursor_down,
+    clone_cursor_left,
+    clone_cursor_right,
+    clone_cursor_prev_word,
+    clone_cursor_next_word,
+    clone_cursor_prev_paragraph,
+    clone_cursor_next_paragraph,
+    clone_cursor_beginning_of_line,
+    clone_cursor_end_of_line,
+
+    prev_cursor,
+    next_cursor,
+    all_cursors,
 
     move_start,
     move_end,
+    move_up,
+    move_down,
     move_left,
     move_right,
-    move_down,
-    move_up,
     move_prev_word,
     move_next_word,
     move_prev_paragraph,
@@ -33,14 +51,17 @@ Command :: enum u32 {
     select_all,
     select_start,
     select_end,
+
+    select_up,
+    select_down,
     select_left,
     select_right,
-    select_down,
-    select_up,
+
     select_prev_word,
     select_next_word,
     select_prev_paragraph,
     select_next_paragraph,
+
     select_beginning_of_line,
     select_end_of_line,
 
@@ -108,6 +129,7 @@ map_keystroke_to_command :: proc(key: Key_Code, modifiers: Modifiers_Set, loc :=
 
 quit_mode_command :: proc() {
     widget_close()
+    active_pane.cursor_selecting = false
 
     if len(active_pane.cursors) > 1 {
         last_cursor_pos := active_pane.cursors[len(active_pane.cursors) - 1].pos

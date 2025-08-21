@@ -6,8 +6,7 @@ Face_Color :: enum {
     background,
     foreground,
     cursor_active,
-    cursor_passive,
-    cursor_all,
+    cursor_inactive,
     highlight,
     region,
 
@@ -79,8 +78,7 @@ settings_init :: proc() {
     colorscheme[.foreground]                        = _hex_to_color(0xa08563)
     colorscheme[.highlight]                         = _hex_to_color(0xcd950c)
     colorscheme[.cursor_active]                     = _hex_to_color(0xcd950c)
-    colorscheme[.cursor_passive]                    = _hex_to_color(0x98a098)
-    colorscheme[.cursor_all]                        = _hex_to_color(0x6b8e23)
+    colorscheme[.cursor_inactive]                   = _hex_to_color(0x98a098)
 
     colorscheme[.region]                            = _hex_to_color(0x0a0b62)
 
@@ -160,8 +158,8 @@ _settings_setup_basic_bragi_keybindings :: proc() {
 @(private="file")
 _settings_setup_emacs_keybindings :: proc() {
     commands_map["Ctrl-X"] = .modifier
-
     commands_map["Ctrl-G"] = .quit_mode
+
     commands_map["Ctrl-Space"] = .toggle_selection_mode
 
     commands_map["Ctrl-X-B"]      = .find_buffer
@@ -189,7 +187,20 @@ _settings_setup_emacs_keybindings :: proc() {
     commands_map["Ctrl-A"] = .move_beginning_of_line
     commands_map["Ctrl-E"] = .move_end_of_line
 
-    commands_map["Alt-N"] = .clone_cursor_down
+    commands_map["Alt-P"]       = .clone_cursor_up
+    commands_map["Alt-N"]       = .clone_cursor_down
+    commands_map["Alt-Shift-B"] = .clone_cursor_prev_word
+    commands_map["Alt-Shift-F"] = .clone_cursor_next_word
+
+    commands_map["Ctrl-D"] = .remove_right
+    commands_map["Ctrl-K"] = .cut_line
+
+    commands_map["Ctrl-Shift-Tab"] = .prev_cursor
+    commands_map["Ctrl-Tab"]       = .next_cursor
+    commands_map["Ctrl-Shift-A"]   = .all_cursors
+
+    commands_map["Ctrl-/"] = .undo
+    commands_map["Ctrl-?"] = .redo
 }
 
 @(private="file")

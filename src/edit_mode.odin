@@ -9,14 +9,14 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
     buffer := pane.buffer
 
     if event.is_text_input {
-        length_of_inserted_text := insert_at_points(pane, buffer, event.text)
+        length_of_inserted_text := insert_at_points(pane, event.text)
         return length_of_inserted_text > 0
     }
 
     // handle the generic ones first
     #partial switch event.key_code {
         case .K_ENTER: {
-            insert_newlines_and_indent(pane, buffer)
+            insert_newlines_and_indent(pane)
             return true
         }
         case .K_BACKSPACE: {
@@ -26,7 +26,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
                 t = .prev_word
             }
 
-            remove_to(pane, buffer, t)
+            remove_to(pane, t)
             return true
         }
         case .K_DELETE: {
@@ -36,7 +36,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
                 t = .next_word
             }
 
-            remove_to(pane, buffer, t)
+            remove_to(pane, t)
             return true
         }
     }
@@ -69,8 +69,94 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         return true
 
     case .toggle_selection_mode:
+        if pane.cursor_selecting {
+            pane.cursor_selecting = false
+            for &cursor in pane.cursors do cursor.sel = cursor.pos
+            return true
+        } else {
+            pane.cursor_selecting = true
+            for &cursor in pane.cursors do cursor.active = true
+            return true
+        }
 
-    case .clone_cursor_down: clone_to(pane, .down)
+    case .prev_cursor:
+        if pane.cursor_selecting {
+            pane.cursor_selecting = false
+            for &cursor in pane.cursors do cursor.sel = cursor.pos
+        }
+
+        current_cursor_index := -1
+
+        for &cursor, index in pane.cursors {
+            if cursor.active {
+                current_cursor_index = index
+                cursor.active = false
+            }
+        }
+
+        current_cursor_index -= 1
+        if current_cursor_index < 0 do current_cursor_index = len(pane.cursors) - 1
+        pane.cursors[current_cursor_index].active = true
+        return true
+    case .next_cursor:
+        if pane.cursor_selecting {
+            pane.cursor_selecting = false
+            for &cursor in pane.cursors do cursor.sel = cursor.pos
+        }
+
+        current_cursor_index := -1
+
+        for &cursor, index in pane.cursors {
+            if cursor.active {
+                current_cursor_index = index
+                cursor.active = false
+            }
+        }
+
+        current_cursor_index += 1
+        if current_cursor_index > len(pane.cursors) - 1 do current_cursor_index = 0
+        pane.cursors[current_cursor_index].active = true
+        return true
+    case .all_cursors:
+        for &cursor in pane.cursors do cursor.active = true
+        return true
+
+    case .clone_cursor_start:
+        clone_to(pane, .start)
+        return true
+    case .clone_cursor_end:
+        clone_to(pane, .end)
+        return true
+    case .clone_cursor_left:
+        clone_to(pane, .left)
+        return true
+    case .clone_cursor_right:
+        clone_to(pane, .right)
+        return true
+    case .clone_cursor_down:
+        clone_to(pane, .down)
+        return true
+    case .clone_cursor_up:
+        clone_to(pane, .up)
+        return true
+    case .clone_cursor_prev_word:
+        clone_to(pane, .prev_word)
+        return true
+    case .clone_cursor_next_word:
+        clone_to(pane, .next_word)
+        return true
+    case .clone_cursor_prev_paragraph:
+        clone_to(pane, .prev_paragraph)
+        return true
+    case .clone_cursor_next_paragraph:
+        clone_to(pane, .next_paragraph)
+        return true
+    case .clone_cursor_beginning_of_line:
+        clone_to(pane, .beginning_of_line)
+        return true
+    case .clone_cursor_end_of_line:
+        clone_to(pane, .end_of_line)
+        return true
 
     case .move_start:
         move_to(pane, .start)
@@ -151,6 +237,11 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         select_to(pane, .end_of_line)
         return true
 
+    case .remove_left:
+        remove_to(pane, .left)
+    case .remove_right:
+        remove_to(pane, .right)
+
     case .find_buffer:
         widget_open_find_buffer()
         return true
@@ -186,29 +277,38 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
     case .other_pane:
 
     case .undo:
+        copy_cursors(pane, buffer)
         undo_done, cursors, pieces := undo(buffer, &buffer.undo, &buffer.redo)
-        if undo_done {
-            delete(pane.cursors)
-            delete(buffer.pieces)
-            pane.cursors = slice.clone_to_dynamic(cursors)
-            buffer.pieces = slice.clone_to_dynamic(pieces)
+
+        if !undo_done {
+            log.debug("no more history to undo")
             return true
         }
-        log.debug("no more history to undo")
+
+        delete(pane.cursors)
+        delete(buffer.pieces)
+        pane.cursors = slice.clone_to_dynamic(cursors)
+        buffer.pieces = slice.clone_to_dynamic(pieces)
         return true
     case .redo:
+        copy_cursors(pane, buffer)
         redo_done, cursors, pieces := undo(buffer, &buffer.redo, &buffer.undo)
-        if redo_done {
-            delete(pane.cursors)
-            delete(buffer.pieces)
-            pane.cursors = slice.clone_to_dynamic(cursors)
-            buffer.pieces = slice.clone_to_dynamic(pieces)
+
+        if !redo_done {
+            log.debug("no more history to redo")
             return true
         }
-        log.debug("no more history to redo")
+
+        delete(pane.cursors)
+        delete(buffer.pieces)
+        pane.cursors = slice.clone_to_dynamic(cursors)
+        buffer.pieces = slice.clone_to_dynamic(pieces)
         return true
+
     case .cut_region:
     case .cut_line:
+        remove_to(pane, .end_of_line)
+        return true
     case .copy_region:
     case .copy_line:
     case .paste:
@@ -219,10 +319,52 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
 }
 
 clone_to :: proc(pane: ^Pane, t: Translation) {
-    // TODO(nawe) should use the last active cursor instead
-    last_cursor := pane.cursors[len(pane.cursors) - 1]
-    cloned_cursor := clone_cursor(pane, last_cursor)
-    move_to(pane, t, cloned_cursor)
+    if len(pane.cursors) == 1 {
+        cloned := clone_cursor(pane, pane.cursors[0])
+        move_to(pane, t, cloned)
+    } else if !are_all_cursors_active(pane) {
+        cursor_to_clone := get_first_active_cursor(pane)
+        cloned := clone_cursor(pane, cursor_to_clone^)
+        move_to(pane, t, cloned)
+        cursor_to_clone.active = false
+        cloned.active = true
+    } else {
+        pane.cursor_selecting = false
+        for &cursor in pane.cursors do cursor.sel = cursor.pos
+
+        switch t {
+        case .start: unimplemented()
+        case .end: unimplemented()
+        case .left: unimplemented()
+        case .right: unimplemented()
+        case .prev_word: unimplemented()
+        case .next_word: unimplemented()
+        case .prev_paragraph: unimplemented()
+        case .next_paragraph: unimplemented()
+        case .beginning_of_line: unimplemented()
+        case .end_of_line: unimplemented()
+        case .up:
+            cursor_to_clone: Cursor
+            lo_pos := len(pane.contents.buf)
+
+            for cursor in pane.cursors {
+                lo_pos = min(lo_pos, cursor.pos)
+                if lo_pos == cursor.pos do cursor_to_clone = cursor
+            }
+            cloned := clone_cursor(pane, cursor_to_clone)
+            move_to(pane, t, cloned)
+        case .down:
+            cursor_to_clone: Cursor
+            hi_pos := 0
+
+            for cursor in pane.cursors {
+                hi_pos = max(hi_pos, cursor.pos)
+                if hi_pos == cursor.pos do cursor_to_clone = cursor
+            }
+            cloned := clone_cursor(pane, cursor_to_clone)
+            move_to(pane, t, cloned)
+        }
+    }
 }
 
 move_to :: proc(pane: ^Pane, t: Translation, cursor_to_move: ^Cursor = nil) {
@@ -245,16 +387,16 @@ move_to :: proc(pane: ^Pane, t: Translation, cursor_to_move: ^Cursor = nil) {
         }
     }
 
-    if .Selection in pane.cursor_modes {
-        select_to(pane, t, cursor_to_move)
-        return
-    }
-
     if cursor_to_move != nil {
         move_cursor(pane, cursor_to_move, t)
     } else {
-        for &cursor in pane.cursors {
-            move_cursor(pane, &cursor, t)
+        if pane.cursor_selecting {
+            select_to(pane, t)
+        } else {
+            for &cursor in pane.cursors {
+                if !cursor.active do continue
+                move_cursor(pane, &cursor, t)
+            }
         }
     }
 
@@ -266,6 +408,7 @@ select_to :: proc(pane: ^Pane, t: Translation, cursor_to_select: ^Cursor = nil) 
         cursor_to_select.pos, _ = translate_position(pane, cursor_to_select.pos, t)
     } else {
         for &cursor in pane.cursors {
+            if !cursor.active do continue
             cursor.pos, _ = translate_position(pane, cursor.pos, t)
         }
     }
@@ -273,64 +416,103 @@ select_to :: proc(pane: ^Pane, t: Translation, cursor_to_select: ^Cursor = nil) 
     _maybe_merge_overlapping_cursors(pane)
 }
 
-remove_to :: proc(pane: ^Pane, buffer: ^Buffer, t: Translation) -> (total_amount_of_removed_characters: int) {
+remove_to :: proc(pane: ^Pane, t: Translation) -> (total_amount_of_removed_characters: int) {
     profiling_start("removing text")
-    copy_cursors(pane, buffer)
+    copy_cursors(pane, pane.buffer)
 
-    for &cursor, current_index in pane.cursors {
+    for &cursor in pane.cursors {
+        if !cursor.active do continue
+
         if !has_selection(cursor) {
             cursor.pos, _ = translate_position(pane, cursor.pos, t)
         }
-
-        low, high := sorted_cursor(cursor)
-        offset := high - low
-        if low != high {
-            remove_at(buffer, low, offset)
-            cursor.pos = low
-            cursor.sel = low
-        }
-
-        for next_index in current_index + 1..<len(pane.cursors) {
-            pane.cursors[next_index].pos -= offset
-            pane.cursors[next_index].sel -= offset
-        }
     }
 
-    _maybe_merge_overlapping_cursors(pane)
+    remove_selections(pane)
 
     profiling_end()
     return
 }
 
-insert_at_points :: proc(pane: ^Pane, buffer: ^Buffer, text: string) -> (total_length_of_inserted_characters: int) {
-    profiling_start("inserting text input")
-    copy_cursors(pane, buffer)
+remove_selections :: proc(pane: ^Pane) {
+    copy_cursors(pane, pane.buffer)
 
     for &cursor, current_index in pane.cursors {
-        offset := insert_at(buffer, cursor.pos, text)
+        if !cursor.active do continue
+
+        if has_selection(cursor) {
+            low, high := sorted_cursor(cursor)
+            offset := high - low
+
+            if low != high {
+                remove_at(pane.buffer, low, offset)
+                cursor.pos = low
+                cursor.sel = low
+            }
+
+            for &other, other_index in pane.cursors {
+                if current_index == other_index do continue
+
+                if other.pos > cursor.pos {
+                    other.pos -= offset
+                    other.sel -= offset
+                }
+            }
+        }
+    }
+
+    pane.cursor_selecting = false
+
+    _maybe_merge_overlapping_cursors(pane)
+}
+
+insert_at_points :: proc(pane: ^Pane, text: string) -> (total_length_of_inserted_characters: int) {
+    profiling_start("inserting text input")
+    copy_cursors(pane, pane.buffer)
+
+    remove_selections(pane)
+
+    for &cursor, current_index in pane.cursors {
+        if !cursor.active do continue
+        offset := insert_at(pane.buffer, cursor.pos, text)
         total_length_of_inserted_characters += offset
         cursor.pos += offset
         cursor.sel = cursor.pos
 
-        for next_index in current_index + 1..<len(pane.cursors) {
-            pane.cursors[next_index].pos += offset
-            pane.cursors[next_index].sel += offset
+        for &other, other_index in pane.cursors {
+            if current_index == other_index do continue
+
+            if other.pos > cursor.pos {
+                other.pos += offset
+                other.sel += offset
+            }
         }
     }
     profiling_end()
     return
 }
 
-insert_newlines_and_indent :: proc(pane: ^Pane, buffer: ^Buffer) -> (total_length_of_inserted_characters: int) {
+insert_newlines_and_indent :: proc(pane: ^Pane) -> (total_length_of_inserted_characters: int) {
     profiling_start("inserting newline and indenting")
-    copy_cursors(pane, buffer)
+    copy_cursors(pane, pane.buffer)
 
-    for &cursor in pane.cursors {
-        // TODO(nawe) add indent
-        offset := insert_at(buffer, cursor.pos, "\n")
+    remove_selections(pane)
+
+    for &cursor, current_index in pane.cursors {
+        if !cursor.active do continue
+        offset := insert_at(pane.buffer, cursor.pos, "\n")
         cursor.pos += offset
         cursor.sel = cursor.pos
         total_length_of_inserted_characters += offset
+
+        for &other, other_index in pane.cursors {
+            if current_index == other_index do continue
+
+            if other.pos > cursor.pos {
+                other.pos += offset
+                other.sel += offset
+            }
+        }
     }
     profiling_end()
     return
@@ -352,7 +534,8 @@ _maybe_merge_overlapping_cursors :: proc(pane: ^Pane) {
 
                 if ipos == jpos {
                     log.debugf("merging cursors {} and {}", i + 1, j + 1)
-                    ordered_remove(&pane.cursors, i)
+                    pane.cursors[i].active = true
+                    ordered_remove(&pane.cursors, j)
                     flag_pane(pane, {.Need_Full_Repaint})
                 }
             } else {

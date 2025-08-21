@@ -61,7 +61,6 @@ Piece :: struct {
     source:      Source_Buffer,
     start:       int,
     length:      int,
-    line_starts: [dynamic]int,
 }
 
 History_State :: struct {
@@ -137,7 +136,6 @@ buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allo
         start  = 0,
         length = contents_length,
     }
-    _update_piece_line_starts(buffer, &original_piece)
     append(&buffer.pieces, original_piece)
 }
 
@@ -156,7 +154,6 @@ buffer_destroy :: proc(buffer: ^Buffer) {
     undo_clear(buffer, &buffer.undo)
     undo_clear(buffer, &buffer.redo)
     delete(buffer.cursors)
-    for piece in buffer.pieces do delete(piece.line_starts)
     delete(buffer.pieces)
     delete(buffer.undo)
     delete(buffer.redo)
@@ -184,22 +181,24 @@ update_opened_buffers :: proc() {
             total_length := 0
             strings.builder_reset(&buffer.text_content)
             lines_array := make([dynamic]int, context.temp_allocator)
-            append(&lines_array, 0)
 
             for piece in buffer.pieces {
-                for line_start in piece.line_starts {
-                    append(&lines_array, total_length + line_start)
-                }
+
+                start, end := piece.start, piece.start + piece.length
 
                 switch piece.source {
-                case .Add:      strings.write_string(&buffer.text_content, strings.to_string(buffer.add_source)[piece.start:piece.start + piece.length])
-                case .Original: strings.write_string(&buffer.text_content, strings.to_string(buffer.original_source)[piece.start:piece.start + piece.length])
+                case .Add:      strings.write_string(&buffer.text_content, strings.to_string(buffer.add_source)[start:end])
+                case .Original: strings.write_string(&buffer.text_content, strings.to_string(buffer.original_source)[start:end])
                 }
 
                 total_length += piece.length
             }
 
             buffer.length_of_buffer = total_length
+            append(&lines_array, 0)
+            for r, index in strings.to_string(buffer.text_content) {
+                if r == '\n' do append(&lines_array, index + 1)
+            }
             append(&lines_array, total_length + 1)
 
             for pane in open_panes {
@@ -308,7 +307,6 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     // the most common operation while entering text in sequence.
     if piece.source == .Add && new_offset == end_of_piece && add_source_length == end_of_piece {
         piece.length += length_of_text
-        _update_piece_line_starts(buffer, piece)
         return
     }
 
@@ -334,8 +332,6 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     new_pieces := slice.filter([]Piece{left, middle, right}, proc(new_piece: Piece) -> bool {
         return new_piece.length > 0
     }, context.temp_allocator)
-    for &new_piece in new_pieces do _update_piece_line_starts(buffer, &new_piece)
-    delete(buffer.pieces[piece_index].line_starts)
     ordered_remove(&buffer.pieces, piece_index)
     inject_at(&buffer.pieces, piece_index, ..new_pieces)
 
@@ -362,20 +358,13 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
     // Only one piece was affected, either at the beginning of the piece or at the end.
     if first_piece_index == last_piece_index {
         piece := &buffer.pieces[first_piece_index]
-        piece_has_changed := false
 
         if first_offset == piece.start {
             piece.start += amount
             piece.length -= amount
-            piece_has_changed = true
-
+            return
         } else if last_offset == piece.start + piece.length {
             piece.length -= amount
-            piece_has_changed = true
-        }
-
-        if piece_has_changed {
-            _update_piece_line_starts(buffer, piece)
             return
         }
     }
@@ -398,8 +387,6 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
         return new_piece.length > 0
     }, context.temp_allocator)
 
-    for &new_piece in new_pieces do _update_piece_line_starts(buffer, &new_piece)
-    for index in first_piece_index..<last_piece_index + 1 do delete(buffer.pieces[index].line_starts)
     remove_range(&buffer.pieces, first_piece_index, last_piece_index + 1)
     inject_at(&buffer.pieces, first_piece_index, ..new_pieces)
 }
@@ -416,19 +403,4 @@ locate_piece :: proc(buffer: ^Buffer, offset: int) -> (piece_index, new_offset: 
     }
 
     unreachable()
-}
-
-@(private="file")
-_update_piece_line_starts :: proc(buffer: ^Buffer, piece: ^Piece) {
-    clear(&piece.line_starts)
-    str: string
-
-    switch piece.source {
-    case .Add:      str = strings.to_string(buffer.add_source)
-    case .Original: str = strings.to_string(buffer.original_source)
-    }
-
-    for r, index in str[piece.start:piece.start + piece.length] {
-        if r == '\n' do append(&piece.line_starts, index + 1)
-    }
 }

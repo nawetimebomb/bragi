@@ -24,12 +24,6 @@ Pane_Flag :: enum u8 {
     Need_Full_Repaint,
 }
 
-Cursor_Mode :: enum u8 {
-    Interactive = 0, // multiple cursors, controlling one
-    Group       = 1, // multiple cursors, controlling all
-    Selection   = 2, // doing selection, play with multiple cursors
-}
-
 Translation :: enum u16 {
     start, end,
     down, left, right, up,
@@ -40,7 +34,7 @@ Translation :: enum u16 {
 
 Pane :: struct {
     cursors:             [dynamic]Cursor,
-    cursor_modes:        bit_set[Cursor_Mode; u8],
+    cursor_selecting:    bool,
     cursor_showing:      bool,
     cursor_blink_count:  int,
     cursor_blink_timer:  time.Tick,
@@ -144,35 +138,33 @@ update_active_pane :: proc() {
         flag_pane(pane, {.Need_Full_Repaint})
     }
 
-    for cursor in pane.cursors {
-        if cursor.active {
-            lines := get_lines_array(pane)
-            coords := cursor_offset_to_coords(pane, lines, cursor.pos)
-            has_scrolled := false
+    {
+        active_cursor := get_first_active_cursor(pane)
+        lines := get_lines_array(pane)
+        coords := cursor_offset_to_coords(pane, lines, active_cursor.pos)
+        has_scrolled := false
 
-            for coords.column < pane.x_offset {
-                pane.x_offset -= 1
-                has_scrolled = true
-            }
-
-            for coords.column >= pane.visible_columns + pane.x_offset {
-                pane.x_offset += 1
-                has_scrolled = true
-            }
-
-            for coords.row < pane.y_offset {
-                pane.y_offset -= 1
-                has_scrolled = true
-            }
-
-            for coords.row >= pane.visible_rows + pane.y_offset {
-                pane.y_offset += 1
-                has_scrolled = true
-            }
-
-            if has_scrolled do flag_pane(pane, {.Need_Full_Repaint})
-            break
+        for coords.column < pane.x_offset {
+            pane.x_offset -= 1
+            has_scrolled = true
         }
+
+        for coords.column >= pane.visible_columns + pane.x_offset {
+            pane.x_offset += 1
+            has_scrolled = true
+        }
+
+        for coords.row < pane.y_offset {
+            pane.y_offset -= 1
+            has_scrolled = true
+        }
+
+        for coords.row >= pane.visible_rows + pane.y_offset {
+            pane.y_offset += 1
+            has_scrolled = true
+        }
+
+        if has_scrolled do flag_pane(pane, {.Need_Full_Repaint})
     }
     profiling_end()
 }
@@ -230,7 +222,7 @@ update_and_draw_panes :: proc() {
             _ = rune_behind_cursor
 
             if !out_of_bounds do draw_cursor(
-                pane.font, cursor_pen, rune_behind_cursor, pane.cursor_showing, is_pane_focused(pane),
+                pane.font, cursor_pen, rune_behind_cursor, pane.cursor_showing, is_pane_focused(pane), cursor.active,
             )
         }
 
@@ -303,6 +295,22 @@ cursor_has_selection :: proc(cursor: Cursor) -> bool {
     return cursor.pos != cursor.sel
 }
 
+get_first_active_cursor :: #force_inline proc(pane: ^Pane) -> (result: ^Cursor) {
+    for &cursor in pane.cursors {
+        if cursor.active do return &cursor
+    }
+
+    unreachable()
+}
+
+are_all_cursors_active :: #force_inline proc(pane: ^Pane) -> bool {
+    if len(pane.cursors) == 1 do return true
+    for cursor in pane.cursors {
+        if !cursor.active do return false
+    }
+    return true
+}
+
 prepare_cursor_for_drawing :: #force_inline proc(
     pane: ^Pane, font: ^Font, starting_pen: Vector2, cursor: Cursor,
 ) -> (out_of_screen: bool, pen: Vector2, rune_behind_cursor: rune) {
@@ -350,10 +358,12 @@ cursor_offset_to_coords :: #force_inline proc(pane: ^Pane, lines: []int, offset:
 cursor_coords_to_offset :: #force_inline proc(pane: ^Pane, lines: []int, coords: Coords) -> (offset: int) {
     offset = lines[coords.row]
     column := coords.column
+    buf := pane.contents.buf
+
     for column > 0 {
         column -= 1
         offset += 1
-        for is_continuation_byte(pane.contents.buf[offset]) do offset += 1
+        for offset < len(buf) && is_continuation_byte(buf[offset]) do offset += 1
     }
     return
 }

@@ -104,14 +104,18 @@ draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Lin
     }
 }
 
-draw_cursor :: proc(font: ^Font, pen: Vector2, rune_behind: rune, visible: bool, active: bool) {
+draw_cursor :: proc(font: ^Font, pen: Vector2, rune_behind: rune, visible: bool, filled: bool, active: bool) {
     cursor_height := font.character_height
     cursor_width := font.em_width if settings.cursor_is_a_block else i32(settings.cursor_width)
 
-    set_color(.cursor_active)
-
     if active {
-        if visible {
+        set_color(.cursor_active)
+    } else {
+        set_color(.cursor_inactive)
+    }
+
+    if filled {
+        if visible || !active {
             draw_rect(pen.x, pen.y, cursor_width, cursor_height, true)
 
             if settings.cursor_is_a_block && (rune_behind != ' ' && rune_behind != '\n') {

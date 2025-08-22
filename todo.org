@@ -1,1 +1,3 @@
 Mac/Bug: proper handling of left and right alt. Might need to internally rename the modifiers like Emacs does to Ctrl and Meta. Using Meta as the secondary modifier key. Meta would mean Alt for Windows/Linux and Alt for Mac. Also proper handling of the Command key. Check how Emacs handles CMD in Mac.
+
+Bug/Cursors: While in multiple cursors, and having a cursor at the end of a line and the another at the beginning of the following line, writing acts weirdly because it inserts the rune correctly for the lowest offset cursor but it doesn't respect the line feed and insert the next rune within an offset of 1, multiple inserts makes the highest offset cursor insert the text from right to left.

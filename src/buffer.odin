@@ -109,7 +109,7 @@ buffer_get_or_create_from_file :: proc(fullpath: string, contents: []byte) -> ^B
     result := new(Buffer)
     buffer_init(result, contents)
     result.filepath = strings.clone(fullpath)
-    result.name = strings.clone(filepath.base(result.filepath))
+    result.name = strings.clone(_get_unique_buffer_name(fullpath))
     append(&open_buffers, result)
     return result
 }
@@ -149,6 +149,62 @@ buffer_index :: proc(buffer: ^Buffer) -> int {
     }
 
     unreachable()
+}
+
+@(private="file")
+_get_unique_buffer_name :: proc(fullpath: string) -> (result: string) {
+    _gen_name_from_fullpath :: proc(prev_name: string, fullpath: string) -> (new_name: string) {
+        posix_fullpath, _ := filepath.to_slash(fullpath, context.temp_allocator)
+        substr_index := strings.index(posix_fullpath, prev_name)
+        substr_index = max(substr_index - 1, 0)
+        for substr_index > 0 && posix_fullpath[substr_index-1] != '/' do substr_index -= 1
+        new_name = posix_fullpath[substr_index:len(posix_fullpath)]
+        return
+    }
+
+    matching_name := filepath.base(fullpath)
+    result = matching_name
+    buffers_with_matching_names := make([dynamic]^Buffer, context.temp_allocator)
+
+    for {
+        // find the buffers with matching_name
+        for buffer in open_buffers {
+            if buffer.filepath != "" {
+                if buffer.name == result {
+                    append(&buffers_with_matching_names, buffer)
+                } else if filepath.base(buffer.filepath) == result {
+                    append(&buffers_with_matching_names, buffer)
+                }
+            }
+        }
+
+        if len(buffers_with_matching_names) == 0 do break
+
+        // rename older existing buffers to be their minimal
+        // expression of uniqueness while having the new one be very
+        // unique, appending as much as it is needed so it doesn't
+        // repeat.
+        for len(buffers_with_matching_names) > 0 {
+            buffer := pop(&buffers_with_matching_names)
+            delete(buffer.name)
+            new_name := _gen_name_from_fullpath(filepath.base(buffer.filepath), buffer.filepath)
+            buffer.name = strings.clone(new_name)
+        }
+
+        result = _gen_name_from_fullpath(result, fullpath)
+    }
+
+    return
+}
+
+buffer_save_as :: proc(buffer: ^Buffer, fullpath: string) {
+    flag_buffer(buffer, {.Modified})
+
+    delete(buffer.filepath)
+    delete(buffer.name)
+    buffer.filepath = strings.clone(fullpath)
+    buffer.name = strings.clone(_get_unique_buffer_name(fullpath))
+    buffer_save(buffer)
 }
 
 buffer_save :: proc(buffer: ^Buffer) {

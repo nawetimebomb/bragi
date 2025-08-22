@@ -553,21 +553,13 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
 save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
     cursor := &global_widget.cursor
 
-    do_save_buffer_stuff :: proc(new_fullpath: string) {
-        delete(active_pane.buffer.filepath)
-        delete(active_pane.buffer.name)
-        active_pane.buffer.filepath = strings.clone(new_fullpath)
-        active_pane.buffer.name = strings.clone(filepath.base(new_fullpath))
-        buffer_save(active_pane.buffer)
-        widget_close()
-    }
-
     #partial switch event.key_code {
         case .K_ENTER, .K_TAB: {
             new_fullpath := strings.to_string(global_widget.prompt)
 
             if global_widget.ask_for_confirmation && event.key_code == .K_ENTER {
-                do_save_buffer_stuff(new_fullpath)
+                buffer_save_as(active_pane.buffer, new_fullpath)
+                widget_close()
                 return true
             }
 
@@ -611,7 +603,8 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
                     }
 
                     // or just save if it wasn't in the results
-                    do_save_buffer_stuff(new_fullpath)
+                    buffer_save_as(active_pane.buffer, new_fullpath)
+                    widget_close()
                 }
 
                 return true

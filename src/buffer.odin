@@ -260,7 +260,7 @@ update_opened_buffers :: proc() {
                 delete(pane.line_starts)
                 pane.contents = strings.to_string(buffer.text_content)
                 pane.line_starts = slice.clone_to_dynamic(lines_array[:])
-                if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
+                if .Line_Wrappings in pane.flags do recalculate_line_wrappings(pane)
                 flag_pane(pane, {.Need_Full_Repaint})
             }
         }

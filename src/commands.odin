@@ -51,17 +51,14 @@ Command :: enum u32 {
     select_all,
     select_start,
     select_end,
-
     select_up,
     select_down,
     select_left,
     select_right,
-
     select_prev_word,
     select_next_word,
     select_prev_paragraph,
     select_next_paragraph,
-
     select_beginning_of_line,
     select_end_of_line,
 

@@ -19,13 +19,13 @@ Widget_Action :: enum {
 
 Widget :: struct {
     active:                bool,
-    cursor:                Cursor,
+    cursor:                Widget_Cursor,
+    cursor_selecting:      bool,
     cursor_showing:        bool,
     cursor_blink_timer:    time.Tick,
 
     // the selected line or -1 if selecting the prompt
     action:                Widget_Action,
-    selection:             int,
     all_results:           [dynamic]Widget_Result, // the one to keep
     view_results:          []Widget_Result,        // the one to show, filtered and sorted
     results_need_update:   bool,
@@ -37,6 +37,10 @@ Widget :: struct {
     texture:               ^Texture,
     rect:                  Rect,
     y_offset:              int,
+}
+
+Widget_Cursor :: struct {
+    pos, sel, index: int,
 }
 
 Widget_Result :: struct {
@@ -254,8 +258,9 @@ _widget_open :: proc() {
     if global_widget.active do widget_close()
 
     global_widget.all_results = make([dynamic]Widget_Result, 0, WIDGET_HEIGHT_IN_ROWS)
-    global_widget.cursor = {}
-    global_widget.selection = -1
+    global_widget.cursor.pos = 0
+    global_widget.cursor.sel = 0
+    global_widget.cursor.index = -1
     global_widget.active = true
     global_widget.ask_for_confirmation = false
     flag_pane(active_pane, {.Need_Full_Repaint})
@@ -283,86 +288,160 @@ widget_close :: proc() {
 }
 
 widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (handled: bool) {
+    cursor := &global_widget.cursor
+
+    _remove_selection :: proc() {
+        cursor := &global_widget.cursor
+
+        if cursor.pos != cursor.sel {
+            low := min(cursor.pos, cursor.sel)
+            high := max(cursor.pos, cursor.sel)
+            remove_range(&global_widget.prompt.buf, low, high)
+            cursor.pos, cursor.sel = low, low
+            global_widget.cursor_selecting = false
+        }
+    }
+
     if event.is_text_input {
-        inject_at(&global_widget.prompt.buf, global_widget.cursor.pos, ..transmute([]byte)event.text)
-        global_widget.cursor.pos += len(event.text)
+        if cursor.pos != cursor.sel {
+            _remove_selection()
+        }
+
+        inject_at(&global_widget.prompt.buf, cursor.pos, ..transmute([]byte)event.text)
+        cursor.pos += len(event.text)
+        cursor.sel = cursor.pos
         global_widget.results_need_update = true
+        global_widget.cursor_selecting = false
         return true
     }
 
-    word_separation_bytes := [?]byte{'\\', '/', '_', ' '}
-    query := strings.to_string(global_widget.prompt)
+    word_delim_bytes := [?]byte{'\\', '/', '_', ' ', '.'}
+    prompt := strings.to_string(global_widget.prompt)
 
     if global_widget.ask_for_confirmation && event.key_code != .K_ENTER {
         global_widget.ask_for_confirmation = false
     }
 
-    // TODO(nawe) should use the translate_position here instead (or
-    // make a single-line version of it). The fact that I'm
-    // duplicating the code it makes it difficult to address and
-    // maintain.
     #partial switch event.key_code {
         case .K_BACKSPACE: {
-            start := max(global_widget.cursor.pos - 1, 0)
-
-            if .Ctrl in event.modifiers || .Alt in event.modifiers {
-                for start > 0 && slice.contains(word_separation_bytes[:], query[start-1]) do start -= 1
-                for start > 0 && !slice.contains(word_separation_bytes[:], query[start-1]) do start -= 1
+            if cursor.pos != cursor.sel {
+                _remove_selection()
+                return true
             }
 
-            end := global_widget.cursor.pos
+            start := max(cursor.pos - 1, 0)
+
+            if .Ctrl in event.modifiers || .Alt in event.modifiers {
+                for start > 0 && slice.contains(word_delim_bytes[:], prompt[start-1])  do start -= 1
+                for start > 0 && !slice.contains(word_delim_bytes[:], prompt[start-1]) do start -= 1
+            }
+
+            end := cursor.pos
             remove_range(&global_widget.prompt.buf, start, end)
-            global_widget.cursor.pos = start
+            cursor.pos = start
+            cursor.sel = start
             global_widget.results_need_update = true
+            global_widget.cursor_selecting = false
             return true
         }
         case .K_DELETE: {
-            start := global_widget.cursor.pos
-            end := min(global_widget.cursor.pos + 1, len(query))
+            if cursor.pos != cursor.sel {
+                _remove_selection()
+                return true
+            }
+
+            start := cursor.pos
+            end := min(cursor.pos + 1, len(prompt))
 
             if .Ctrl in event.modifiers || .Alt in event.modifiers {
-                end = len(query)
+                end = len(prompt)
             }
 
             remove_range(&global_widget.prompt.buf, start, end)
             global_widget.results_need_update = true
+            global_widget.cursor_selecting = false
             return true
         }
     }
 
     #partial switch cmd {
-        case .move_up: {
-            global_widget.selection -= 1
-
-            if global_widget.selection < -1 {
-                global_widget.selection = len(global_widget.view_results) - 1
+        case .toggle_selection_mode: {
+            if global_widget.cursor_selecting {
+                cursor.sel = cursor.pos
             }
 
+            global_widget.cursor_selecting = !global_widget.cursor_selecting
+            return true
+
+        }
+        case .select_all: {
+            cursor.pos = 0
+            cursor.sel = len(prompt)
             return true
         }
-        case .move_down: {
-            global_widget.selection += 1
-
-            if global_widget.selection > len(global_widget.view_results) - 1 {
-                global_widget.selection = 0
+        case .move_start, .move_beginning_of_line, .select_start, .select_beginning_of_line: {
+            cursor.pos = 0
+            if cmd != .select_start && cmd != .select_beginning_of_line && !global_widget.cursor_selecting {
+                cursor.sel = 0
             }
+            return true
+        }
+        case .move_end, .move_end_of_line, .select_end, .select_end_of_line: {
+            cursor.pos = len(prompt)
+            if cmd != .select_end && cmd != .select_end_of_line && !global_widget.cursor_selecting {
+                cursor.sel = len(prompt)
+            }
+            return true
+        }
+        case .move_up, .select_up: {
+            cursor.index -= 1
+            if cursor.index < -1 do cursor.index = len(global_widget.view_results) - 1
+            return true
+        }
+        case .move_down, .select_down: {
+            cursor.index += 1
+            if cursor.index >= len(global_widget.view_results) do cursor.index = 0
+            return true
+        }
+        case .move_left, .select_left: {
+            cursor.pos -= 1
+            for cursor.pos > 0 && is_continuation_byte(prompt[cursor.pos]) do cursor.pos -= 1
+            cursor.pos = max(cursor.pos, 0)
 
+            if cmd != .select_left && !global_widget.cursor_selecting {
+                cursor.sel = cursor.pos
+            }
             return true
         }
-        case .move_left: {
-            buf := global_widget.prompt.buf
-            result := global_widget.cursor.pos
-            result -= 1
-            for result > 0 && is_continuation_byte(buf[result]) do result -= 1
-            global_widget.cursor.pos = max(result, 0)
+        case .move_right, .select_right: {
+            cursor.pos += 1
+            for cursor.pos < len(prompt) && is_continuation_byte(prompt[cursor.pos]) do cursor.pos += 1
+            cursor.pos = min(cursor.pos, len(prompt) - 1)
+            if cmd != .select_right && !global_widget.cursor_selecting {
+                cursor.sel = cursor.pos
+            }
             return true
         }
-        case .move_right: {
-            buf := global_widget.prompt.buf
-            result := global_widget.cursor.pos
-            result += 1
-            for result < len(buf) && is_continuation_byte(buf[result]) do result += 1
-            global_widget.cursor.pos = min(result, len(buf))
+        case .move_prev_word, .move_prev_paragraph, .select_prev_word, .select_prev_paragraph: {
+            for cursor.pos > 0 && slice.contains(word_delim_bytes[:], prompt[cursor.pos-1])  do cursor.pos -= 1
+            for cursor.pos > 0 && !slice.contains(word_delim_bytes[:], prompt[cursor.pos-1]) do cursor.pos -= 1
+            if cmd != .select_prev_word && cmd != .select_prev_paragraph && !global_widget.cursor_selecting {
+                cursor.sel = cursor.pos
+            }
+            return true
+        }
+        case .move_next_word, .move_next_paragraph, .select_next_word, .select_next_paragraph: {
+            for cursor.pos < len(prompt) && !slice.contains(word_delim_bytes[:], prompt[cursor.pos]) do cursor.pos += 1
+            for cursor.pos < len(prompt) && slice.contains(word_delim_bytes[:], prompt[cursor.pos])  do cursor.pos += 1
+            if cmd != .select_next_word && cmd != .select_next_paragraph && !global_widget.cursor_selecting {
+                cursor.sel = cursor.pos
+            }
+            return true
+        }
+
+        case .cut_line: {
+            cursor.sel = len(prompt)
+            _remove_selection()
             return true
         }
     }
@@ -377,10 +456,12 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (h
 }
 
 find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
+    cursor := &global_widget.cursor
+
     #partial switch event.key_code {
         case .K_ENTER, .K_TAB: {
-            if global_widget.selection > -1 {
-                result := global_widget.view_results[global_widget.selection]
+            if cursor.index > -1 {
+                result := global_widget.view_results[cursor.index]
                 buffer := result.value.(^Buffer)
                 switch_to_buffer(active_pane, buffer)
                 widget_close()
@@ -407,10 +488,12 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) 
 }
 
 find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
+    cursor := &global_widget.cursor
+
     #partial switch event.key_code {
         case .K_ENTER, .K_TAB: {
-            if global_widget.selection > -1 {
-                result := global_widget.view_results[global_widget.selection]
+            if cursor.index > -1 {
+                result := global_widget.view_results[cursor.index]
                 file_info := result.value.(Widget_Result_File)
 
                 if file_info.is_dir {
@@ -418,7 +501,7 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
                     strings.builder_reset(&global_widget.prompt)
                     strings.write_string(&global_widget.prompt, current_dir)
                     strings.write_string(&global_widget.prompt, "/")
-                    global_widget.selection = -1
+                    cursor.index = -1
                     _widget_find_file_open_and_read_dir(current_dir)
                 } else {
                     data, success := os.read_entire_file(file_info.filepath, context.temp_allocator)
@@ -448,7 +531,7 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
                         file_info := result.value.(Widget_Result_File)
 
                         if file_info.filepath == fullpath {
-                            global_widget.selection = index
+                            cursor.index = index
                             return find_file_keyboard_event_handler(event, cmd)
                         }
                     }
@@ -468,6 +551,8 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
 }
 
 save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
+    cursor := &global_widget.cursor
+
     do_save_buffer_stuff :: proc(new_fullpath: string) {
         delete(active_pane.buffer.filepath)
         delete(active_pane.buffer.name)
@@ -486,8 +571,8 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
                 return true
             }
 
-            if global_widget.selection > -1 {
-                result := global_widget.view_results[global_widget.selection]
+            if cursor.index > -1 {
+                result := global_widget.view_results[cursor.index]
                 file_info := result.value.(Widget_Result_File)
 
                 if file_info.is_dir {
@@ -495,14 +580,14 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
                     strings.builder_reset(&global_widget.prompt)
                     strings.write_string(&global_widget.prompt, current_dir)
                     strings.write_string(&global_widget.prompt, "/")
-                    global_widget.selection = -1
+                    cursor.index = -1
                     _widget_find_file_open_and_read_dir(current_dir)
                 } else {
                     strings.builder_reset(&global_widget.prompt)
                     strings.write_string(&global_widget.prompt, file_info.filepath)
-                    global_widget.cursor.pos = len(global_widget.prompt.buf)
-                    global_widget.cursor.sel = len(global_widget.prompt.buf)
-                    global_widget.selection = -1
+                    cursor.pos = len(global_widget.prompt.buf)
+                    cursor.sel = cursor.pos
+                    cursor.index = -1
                     global_widget.ask_for_confirmation = true
                 }
 
@@ -514,17 +599,18 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
                     log.errorf("cannot create empty file")
                     return true
                 } else {
-                    // if the prompt already exists in the results, select
-                    // it and resubmit the event
+                    // if the prompt already exists in the results,
+                    // select it and resubmit the event
                     for result, index in global_widget.view_results {
                         file_info := result.value.(Widget_Result_File)
 
                         if file_info.filepath == new_fullpath {
-                            global_widget.selection = index
+                            cursor.index = index
                             return save_file_as_keyboard_event_handler(event, cmd)
                         }
                     }
 
+                    // or just save if it wasn't in the results
                     do_save_buffer_stuff(new_fullpath)
                 }
 
@@ -539,6 +625,8 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
 update_and_draw_widget :: proc() {
     if !global_widget.active do return
 
+    cursor := &global_widget.cursor
+
     if time.tick_diff(last_keystroke, time.tick_now()) < CURSOR_RESET_TIMEOUT {
         global_widget.cursor_showing = true
         global_widget.cursor_blink_timer = time.tick_now()
@@ -549,14 +637,14 @@ update_and_draw_widget :: proc() {
         global_widget.cursor_blink_timer = time.tick_now()
     }
 
-    for global_widget.selection > WIDGET_HEIGHT_IN_ROWS - 2 + global_widget.y_offset do global_widget.y_offset += 1
-    for global_widget.selection < global_widget.y_offset do global_widget.y_offset -= 1
-    if  global_widget.selection <= 0 do global_widget.y_offset = 0
+    for cursor.index > WIDGET_HEIGHT_IN_ROWS - 2 + global_widget.y_offset do global_widget.y_offset += 1
+    for cursor.index < global_widget.y_offset do global_widget.y_offset -= 1
+    if  cursor.index <= 0 do global_widget.y_offset = 0
 
     switch global_widget.action {
     case .Find_Buffer:
-        if global_widget.selection > -1 {
-            item := global_widget.view_results[global_widget.selection]
+        if cursor.index > -1 {
+            item := global_widget.view_results[cursor.index]
             buffer := item.value.(^Buffer)
 
             if active_pane.buffer != buffer {
@@ -574,7 +662,7 @@ update_and_draw_widget :: proc() {
             } else {
                 global_widget.view_results = slice.clone(global_widget.all_results[:])
             }
-            global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
+            cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
         }
     case .Find_File, .Save_File_As:
         if global_widget.results_need_update {
@@ -625,7 +713,7 @@ update_and_draw_widget :: proc() {
                     global_widget.view_results = slice.clone(global_widget.all_results[:])
                 }
 
-                global_widget.selection = len(global_widget.view_results) > 0 ? 0 : -1
+                cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
             } else {
                 _clean_up_view_results()
 
@@ -644,7 +732,7 @@ update_and_draw_widget :: proc() {
     prepare_for_drawing()
     prompt_ask_str := fmt.tprintf(
         "{}/{}  {}: ",
-        global_widget.selection + 1,
+        cursor.index + 1,
         len(global_widget.view_results),
         global_widget.prompt_question,
     )
@@ -665,7 +753,7 @@ update_and_draw_widget :: proc() {
             continue
         }
 
-        is_selected := global_widget.selection == index
+        is_selected := cursor.index == index
 
         if is_selected {
             set_color(.ui_selection_background)
@@ -697,7 +785,7 @@ update_and_draw_widget :: proc() {
         prompt_pen := draw_text(font_bold, {left_padding, 0}, question)
         draw_text(font_regular, prompt_pen, "<ENTER>")
     } else {
-        if global_widget.selection == -1 {
+        if cursor.index == -1 {
             set_color(.ui_selection_background)
             draw_rect(0, 0, i32(len(prompt_ask_str)) * font_bold.xadvance, line_height, true)
             set_color(.ui_selection_foreground, font_bold.texture)
@@ -707,13 +795,13 @@ update_and_draw_widget :: proc() {
 
         set_color(.foreground, font_regular.texture)
         prompt_ask_pen := draw_text(font_bold, {left_padding, 0}, prompt_ask_str)
-        draw_text(font_regular, prompt_ask_pen, prompt_query_str)
+        draw_text_line(font_regular, prompt_ask_pen, prompt_query_str, {start = cursor.pos, end = cursor.sel})
 
         cursor_pen := prompt_ask_pen
-        cursor_pen.x += prepare_text(font_regular, prompt_query_str[:global_widget.cursor.pos])
+        cursor_pen.x += prepare_text(font_regular, prompt_query_str[:cursor.pos])
         rune_behind_cursor := ' '
-        if global_widget.cursor.pos < len(prompt_query_str) {
-            rune_behind_cursor = utf8.rune_at(prompt_query_str, global_widget.cursor.pos)
+        if cursor.pos < len(prompt_query_str) {
+            rune_behind_cursor = utf8.rune_at(prompt_query_str, cursor.pos)
         }
         draw_cursor(font_regular, cursor_pen, rune_behind_cursor, global_widget.cursor_showing, true, true)
     }

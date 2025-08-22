@@ -16,12 +16,9 @@ GUTTER_LINE_NUMBER_JUSTIFY :: 2
 
 Pane_Flags :: bit_set[Pane_Flag; u8]
 
-Pane_Mode :: enum u8 {
-    Line_Wrappings,
-}
-
 Pane_Flag :: enum u8 {
-    Need_Full_Repaint,
+    Line_Wrappings    = 0,
+    Need_Full_Repaint = 1,
 }
 
 Translation :: enum u16 {
@@ -35,8 +32,8 @@ Translation :: enum u16 {
 Pane :: struct {
     uuid:                uuid.Identifier,
     cursors:             [dynamic]Cursor,
-    cursor_selecting:    bool,
-    cursor_showing:      bool,
+    cursor_selecting:    bool, // mode like region-mode in Emacs
+    cursor_showing:      bool, // for rendering, hiding during blink interludes
     cursor_blink_count:  int,
     cursor_blink_timer:  time.Tick,
 
@@ -46,9 +43,6 @@ Pane :: struct {
     wrapped_line_starts: [dynamic]int,
     local_font_size:     i32,
     font:                ^Font,
-
-    // TODO(nawe) maybe combine?
-    modes:               bit_set[Pane_Mode; u8],
     flags:               Pane_Flags,
 
     // rendering stuff
@@ -248,8 +242,8 @@ update_pane_font :: #force_inline proc(pane: ^Pane) {
 }
 
 update_all_pane_textures :: proc() {
-    // NOTE(nawe) should be safe to clean up textures here since we're
-    // probably recreating them due to the change in size
+    // should be safe to clean up textures here since we're probably
+    // recreating them due to the change in size
     pane_width := window_width / i32(len(open_panes))
     pane_height := window_height
 
@@ -261,7 +255,7 @@ update_all_pane_textures :: proc() {
         pane.texture = texture_create(.TARGET, i32(pane_width), i32(pane_height))
         pane.visible_columns = int(pane.rect.w) / int(pane.font.xadvance) - 1
         pane.visible_rows = (int(pane.rect.h) / int(pane.font.line_height)) - 1
-        if .Line_Wrappings in pane.modes do recalculate_line_wrappings(pane)
+        if .Line_Wrappings in pane.flags do recalculate_line_wrappings(pane)
         flag_pane(pane, {.Need_Full_Repaint})
     }
 }
@@ -399,7 +393,7 @@ get_line_boundaries :: #force_inline proc(line_index: int, lines: []int) -> (sta
 }
 
 get_lines_array :: #force_inline proc(pane: ^Pane) -> []int {
-    if .Line_Wrappings in pane.modes {
+    if .Line_Wrappings in pane.flags {
         return pane.wrapped_line_starts[:]
     } else {
         return pane.line_starts[:]

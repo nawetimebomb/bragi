@@ -360,6 +360,27 @@ draw_highlighted_text :: proc(
     return {sx, sy}
 }
 
+draw_text_line :: proc(font: ^Font, pen: Vector2, text: string, selection: Range = {}) -> (pen2: Vector2) {
+    sx, sy := pen.x, pen.y
+
+    for r, offset in text {
+        glyph := find_or_create_glyph(font, r)
+        src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
+        dest := make_rect(sx, sy, glyph.w, glyph.h)
+
+        if selection.start != selection.end && offset >= selection.start && offset < selection.end {
+            set_color(.region)
+            draw_rect(sx, sy, font.em_width, font.character_height, true)
+        }
+
+        draw_texture(font.texture, &src, &dest)
+        sx += glyph.xadvance
+    }
+
+    return {sx, sy}
+}
+
+
 draw_text :: proc(font: ^Font, pen: Vector2, text: string) -> (pen2: Vector2) {
     sx, sy := pen.x, pen.y
 

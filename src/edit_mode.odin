@@ -121,6 +121,9 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
     case .all_cursors:
         for &cursor in pane.cursors do cursor.active = true
         return true
+    case .recenter_cursor:
+        maybe_recenter_cursor(pane, true)
+        return true
 
     case .clone_cursor_start:
         clone_to(pane, .start)
@@ -189,6 +192,14 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
     case .move_next_paragraph:
         move_to(pane, .next_paragraph)
         return true
+    case .move_prev_page:
+        move_to(pane, .prev_page)
+        maybe_recenter_cursor(pane)
+        return true
+    case .move_next_page:
+        move_to(pane, .next_page)
+        maybe_recenter_cursor(pane)
+        return true
     case .move_beginning_of_line:
         move_to(pane, .beginning_of_line)
         return true
@@ -230,6 +241,12 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         return true
     case .select_next_paragraph:
         select_to(pane, .next_paragraph)
+        return true
+    case .select_prev_page:
+        select_to(pane, .prev_page)
+        return true
+    case .select_next_page:
+        select_to(pane, .next_page)
         return true
     case .select_beginning_of_line:
         select_to(pane, .beginning_of_line)
@@ -401,6 +418,8 @@ clone_to :: proc(pane: ^Pane, t: Translation) {
         case .next_word: unimplemented()
         case .prev_paragraph: unimplemented()
         case .next_paragraph: unimplemented()
+        case .prev_page: unimplemented()
+        case .next_page: unimplemented()
         case .beginning_of_line: unimplemented()
         case .end_of_line: unimplemented()
         case .up:
@@ -576,6 +595,16 @@ insert_newlines_and_indent :: proc(pane: ^Pane) -> (total_length_of_inserted_cha
     }
     profiling_end()
     return
+}
+
+maybe_recenter_cursor :: proc(pane: ^Pane, always_recenter := false) {
+    cursor := get_first_active_cursor(pane)
+    lines := get_lines_array(pane)
+    coords := cursor_offset_to_coords(pane, lines, cursor.pos)
+
+    if always_recenter || coords.row < pane.y_offset || coords.row > pane.y_offset + pane.visible_rows {
+        pane.y_offset = clamp(coords.row - pane.visible_rows/2, 0, len(lines) - pane.visible_rows/2)
+    }
 }
 
 @(private="file")

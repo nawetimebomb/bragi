@@ -109,7 +109,7 @@ draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Lin
 
             if is_selected(selections, code.start_offset + x_offset) {
                 set_color(.region)
-                draw_rect(sx, sy, font.em_width, font.character_height, true)
+                draw_rect(sx, sy, glyph.w, glyph.h, true)
             }
 
             if len(code.tokens) > 0 {

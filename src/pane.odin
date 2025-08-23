@@ -26,6 +26,7 @@ Translation :: enum u16 {
     down, left, right, up,
     prev_word, next_word,
     prev_paragraph, next_paragraph,
+    prev_page, next_page,
     beginning_of_line, end_of_line,
 }
 
@@ -531,6 +532,14 @@ translate_position :: proc(pane: ^Pane, pos: int, t: Translation, max_column := 
 
         coords.column = 0
         last_column = -1
+        result = cursor_coords_to_offset(pane, lines, coords)
+    case .prev_page:
+        coords := cursor_offset_to_coords(pane, lines, result)
+        coords.row = max(coords.row - pane.visible_rows, 0)
+        result = cursor_coords_to_offset(pane, lines, coords)
+    case .next_page:
+        coords := cursor_offset_to_coords(pane, lines, result)
+        coords.row = min(coords.row + pane.visible_rows, len(lines) - 1)
         result = cursor_coords_to_offset(pane, lines, coords)
     case .beginning_of_line:
         coords := cursor_offset_to_coords(pane, lines, result)

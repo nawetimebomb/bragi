@@ -91,7 +91,7 @@ is_alpha_uppercase :: proc(t: ^Tokenizer) -> bool {
 }
 
 is_char :: proc(t: ^Tokenizer, b: byte) -> bool {
-    return t.buf[t.offset] == b
+    return !is_eof(t) && t.buf[t.offset] == b
 }
 
 is_eof :: proc(t: ^Tokenizer) -> bool {

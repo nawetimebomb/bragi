@@ -31,6 +31,7 @@ Command :: enum u32 {
     clone_cursor_beginning_of_line,
     clone_cursor_end_of_line,
 
+    recenter_cursor,
     prev_cursor,
     next_cursor,
     all_cursors,
@@ -45,6 +46,8 @@ Command :: enum u32 {
     move_next_word,
     move_prev_paragraph,
     move_next_paragraph,
+    move_prev_page,
+    move_next_page,
     move_beginning_of_line,
     move_end_of_line,
 
@@ -59,6 +62,8 @@ Command :: enum u32 {
     select_next_word,
     select_prev_paragraph,
     select_next_paragraph,
+    select_prev_page,
+    select_next_page,
     select_beginning_of_line,
     select_end_of_line,
 

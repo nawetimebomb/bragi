@@ -97,11 +97,11 @@ settings_init :: proc() {
     colorscheme[.code_constant_value]               = _hex_to_color(0x5aa0b3)
     colorscheme[.code_directive]                    = _hex_to_color(0x875e9a)
     colorscheme[.code_enum_variant]                 = _hex_to_color(0x98a098)
-    colorscheme[.code_function_name]                = _hex_to_color(0xe66250)
+    colorscheme[.code_function_name]                = _hex_to_color(0xa08563)
     colorscheme[.code_keyword]                      = _hex_to_color(0xcd950c)
     colorscheme[.code_string]                       = _hex_to_color(0x6b8e23)
     colorscheme[.code_type]                         = _hex_to_color(0x98a098)
-    colorscheme[.code_variable_name]                = _hex_to_color(0x0000ee)
+    colorscheme[.code_variable_name]                = _hex_to_color(0xa08563)
 
     colorscheme[.ui_border]                         = _hex_to_color(0x373b41)
     colorscheme[.ui_selection_background]           = _hex_to_color(0x0a0b62)
@@ -205,6 +205,8 @@ _settings_setup_emacs_keybindings :: proc() {
     commands_map["Alt-F"]  = .move_next_word
     commands_map["Alt-{"]  = .move_prev_paragraph
     commands_map["Alt-}"]  = .move_next_paragraph
+    commands_map["Alt-V"]  = .move_prev_page
+    commands_map["Ctrl-V"] = .move_next_page
     commands_map["Ctrl-A"] = .move_beginning_of_line
     commands_map["Ctrl-E"] = .move_end_of_line
 
@@ -222,7 +224,8 @@ _settings_setup_emacs_keybindings :: proc() {
     commands_map["Ctrl-X-0"] = .close_this_pane
     commands_map["Ctrl-X-1"] = .close_other_panes
 
-    commands_map["Ctrl-LeftTab"] = .prev_cursor
+    commands_map["Ctrl-L"]         = .recenter_cursor
+    commands_map["Ctrl-LeftTab"]   = .prev_cursor
     commands_map["Ctrl-Tab"]       = .next_cursor
     commands_map["Ctrl-Shift-A"]   = .all_cursors
 

@@ -52,18 +52,38 @@ set_color :: proc{
     set_color_background,
 }
 
+set_color_background :: #force_inline proc(face: Face_Color) {
+    c := colorscheme[face]
+    sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
+}
+
 set_color_texture :: #force_inline proc(face: Face_Color, texture: ^Texture) {
     c := colorscheme[face]
     sdl.SetTextureColorMod(texture, c.r, c.g, c.b)
 }
 
-set_colors :: #force_inline proc(face: Face_Color, textures: []^Texture) {
-    for t in textures do set_color_texture(face, t)
+set_color_from_token :: #force_inline proc(kind: Token_Kind, texture: ^Texture) {
+    c: Color
+
+    #partial switch kind {
+        case .Builtin_Function, .Builtin_Variable: c = colorscheme[.code_builtin]
+        case .Comment, .Comment_Multiline:         c = colorscheme[.code_comment]
+        case .Constant, .Number:                   c = colorscheme[.code_constant_value]
+        case .Directive:                           c = colorscheme[.code_directive]
+        case .Enum_Variant:                        c = colorscheme[.code_enum_variant]
+        case .Function:                            c = colorscheme[.code_function_name]
+        case .Keyword:                             c = colorscheme[.code_keyword]
+        case .String_Literal, .String_Raw:         c = colorscheme[.code_string]
+        case .Type:                                c = colorscheme[.code_type]
+        case .Variable:                            c = colorscheme[.code_variable_name]
+        case:                                      c = colorscheme[.foreground]
+    }
+
+    sdl.SetTextureColorMod(texture, c.r, c.g, c.b)
 }
 
-set_color_background :: #force_inline proc(face: Face_Color) {
-    c := colorscheme[face]
-    sdl.SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a)
+set_colors :: #force_inline proc(face: Face_Color, textures: []^Texture) {
+    for t in textures do set_color_texture(face, t)
 }
 
 set_target :: #force_inline proc(target: ^Texture = nil) {
@@ -92,7 +112,12 @@ draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Lin
                 draw_rect(sx, sy, font.em_width, font.character_height, true)
             }
 
-            set_color(.foreground, font.texture)
+            if len(code.tokens) > 0 {
+                set_color_from_token(code.tokens[x_offset], font.texture)
+            } else {
+                set_color(.foreground, font.texture)
+            }
+
             draw_texture(font.texture, &src, &dest)
             sx += glyph.xadvance
         }

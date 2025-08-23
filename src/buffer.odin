@@ -43,6 +43,7 @@ Buffer :: struct {
     add_source:       strings.Builder,
     pieces:           [dynamic]Piece,
     text_content:     strings.Builder,
+    tokens:           [dynamic]Token_Kind,
     length_of_buffer: int,
 
     indent: struct {
@@ -72,13 +73,13 @@ History_State :: struct {
 }
 
 Major_Mode :: union #no_nil {
-    Major_Mode_Bragi,
-    Major_Mode_Odin,
+    Mode_Odin,
+    Mode_Bragi,
 }
 
-Major_Mode_Bragi :: struct {}
+Mode_Bragi :: struct {}
 
-Major_Mode_Odin :: struct {}
+Mode_Odin :: struct {}
 
 buffer_get_or_create_empty :: proc(name: string = "*scratchpad*") -> ^Buffer {
     for buffer in open_buffers {
@@ -266,6 +267,7 @@ buffer_destroy :: proc(buffer: ^Buffer) {
     undo_clear(buffer, &buffer.redo)
     delete(buffer.cursors)
     delete(buffer.pieces)
+    delete(buffer.tokens)
     delete(buffer.undo)
     delete(buffer.redo)
     delete(buffer.name)
@@ -304,6 +306,8 @@ update_opened_buffers :: proc() {
                 total_length += piece.length
             }
 
+            buffer_tokenize(buffer)
+
             buffer.length_of_buffer = total_length
             append(&lines_array, 0)
             for r, index in strings.to_string(buffer.text_content) {
@@ -322,6 +326,15 @@ update_opened_buffers :: proc() {
         }
     }
     profiling_end()
+}
+
+buffer_tokenize :: proc(buffer: ^Buffer) {
+    switch v in buffer.major_mode {
+    case Mode_Bragi:
+    case Mode_Odin:  tokenize_odin(buffer)
+    }
+
+    assign_at(&buffer.tokens, buffer.length_of_buffer + 1, Token_Kind.EOF)
 }
 
 undo_clear :: proc(buffer: ^Buffer, undo: ^[dynamic]^History_State) {
@@ -391,8 +404,8 @@ is_continuation_byte :: proc(b: byte) -> bool {
 
 get_major_mode_name :: proc(buffer: ^Buffer) -> string {
     switch v in buffer.major_mode {
-    case Major_Mode_Bragi: return "Bragi"
-    case Major_Mode_Odin:  return "Odin"
+    case Mode_Bragi: return "Bragi"
+    case Mode_Odin:  return "Odin"
     }
 
     unreachable()

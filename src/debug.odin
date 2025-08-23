@@ -70,6 +70,11 @@ debug_draw :: proc() {
         )
 
         pen = draw_text(font_regular, pen, cursor_pos_str)
+
+        if cursor.pos < len(pane.buffer.tokens) {
+            pen = draw_text(font_regular, pen, fmt.tprintf("Token: {}\n\n", pane.buffer.tokens[cursor.pos]))
+        }
+
         piece_index, _ = locate_piece(pane.buffer, cursor.pos)
     }
 

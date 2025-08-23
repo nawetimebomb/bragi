@@ -72,7 +72,7 @@ Code_Line :: struct {
     line:               string,
     line_is_wrapped:    bool, // this line continues on the next line
     start_offset:       int,
-    //tokens:          []Token_Kind,
+    tokens:             []Token_Kind,
 }
 
 pane_create :: proc(buffer: ^Buffer = nil) -> ^Pane {
@@ -207,6 +207,12 @@ update_and_draw_panes :: proc() {
             code_line.start_offset = start
             code_line.line = get_line_text(pane, line_number, lines)
             code_line.line_is_wrapped = false
+            end_offset := start + len(code_line.line)
+
+            if end_offset <= len(pane.buffer.tokens) {
+                code_line.tokens = pane.buffer.tokens[start:end_offset]
+            }
+
             append(&code_lines, code_line)
         }
 

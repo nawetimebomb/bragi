@@ -536,7 +536,6 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
                         }
                     }
 
-
                     // if it wasn't, create the buffer for the new file.
                     buffer := buffer_get_or_create_from_file(fullpath, {})
                     switch_to_buffer(active_pane, buffer)

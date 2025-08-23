@@ -10,6 +10,17 @@ Face_Color :: enum {
     highlight,
     region,
 
+    code_builtin,
+    code_comment,
+    code_constant_value,
+    code_directive,
+    code_enum_variant,
+    code_function_name,
+    code_keyword,
+    code_string,
+    code_type,
+    code_variable_name,
+
     ui_border,
     ui_selection_background,
     ui_selection_foreground,
@@ -79,8 +90,18 @@ settings_init :: proc() {
     colorscheme[.highlight]                         = _hex_to_color(0xcd950c)
     colorscheme[.cursor_active]                     = _hex_to_color(0xcd950c)
     colorscheme[.cursor_inactive]                   = _hex_to_color(0x98a098)
-
     colorscheme[.region]                            = _hex_to_color(0x0a0b62)
+
+    colorscheme[.code_builtin]                      = _hex_to_color(0x875e9a)
+    colorscheme[.code_comment]                      = _hex_to_color(0xe27d51)
+    colorscheme[.code_constant_value]               = _hex_to_color(0x5aa0b3)
+    colorscheme[.code_directive]                    = _hex_to_color(0x875e9a)
+    colorscheme[.code_enum_variant]                 = _hex_to_color(0x98a098)
+    colorscheme[.code_function_name]                = _hex_to_color(0xe66250)
+    colorscheme[.code_keyword]                      = _hex_to_color(0xcd950c)
+    colorscheme[.code_string]                       = _hex_to_color(0x6b8e23)
+    colorscheme[.code_type]                         = _hex_to_color(0x98a098)
+    colorscheme[.code_variable_name]                = _hex_to_color(0x0000ee)
 
     colorscheme[.ui_border]                         = _hex_to_color(0x373b41)
     colorscheme[.ui_selection_background]           = _hex_to_color(0x0a0b62)

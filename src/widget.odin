@@ -630,6 +630,13 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
 }
 
 search_in_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
+    _set_last_search_term :: proc() {
+        if len(global_widget.prompt.buf) == 0 && len(last_search_term) > 0 {
+            strings.write_string(&global_widget.prompt, last_search_term)
+            global_widget.results_need_update = true
+        }
+    }
+
     cursor := &global_widget.cursor
 
     #partial switch event.key_code {
@@ -643,13 +650,23 @@ search_in_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Comm
 
     #partial switch cmd {
         case .search_backward: {
-            cursor.index -= 1
-            if cursor.index < 0 do cursor.index = len(global_widget.view_results) - 1
+            _set_last_search_term()
+
+            if len(global_widget.view_results) > 0 {
+                cursor.index -= 1
+                if cursor.index < 0 do cursor.index = len(global_widget.view_results) - 1
+            }
+
             return true
         }
         case .search_forward: {
-            cursor.index += 1
-            if cursor.index >= len(global_widget.view_results) do cursor.index = 0
+            _set_last_search_term()
+
+            if len(global_widget.view_results) > 0 {
+                cursor.index += 1
+                if cursor.index >= len(global_widget.view_results) do cursor.index = 0
+            }
+
             return true
         }
     }
@@ -751,18 +768,24 @@ _find_or_save_file_widget_update :: proc() {
 
 @(private="file")
 _search_in_buffer_widget_update :: proc() {
+    _select_result_with_pane_cursor :: proc() {
+        cursor := global_widget.cursor
+
+        if cursor.index > -1 {
+            result := global_widget.view_results[cursor.index]
+            offset := result.value.(int)
+            pane_cursor := get_first_active_cursor(active_pane)
+            pane_cursor.pos = offset + len(global_widget.prompt.buf)
+            pane_cursor.sel = offset
+            maybe_recenter_cursor(active_pane, true)
+        }
+    }
+
     cursor := &global_widget.cursor
     query := strings.to_string(global_widget.prompt)
     query_len := len(query)
 
-    if cursor.index > -1 {
-        result := global_widget.view_results[cursor.index]
-        offset := result.value.(int)
-        pane_cursor := get_first_active_cursor(active_pane)
-        pane_cursor.pos = offset + query_len
-        pane_cursor.sel = offset
-        maybe_recenter_cursor(active_pane, true)
-    }
+    _select_result_with_pane_cursor()
 
     if !global_widget.results_need_update do return
     global_widget.results_need_update = false
@@ -843,7 +866,27 @@ _search_in_buffer_widget_update :: proc() {
     })
 
     global_widget.view_results = slice.clone(global_widget.all_results[:])
-    cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
+
+    // find the closest offset
+    pane_cursor := get_first_active_cursor(active_pane)
+    smallest_diff := len(active_pane.contents)
+
+    for result, index in global_widget.view_results {
+        result_offset := result.value.(int)
+        low := min(result_offset, pane_cursor.pos)
+        high := max(result_offset, pane_cursor.pos)
+        diff := high - low
+
+        if diff < smallest_diff {
+            cursor.index = index
+            smallest_diff = diff
+        }
+    }
+
+    _select_result_with_pane_cursor()
+
+    delete(last_search_term)
+    last_search_term = strings.clone(query)
 }
 
 update_and_draw_widget :: proc() {
@@ -861,7 +904,9 @@ update_and_draw_widget :: proc() {
         global_widget.cursor_blink_timer = time.tick_now()
     }
 
-    for cursor.index > WIDGET_HEIGHT_IN_ROWS - 2 + global_widget.y_offset do global_widget.y_offset += 1
+    for cursor.index > WIDGET_HEIGHT_IN_ROWS - 2 + global_widget.y_offset {
+        global_widget.y_offset += 1
+    }
     for cursor.index < global_widget.y_offset do global_widget.y_offset -= 1
     if  cursor.index <= 0 do global_widget.y_offset = 0
 

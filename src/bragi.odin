@@ -53,6 +53,7 @@ open_panes:    [dynamic]^Pane
 global_widget: Widget
 
 base_working_dir:    string
+last_search_term:    string
 commands_map:        map[string]Command
 events_this_frame:   [dynamic]Event
 last_keystroke:      time.Tick
@@ -279,6 +280,7 @@ main :: proc() {
     delete(open_panes)
     delete(colorscheme)
     delete(base_working_dir)
+    delete(last_search_term)
 
     platform_destroy()
 

@@ -675,12 +675,14 @@ maybe_indent_or_go_to_tab_stop :: proc(pane: ^Pane) {
     unimplemented()
 }
 
-maybe_recenter_cursor :: proc(pane: ^Pane, always_recenter := false) {
+maybe_recenter_cursor :: proc(pane: ^Pane, force_recenter := false) {
     cursor := get_first_active_cursor(pane)
     lines := get_lines_array(pane)
     coords := cursor_offset_to_coords(pane, lines, cursor.pos)
+    top_edge := pane.y_offset
+    bottom_edge := pane.y_offset + pane.visible_rows
 
-    if always_recenter || coords.row < pane.y_offset || coords.row > pane.y_offset + pane.visible_rows {
+    if force_recenter || coords.row < top_edge || coords.row > bottom_edge {
         pane.y_offset = clamp(coords.row - pane.visible_rows/2, 0, len(lines) - pane.visible_rows/2)
     }
 }

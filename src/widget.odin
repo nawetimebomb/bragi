@@ -10,11 +10,13 @@ import "core:time"
 import "core:unicode/utf8"
 
 WIDGET_HEIGHT_IN_ROWS :: 15
+NAMESPACE_WIDGET_SEARCH_RESULTS :: "widget.search_results"
 
 Widget_Action :: enum {
     Find_Buffer,
     Find_File,
     Save_File_As,
+    Search_In_Buffer,
 }
 
 Widget :: struct {
@@ -52,6 +54,7 @@ Widget_Result :: struct {
 Widget_Result_Value :: union {
     Widget_Result_Buffer,
     Widget_Result_File,
+    Widget_Result_Offset,
 }
 
 Widget_Result_Buffer :: ^Buffer
@@ -61,6 +64,8 @@ Widget_Result_File :: struct {
     filepath: string,
     is_dir:   bool,
 }
+
+Widget_Result_Offset :: int
 
 widget_init :: proc() {
     global_widget.font = fonts_map[.UI_Regular]
@@ -85,7 +90,7 @@ widget_open_find_buffer :: proc() {
     for buffer in open_buffers {
         if active_pane.buffer.uuid == buffer.uuid do continue
         append(&global_widget.all_results, Widget_Result{
-            format     = get_find_buffer_format(buffer),
+            format     = _get_find_buffer_format(buffer),
             value      = buffer,
         })
     }
@@ -98,7 +103,7 @@ widget_open_find_buffer :: proc() {
 
     // ...but append the current active buffer last
     append(&global_widget.all_results, Widget_Result{
-        format = get_find_buffer_format(active_pane.buffer),
+        format = _get_find_buffer_format(active_pane.buffer),
         value  = active_pane.buffer,
     })
 
@@ -144,6 +149,14 @@ widget_open_save_file_as :: proc() {
     global_widget.prompt_question = "Save file as"
 }
 
+widget_open_search_in_buffer :: proc() {
+    _widget_open()
+
+    global_widget.view_results = make([]Widget_Result, 0)
+    global_widget.action = .Search_In_Buffer
+    global_widget.prompt_question = "Search"
+}
+
 @(private="file")
 _widget_find_file_open_and_read_dir :: proc(current_dir: string) {
     // cleaning up because it was called from an already existing opened widget
@@ -182,7 +195,7 @@ _widget_find_file_open_and_read_dir :: proc(current_dir: string) {
         fullpath := strings.clone(file_info.fullpath)
 
         append(&global_widget.all_results, Widget_Result{
-            format    = get_find_file_format(file_info),
+            format    = _get_find_file_format(file_info),
             value     = Widget_Result_File{
                 filepath = fullpath,
                 name     = filepath.base(fullpath),
@@ -277,14 +290,15 @@ widget_close :: proc() {
         case Widget_Result_Buffer:
         case Widget_Result_File:
             delete(v.filepath)
+        case Widget_Result_Offset:
         }
     }
 
     delete(global_widget.all_results)
     _clean_up_view_results()
 
+    clear(&active_pane.regions)
     strings.builder_destroy(&global_widget.prompt)
-    update_all_pane_textures()
 }
 
 widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (handled: bool) {
@@ -447,9 +461,10 @@ widget_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> (h
     }
 
     switch global_widget.action {
-    case .Find_Buffer:  handled = find_buffer_keyboard_event_handler (event, cmd)
-    case .Find_File:    handled = find_file_keyboard_event_handler   (event, cmd)
-    case .Save_File_As: handled = save_file_as_keyboard_event_handler(event, cmd)
+    case .Find_Buffer:      handled = find_buffer_keyboard_event_handler     (event, cmd)
+    case .Find_File:        handled = find_file_keyboard_event_handler       (event, cmd)
+    case .Save_File_As:     handled = save_file_as_keyboard_event_handler    (event, cmd)
+    case .Search_In_Buffer: handled = search_in_buffer_keyboard_event_handler(event, cmd)
     }
 
     return
@@ -614,6 +629,223 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
     return false
 }
 
+search_in_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
+    cursor := &global_widget.cursor
+
+    #partial switch event.key_code {
+        case .K_ENTER, .K_TAB: {
+            pane_cursor := get_first_active_cursor(active_pane)
+            pane_cursor.sel = pane_cursor.pos
+            widget_close()
+            return true
+        }
+    }
+
+    #partial switch cmd {
+        case .search_backward: {
+            cursor.index -= 1
+            if cursor.index < 0 do cursor.index = len(global_widget.view_results) - 1
+            return true
+        }
+        case .search_forward: {
+            cursor.index += 1
+            if cursor.index >= len(global_widget.view_results) do cursor.index = 0
+            return true
+        }
+    }
+
+    return false
+}
+
+@(private="file")
+_find_buffer_widget_update :: proc() {
+    cursor := &global_widget.cursor
+
+    if cursor.index > -1 {
+        item := global_widget.view_results[cursor.index]
+        buffer := item.value.(^Buffer)
+
+        if active_pane.buffer != buffer {
+            switch_to_buffer(active_pane, buffer)
+        }
+    }
+
+    if !global_widget.results_need_update do return
+
+    global_widget.results_need_update = false
+    _clean_up_view_results()
+    query := strings.to_string(global_widget.prompt)
+
+    if len(query) > 0 {
+        global_widget.view_results = _get_filtered_all_results_with_current_query(query)
+    } else {
+        global_widget.view_results = slice.clone(global_widget.all_results[:])
+    }
+    cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
+}
+
+@(private="file")
+_find_or_save_file_widget_update :: proc() {
+    if !global_widget.results_need_update do return
+    global_widget.results_need_update = false
+
+    cursor := &global_widget.cursor
+    query := strings.to_string(global_widget.prompt)
+    query_starting_index := strings.index(query, "/~/")
+
+    if query_starting_index != -1 || strings.starts_with(query, "~/") {
+        query_first_part: string
+
+        when ODIN_OS == .Windows {
+            query_first_part = base_working_dir
+        } else {
+            value, found := os.lookup_env("HOME", context.temp_allocator)
+            query_first_part = found ? value : base_working_dir
+        }
+
+        query = fmt.tprintf("{}/{}", query_first_part, query[query_starting_index + 3:])
+        strings.builder_reset(&global_widget.prompt)
+        strings.write_string(&global_widget.prompt, query)
+    }
+
+    if len(query) > 0 {
+        current_dir := filepath.dir(query, context.temp_allocator)
+        matches_previous_dir := false
+
+        if len(global_widget.all_results) > 0 {
+            previous_result_to_test := global_widget.all_results[0]
+            file_to_test := previous_result_to_test.value.(Widget_Result_File)
+            previous_dir := filepath.dir(file_to_test.filepath, context.temp_allocator)
+            matches_previous_dir = current_dir == previous_dir
+        }
+
+        if !matches_previous_dir {
+            _widget_find_file_open_and_read_dir(current_dir)
+        }
+
+        _clean_up_view_results()
+
+        // only care about the last part as it is the part shown in the format
+        query_replaced, _ := filepath.to_slash(query, context.temp_allocator)
+        last_slash_index := max(strings.last_index_byte(query_replaced, '/'), 0)
+        last_part_of_query := query[last_slash_index + 1:]
+
+        if len(last_part_of_query) > 0 {
+            global_widget.view_results = _get_filtered_all_results_with_current_query(last_part_of_query)
+        } else {
+            global_widget.view_results = slice.clone(global_widget.all_results[:])
+        }
+
+        cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
+    } else {
+        _clean_up_view_results()
+
+        if len(global_widget.all_results) > 0 {
+            global_widget.view_results = slice.clone(global_widget.all_results[:])
+        } else {
+            strings.write_string(&global_widget.prompt, base_working_dir)
+            _widget_find_file_open_and_read_dir(base_working_dir)
+        }
+    }
+}
+
+@(private="file")
+_search_in_buffer_widget_update :: proc() {
+    cursor := &global_widget.cursor
+    query := strings.to_string(global_widget.prompt)
+    query_len := len(query)
+
+    if cursor.index > -1 {
+        result := global_widget.view_results[cursor.index]
+        offset := result.value.(int)
+        pane_cursor := get_first_active_cursor(active_pane)
+        pane_cursor.pos = offset + query_len
+        pane_cursor.sel = offset
+        maybe_recenter_cursor(active_pane, true)
+    }
+
+    if !global_widget.results_need_update do return
+    global_widget.results_need_update = false
+
+    if len(query) == 0 {
+        _clean_up_view_results()
+        global_widget.view_results = make([]Widget_Result, 0)
+    }
+
+    // don't do anything if there's no content where we can search
+    if len(active_pane.contents) == 0 || len(query) == 0 do return
+
+    // cleaning up because it was called from an already existing opened widget
+    if len(global_widget.all_results) > 0 {
+        _clean_up_view_results()
+        for r in global_widget.all_results do delete(r.format)
+        clear(&global_widget.all_results)
+        clear(&active_pane.regions)
+    }
+
+    buf := active_pane.contents
+    buf_len := len(buf)
+    left_index := 0
+    right_index := buf_len - 1
+
+    for left_index < right_index && right_index > 0 {
+        // left side
+        if buf[left_index] == query[0] && left_index + query_len < buf_len {
+            test_word := buf[left_index:left_index + query_len]
+            if query == test_word {
+                result := Widget_Result{
+                    format = _get_search_in_buffer_format(left_index),
+                    value  = left_index,
+                }
+                append(&result.highlights, Range{0, query_len})
+                append(&global_widget.all_results, result)
+
+                append(&active_pane.regions, Highlight{
+                    namespace  = NAMESPACE_WIDGET_SEARCH_RESULTS,
+                    start      = left_index,
+                    end        = left_index + query_len,
+                    background = .search_background,
+                    foreground = .search_foreground,
+                })
+
+                left_index += query_len
+            }
+        }
+
+        // right side
+        if buf[right_index] == query[0] && right_index + query_len < buf_len {
+            test_word := buf[right_index:right_index + query_len]
+            if query == test_word {
+                result := Widget_Result{
+                    format = _get_search_in_buffer_format(right_index),
+                    value  = right_index,
+                }
+                append(&result.highlights, Range{0, query_len})
+                append(&global_widget.all_results, result)
+
+                append(&active_pane.regions, Highlight{
+                    namespace  = NAMESPACE_WIDGET_SEARCH_RESULTS,
+                    start      = right_index,
+                    end        = right_index + query_len,
+                    background = .search_background,
+                    foreground = .search_foreground,
+                })
+            }
+        }
+
+        left_index += 1
+        right_index -= 1
+    }
+
+    slice.sort_by(global_widget.all_results[:], proc(a: Widget_Result, b: Widget_Result) -> bool {
+        offset1, offset2 := a.value.(int), b.value.(int)
+        return offset1 < offset2
+    })
+
+    global_widget.view_results = slice.clone(global_widget.all_results[:])
+    cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
+}
+
 update_and_draw_widget :: proc() {
     if !global_widget.active do return
 
@@ -634,89 +866,9 @@ update_and_draw_widget :: proc() {
     if  cursor.index <= 0 do global_widget.y_offset = 0
 
     switch global_widget.action {
-    case .Find_Buffer:
-        if cursor.index > -1 {
-            item := global_widget.view_results[cursor.index]
-            buffer := item.value.(^Buffer)
-
-            if active_pane.buffer != buffer {
-                switch_to_buffer(active_pane, buffer)
-            }
-        }
-
-        if global_widget.results_need_update {
-            global_widget.results_need_update = false
-            _clean_up_view_results()
-            query := strings.to_string(global_widget.prompt)
-
-            if len(query) > 0 {
-                global_widget.view_results = _get_filtered_all_results_with_current_query(query)
-            } else {
-                global_widget.view_results = slice.clone(global_widget.all_results[:])
-            }
-            cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
-        }
-    case .Find_File, .Save_File_As:
-        if global_widget.results_need_update {
-            global_widget.results_need_update = false
-            query := strings.to_string(global_widget.prompt)
-            query_starting_index := strings.index(query, "/~/")
-
-            if query_starting_index != -1 || strings.starts_with(query, "~/") {
-                query_first_part: string
-
-                when ODIN_OS == .Windows {
-                    query_first_part = base_working_dir
-                } else {
-                    value, found := os.lookup_env("HOME", context.temp_allocator)
-                    query_first_part = found ? value : base_working_dir
-                }
-
-                query = fmt.tprintf("{}/{}", query_first_part, query[query_starting_index + 3:])
-                strings.builder_reset(&global_widget.prompt)
-                strings.write_string(&global_widget.prompt, query)
-            }
-
-            if len(query) > 0 {
-                current_dir := filepath.dir(query, context.temp_allocator)
-                matches_previous_dir := false
-
-                if len(global_widget.all_results) > 0 {
-                    previous_result_to_test := global_widget.all_results[0]
-                    file_to_test := previous_result_to_test.value.(Widget_Result_File)
-                    previous_dir := filepath.dir(file_to_test.filepath, context.temp_allocator)
-                    matches_previous_dir = current_dir == previous_dir
-                }
-
-                if !matches_previous_dir {
-                    _widget_find_file_open_and_read_dir(current_dir)
-                }
-
-                _clean_up_view_results()
-
-                // only care about the last part as it is the part shown in the format
-                query_replaced, _ := filepath.to_slash(query, context.temp_allocator)
-                last_slash_index := max(strings.last_index_byte(query_replaced, '/'), 0)
-                last_part_of_query := query[last_slash_index + 1:]
-
-                if len(last_part_of_query) > 0 {
-                    global_widget.view_results = _get_filtered_all_results_with_current_query(last_part_of_query)
-                } else {
-                    global_widget.view_results = slice.clone(global_widget.all_results[:])
-                }
-
-                cursor.index = len(global_widget.view_results) > 0 ? 0 : -1
-            } else {
-                _clean_up_view_results()
-
-                if len(global_widget.all_results) > 0 {
-                    global_widget.view_results = slice.clone(global_widget.all_results[:])
-                } else {
-                    strings.write_string(&global_widget.prompt, base_working_dir)
-                    _widget_find_file_open_and_read_dir(base_working_dir)
-                }
-            }
-        }
+    case .Find_Buffer:              _find_buffer_widget_update()
+    case .Find_File, .Save_File_As: _find_or_save_file_widget_update()
+    case .Search_In_Buffer:         _search_in_buffer_widget_update()
     }
 
     set_target(global_widget.texture)
@@ -771,6 +923,7 @@ update_and_draw_widget :: proc() {
         case .Find_Buffer:
         case .Find_File:
         case .Save_File_As: question = fmt.tprintf("Overwrite: {}? ", prompt_query_str)
+        case .Search_In_Buffer:
         }
 
         set_colors(.highlight, {font_bold.texture, font_regular.texture})
@@ -802,7 +955,8 @@ update_and_draw_widget :: proc() {
     draw_texture(global_widget.texture, nil, &global_widget.rect)
 }
 
-get_find_buffer_format :: proc(buffer: ^Buffer) -> string {
+@(private="file")
+_get_find_buffer_format :: proc(buffer: ^Buffer) -> string {
     MAX_NAME_LENGTH :: 24
     MIN_PADDING     :: 5
 
@@ -819,10 +973,39 @@ get_find_buffer_format :: proc(buffer: ^Buffer) -> string {
     return strings.clone(strings.to_string(result))
 }
 
-get_find_file_format :: proc(file: os.File_Info) -> string {
+@(private="file")
+_get_find_file_format :: proc(file: os.File_Info) -> string {
     result := strings.builder_make(context.temp_allocator)
     strings.write_string(&result, file.name)
     if file.is_dir do strings.write_string(&result, "/")
     strings.write_byte(&result, '\n')
+    return strings.clone(strings.to_string(result))
+}
+
+@(private="file")
+_get_search_in_buffer_format :: proc(offset: int) -> string {
+    MAX_LENGTH  :: 60
+    MIN_PADDING :: 5
+
+    pane := active_pane
+    start := offset
+    end := start
+    coords := cursor_offset_to_coords(pane, get_lines_array(pane), offset)
+
+    for r in pane.contents[start:] {
+        if r == '\n' do break
+        if end - start == MAX_LENGTH do break
+        end += 1
+    }
+
+    search_result := fmt.tprintf("{}...", pane.contents[start:end])
+    line_column := fmt.tprintf("({}, {})", coords.row + 1, coords.column)
+
+    result := strings.builder_make(context.temp_allocator)
+    strings.write_string(&result, strings.left_justify(
+        search_result, MAX_LENGTH + MIN_PADDING, " ", context.temp_allocator,
+    ))
+    strings.write_string(&result, line_column)
+    strings.write_string(&result, "\n")
     return strings.clone(strings.to_string(result))
 }

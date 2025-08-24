@@ -137,5 +137,8 @@ quit_mode_command :: proc() {
         last_cursor_pos := active_pane.cursors[len(active_pane.cursors) - 1].pos
         clear(&active_pane.cursors)
         add_cursor(active_pane, last_cursor_pos)
+    } else {
+        cursor := get_first_active_cursor(active_pane)
+        cursor.sel = cursor.pos
     }
 }

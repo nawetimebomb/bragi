@@ -3,3 +3,7 @@ Mac/Bug: proper handling of left and right alt. Might need to internally rename 
 Bug/Cursors: while in multiple cursors, and having a cursor at the end of a line and the another at the beginning of the following line, writing acts weirdly because it inserts the rune correctly for the lowest offset cursor but it doesn't respect the line feed and insert the next rune within an offset of 1, multiple inserts makes the highest offset cursor insert the text from right to left.
 
 Improvement/Buffer: make the buffer piece table to actually store the line starts and cache them. This is a big improvement for bigger files as after the first load we might just not need to fully calculate lines again. Maybe we can also cache the pieces that have changed.
+
+Improvement/Search: save the search history, or at least the last term that was used for searching so the user can press search twice and automatically populate.
+
+Feature/Marks: save pane/buffer marks for some user actions. Show the existing marks on the pane fringe

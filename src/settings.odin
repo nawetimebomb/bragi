@@ -2,13 +2,17 @@ package main
 
 Color :: distinct [4]u8
 
-Face_Color :: enum {
+Face_Color :: enum u8 {
+    undefined = 0, // used internally as default 'noop'
+
     background,
     foreground,
     cursor_active,
     cursor_inactive,
     highlight,
     region,
+    search_background,
+    search_foreground,
 
     code_builtin,
     code_comment,
@@ -94,6 +98,8 @@ settings_init :: proc() {
     colorscheme[.cursor_active]                     = _hex_to_color(0xcd950c)
     colorscheme[.cursor_inactive]                   = _hex_to_color(0x98a098)
     colorscheme[.region]                            = _hex_to_color(0x0a0b62)
+    colorscheme[.search_background]                 = _hex_to_color(0xd2d2d2)
+    colorscheme[.search_foreground]                 = _hex_to_color(0x010101)
 
     colorscheme[.code_builtin]                      = _hex_to_color(0x875e9a)
     colorscheme[.code_comment]                      = _hex_to_color(0xe27d51)
@@ -234,6 +240,9 @@ _settings_setup_emacs_keybindings :: proc() {
 
     commands_map["Ctrl-/"] = .undo
     commands_map["Ctrl-?"] = .redo
+
+    commands_map["Ctrl-R"] = .search_backward
+    commands_map["Ctrl-S"] = .search_forward
 }
 
 @(private="file")

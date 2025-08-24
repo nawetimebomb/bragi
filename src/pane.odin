@@ -40,6 +40,7 @@ Pane :: struct {
 
     buffer:              ^Buffer,
     contents:            string,
+    regions:             [dynamic]Highlight,
     line_starts:         [dynamic]int,
     wrapped_line_starts: [dynamic]int,
     local_font_size:     i32,
@@ -101,6 +102,7 @@ pane_create :: proc(buffer: ^Buffer = nil) -> ^Pane {
 
 pane_destroy :: proc(pane: ^Pane) {
     pane.buffer = nil
+    delete(pane.regions)
     delete(pane.cursors)
     delete(pane.line_starts)
     delete(pane.wrapped_line_starts)
@@ -189,7 +191,7 @@ update_and_draw_panes :: proc() {
         last_row := min(pane.y_offset + pane.visible_rows + 1, len(lines) - 1)
         first_offset, last_offset := lines[first_row], lines[last_row]
         code_lines := make([dynamic]Code_Line, context.temp_allocator)
-        selections := make([dynamic]Range, 0, len(pane.cursors), context.temp_allocator)
+        highlights := make([dynamic]Highlight, 0, len(pane.cursors), context.temp_allocator)
 
         for cursor in pane.cursors {
             if !has_selection(cursor) do continue
@@ -199,8 +201,16 @@ update_and_draw_panes :: proc() {
                 }
 
             low, high := sorted_cursor(cursor)
-            append(&selections, Range{start = low, end = high})
+            append(&highlights, Highlight{
+                start        = low,
+                end          = high,
+                background   = .region,
+                foreground   = .undefined, // let the tokenizer decide
+                expands_line = true,
+            })
         }
+
+        append(&highlights, ..pane.regions[:])
 
         for line_number in first_row..<last_row {
             code_line := Code_Line{}
@@ -217,7 +227,7 @@ update_and_draw_panes :: proc() {
             append(&code_lines, code_line)
         }
 
-        draw_code(pane, pane.font, initial_pen, code_lines[:], selections[:])
+        draw_code(pane, pane.font, initial_pen, code_lines[:], highlights[:])
 
         for cursor in pane.cursors {
             out_of_bounds, cursor_pen, rune_behind_cursor := prepare_cursor_for_drawing(pane, pane.font, initial_pen, cursor)
@@ -503,6 +513,7 @@ get_modeline_height :: #force_inline proc() -> i32 {
 
 switch_to_buffer :: proc(pane: ^Pane, buffer: ^Buffer) {
     assert(buffer != nil)
+    clear(&pane.regions)
     if pane.buffer != nil do copy_cursors(pane, pane.buffer)
 
     if len(buffer.cursors) > 0 {

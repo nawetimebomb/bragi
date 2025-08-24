@@ -21,6 +21,14 @@ Range :: struct {
     start, end: int,
 }
 
+Highlight :: struct {
+    using range:  Range,
+    namespace:    string,
+    background:   Face_Color,
+    foreground:   Face_Color,
+    expands_line: bool,
+}
+
 texture_create :: #force_inline proc(access: sdl.TextureAccess, w, h: i32) -> ^Texture {
     return sdl.CreateTexture(renderer, .RGBA32, access, w, h)
 }
@@ -90,12 +98,14 @@ set_target :: #force_inline proc(target: ^Texture = nil) {
     sdl.SetRenderTarget(renderer, target)
 }
 
-draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Line, selections: []Range = {}) {
-    is_selected :: proc(selections: []Range, offset: int) -> bool {
-        for s in selections {
-            if s.start != s.end && offset >= s.start && offset < s.end do return true
+draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Line, highlights: []Highlight = {}) {
+    is_highlighted :: proc(highlights: []Highlight, offset: int) -> (bool, Highlight) {
+        for h in highlights {
+            if h.start != h.end && offset >= h.start && offset < h.end {
+                return true, h
+            }
         }
-        return false
+        return false, {}
     }
 
     for code, y_offset in code_lines {
@@ -107,12 +117,16 @@ draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Lin
             src := make_rect(glyph.x, glyph.y, glyph.w, glyph.h)
             dest := make_rect(sx, sy, glyph.w, glyph.h)
 
-            if is_selected(selections, code.start_offset + x_offset) {
-                set_color(.region)
+            highlighted, hl := is_highlighted(highlights, code.start_offset + x_offset)
+
+            if highlighted {
+                set_color(hl.background)
                 draw_rect(sx, sy, glyph.w, glyph.h, true)
             }
 
-            if len(code.tokens) > 0 {
+            if hl.foreground != .undefined {
+                set_color(hl.foreground, font.texture)
+            } else if len(code.tokens) > 0 {
                 set_color_from_token(code.tokens[x_offset], font.texture)
             } else {
                 set_color(.foreground, font.texture)
@@ -122,8 +136,10 @@ draw_code :: proc(pane: ^Pane, font: ^Font, pen: Vector2, code_lines: []Code_Lin
             sx += glyph.xadvance
         }
 
-        if is_selected(selections, code.start_offset + len(code.line)) {
-            set_color(.region)
+        highlighted, hl := is_highlighted(highlights, code.start_offset + len(code.line))
+
+        if highlighted && hl.expands_line {
+            set_color(hl.background)
             draw_rect(sx, sy, window_width - sx, font.line_height, true)
         }
     }

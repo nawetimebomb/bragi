@@ -100,34 +100,37 @@ tokenize_odin :: proc(buffer: ^Buffer, starting_offset := 0) {
 }
 
 @(private)
-tokenize_odin_indentation :: proc(buffer: ^Buffer, start, end: int) -> []Indentation_Token {
+tokenize_odin_indentation :: proc(buffer: ^Buffer, text: string) -> []Indentation_Token {
     tokenizer: Odin_Tokenizer
-    tokenizer.buf = strings.to_string(buffer.text_content)
-    tokenizer.offset = start
+    tokenizer.buf = text
     tokens := make([dynamic]Indentation_Token, context.temp_allocator)
 
-    for tokenizer.offset < end {
+    for {
         token := get_next_token(&tokenizer)
-        if token.kind == .EOF do break
+        indent: Indentation_Token
 
         // TODO(nawe) handle the raw string and the comment multiline
         // that shouldn't really start with indentation.
-        if token.kind == .Punctuation {
-            punctuation, is_punctuation := token.variant.(Punctuation)
-            // just for safety
-            if !is_punctuation do continue
-
-            #partial switch punctuation {
-                case .Brace_Left:    append(&tokens, Indentation_Token{.Open,  .Brace})
-                case .Brace_Right:   append(&tokens, Indentation_Token{.Close, .Brace})
-                case .Bracket_Left:  append(&tokens, Indentation_Token{.Open,  .Bracket})
-                case .Bracket_Right: append(&tokens, Indentation_Token{.Close, .Bracket})
-                case .Paren_Left:    append(&tokens, Indentation_Token{.Open,  .Paren})
-                case .Paren_Right:   append(&tokens, Indentation_Token{.Close, .Paren})
+        #partial switch token.kind {
+            case .Punctuation: {
+                if punctuation, is_punctuation := token.variant.(Punctuation); is_punctuation {
+                    #partial switch punctuation {
+                        case .Brace_Left:    indent.action = .Open;  indent.kind = .Brace
+                        case .Brace_Right:   indent.action = .Close; indent.kind = .Brace
+                        case .Bracket_Left:  indent.action = .Open;  indent.kind = .Bracket
+                        case .Bracket_Right: indent.action = .Close; indent.kind = .Bracket
+                        case .Paren_Left:    indent.action = .Open;  indent.kind = .Paren
+                        case .Paren_Right:   indent.action = .Close; indent.kind = .Paren
+                    }
+                }
             }
         }
+
+        append(&tokens, indent)
+        if token.kind == .EOF do break
     }
 
+    assert(len(tokens) > 0)
     return tokens[:]
 }
 

@@ -385,11 +385,11 @@ is_in_line :: #force_inline proc(offset: int, lines: []int, line_index: int) -> 
     return offset >= start && offset <= end
 }
 
-get_line_indent_count_match_current_line :: proc(pane: ^Pane, offset: int) -> (level: int) {
+get_line_indent_count :: proc(pane: ^Pane, offset: int) -> (level: int) {
     // always use the buffer lines, don't care about wrapping
     buffer_lines := pane.line_starts[:]
-    coords := cursor_offset_to_coords(pane, buffer_lines, offset)
-    start, end := get_line_boundaries(coords.row, buffer_lines)
+    line_index := get_line_index(offset, buffer_lines)
+    start, end := get_line_boundaries(line_index, buffer_lines)
     count_spaces := 0
     count_tabs := 0
 
@@ -406,7 +406,7 @@ get_line_indent_count_match_current_line :: proc(pane: ^Pane, offset: int) -> (l
     }
 
     if count_spaces > 0 && count_tabs > 0 {
-        log.warnf("line {} in buffer {} contains both spaces and tabs", coords.row, pane.buffer.name)
+        log.warnf("line {} in buffer {} contains both spaces and tabs", line_index, pane.buffer.name)
     }
 
     if count_spaces > 0 {
@@ -416,34 +416,21 @@ get_line_indent_count_match_current_line :: proc(pane: ^Pane, offset: int) -> (l
     }
 }
 
-get_line_indent_count_by_tokens :: proc(pane: ^Pane, offset: int) -> int {
-    // always use the buffer lines, don't care about wrapping
-    buffer_lines := pane.line_starts[:]
-    coords := cursor_offset_to_coords(pane, buffer_lines, offset)
-    start, end := get_line_boundaries(coords.row, buffer_lines)
-    indent_tokens := get_indentation_tokens(pane.buffer, start, end)
-    level_delta := 0
-
+calculate_indent_delta :: proc(tokens: []Indentation_Token) -> (delta: int) {
     // maybe this should be a little bit more consistent, making sure
     // that the token that opened the next level of indentation is the
     // first one to be used to close it?
-    for token in indent_tokens {
+
+    // Emacs doesn't care if you're closing a block with the correct
+    // token, so for now we'll follow the same approach.
+    for token in tokens {
         switch token.action {
-        case .Close: level_delta -= 1
-        case .Open:  level_delta += 1
+        case .None: // do nothi
+        case .Close: delta -= 1
+        case .Open:  delta += 1
         }
     }
-
-    // if it's just closing (-1, -2, etc), we expect the line to
-    // already be indented, so the job has been done for us already.
-    level_delta = max(level_delta, 0)
-
-    switch pane.buffer.indent.tab_char {
-    case .space: return level_delta * pane.buffer.indent.tab_size
-    case .tab:   return level_delta
-    }
-
-    unreachable()
+    return
 }
 
 get_line_index :: #force_inline proc(offset: int, lines: []int) -> (line_index: int) {

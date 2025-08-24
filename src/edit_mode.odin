@@ -17,10 +17,6 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
 
     // handle the generic ones first
     #partial switch event.key_code {
-        case .K_ENTER: {
-            insert_newlines_and_indent(pane)
-            return true
-        }
         case .K_BACKSPACE: {
             t: Translation = .left
 
@@ -29,6 +25,14 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
             }
 
             remove_to(pane, t)
+            return true
+        }
+        case .K_ENTER: {
+            insert_newlines_and_indent(pane)
+            return true
+        }
+        case .K_TAB: {
+            maybe_indent_or_go_to_tab_stop(pane)
             return true
         }
         case .K_DELETE: {
@@ -515,10 +519,12 @@ remove_to :: proc(pane: ^Pane, t: Translation) -> (total_amount_of_removed_chara
     return
 }
 
-remove_selections :: proc(pane: ^Pane) {
+remove_selections :: proc(pane: ^Pane, array: ^[dynamic]Cursor = nil) {
+    cursors_array := array == nil ? &pane.cursors : array
+
     copy_cursors(pane, pane.buffer)
 
-    for &cursor, current_index in pane.cursors {
+    for &cursor, current_index in cursors_array {
         if !cursor.active do continue
 
         if has_selection(cursor) {
@@ -531,7 +537,7 @@ remove_selections :: proc(pane: ^Pane) {
                 cursor.sel = low
             }
 
-            for &other, other_index in pane.cursors {
+            for &other, other_index in cursors_array {
                 if current_index == other_index do continue
 
                 if other.pos > cursor.pos {
@@ -543,7 +549,6 @@ remove_selections :: proc(pane: ^Pane) {
     }
 
     pane.cursor_selecting = false
-
     _maybe_merge_overlapping_cursors(pane)
 }
 
@@ -551,24 +556,58 @@ insert_at_points :: proc(pane: ^Pane, text: string) -> (total_length_of_inserted
     profiling_start("inserting text input")
     copy_cursors(pane, pane.buffer)
 
+    // just check the first token, if it's a closing indentation
+    // token, figure out if it was also the first token in the
+    // line that is not an indentation character.
+    indent_tokens := get_indentation_tokens(pane.buffer, text)
+    maybe_should_reindent := indent_tokens[0].action == .Close
+    reindent_amount := 0
+
+    switch pane.buffer.indent.tab_char {
+    case .space: reindent_amount = pane.buffer.indent.tab_size
+    case .tab:   reindent_amount = 1
+    }
+
+    if maybe_should_reindent {
+        for &cursor in pane.cursors {
+            if !cursor.active do continue
+
+            buffer_lines := pane.line_starts[:]
+            line_index := get_line_index(cursor.pos, buffer_lines)
+            line_text := get_line_text_until_offset(pane, line_index, buffer_lines, cursor.pos)
+            should_reindent := true
+
+            for r in line_text {
+                should_reindent = r == ' ' || r == '\t'
+                if !should_reindent do break
+            }
+
+            if should_reindent {
+                cursor.sel -= reindent_amount
+            }
+        }
+    }
+
     remove_selections(pane)
 
     for &cursor, current_index in pane.cursors {
         if !cursor.active do continue
-        offset := insert_at(pane.buffer, cursor.pos, text)
-        total_length_of_inserted_characters += offset
-        cursor.pos += offset
+
+        delta_offset := insert_at(pane.buffer, cursor.pos, text)
+        total_length_of_inserted_characters += delta_offset
+        cursor.pos += delta_offset
         cursor.sel = cursor.pos
 
         for &other, other_index in pane.cursors {
             if current_index == other_index do continue
 
             if other.pos > cursor.pos {
-                other.pos += offset
-                other.sel += offset
+                other.pos += delta_offset
+                other.sel += delta_offset
             }
         }
     }
+
     profiling_end()
     return
 }
@@ -581,11 +620,29 @@ insert_newlines_and_indent :: proc(pane: ^Pane) -> (total_length_of_inserted_cha
 
     for &cursor, current_index in pane.cursors {
         if !cursor.active do continue
-        count_by_characters := get_line_indent_count_match_current_line(pane, cursor.pos)
-        count_by_tokens := get_line_indent_count_by_tokens(pane, cursor.pos)
-        total_indent_count := count_by_characters + count_by_tokens
+        buffer_lines := pane.line_starts[:]
+        count_by_characters := get_line_indent_count(pane, cursor.pos)
+        line_index := get_line_index(cursor.pos, buffer_lines)
+        line_text := get_line_text(pane, line_index, buffer_lines)
+        indent_tokens := get_indentation_tokens(pane.buffer, line_text)
+        delta := calculate_indent_delta(indent_tokens)
 
-        // TODO(nawe) figure out if current line has an indent token
+        // since we do electric indentation, we should have taken care
+        // of the indent delta of this line, but if the user has
+        // closed the block after the soft line start, we want to make
+        // sure we take into account that amount of delta too.
+        if delta < 0 && line_index > 0 {
+            indent_chars_prev_line := get_line_indent_count(pane, buffer_lines[line_index - 1])
+            if indent_chars_prev_line > count_by_characters do delta += 1
+        }
+
+        total_indent_count := count_by_characters
+        switch pane.buffer.indent.tab_char {
+        case .space: total_indent_count += delta * pane.buffer.indent.tab_size
+        case .tab:   total_indent_count += delta
+        }
+        total_indent_count = max(total_indent_count, 0)
+
         text_to_insert := strings.builder_make(context.temp_allocator)
         strings.write_string(&text_to_insert, "\n")
 
@@ -612,6 +669,10 @@ insert_newlines_and_indent :: proc(pane: ^Pane) -> (total_length_of_inserted_cha
     }
     profiling_end()
     return
+}
+
+maybe_indent_or_go_to_tab_stop :: proc(pane: ^Pane) {
+    unimplemented()
 }
 
 maybe_recenter_cursor :: proc(pane: ^Pane, always_recenter := false) {

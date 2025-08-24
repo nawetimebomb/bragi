@@ -311,15 +311,22 @@ update_opened_buffers :: proc() {
         if .Dirty in buffer.flags {
             unflag_buffer(buffer, {.Dirty})
             total_length := 0
-            strings.builder_reset(&buffer.text_content)
+            builder := &buffer.text_content
+            strings.builder_reset(builder)
             lines_array := make([dynamic]int, context.temp_allocator)
 
             for piece in buffer.pieces {
                 start, end := piece.start, piece.start + piece.length
 
                 switch piece.source {
-                case .Add:      strings.write_string(&buffer.text_content, strings.to_string(buffer.add_source)[start:end])
-                case .Original: strings.write_string(&buffer.text_content, strings.to_string(buffer.original_source)[start:end])
+                case .Add:
+                    strings.write_string(
+                        builder, strings.to_string(buffer.add_source)[start:end],
+                    )
+                case .Original:
+                    strings.write_string(
+                        builder, strings.to_string(buffer.original_source)[start:end],
+                    )
                 }
 
                 total_length += piece.length
@@ -353,6 +360,7 @@ buffer_tokenize :: proc(buffer: ^Buffer) {
     case .Odin:  tokenize_odin(buffer)
     }
 
+    // add the EOF token so we always have tokens.
     assign_at(&buffer.tokens, buffer.length_of_buffer + 1, Token_Kind.EOF)
 }
 

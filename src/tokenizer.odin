@@ -42,8 +42,16 @@ Basic_Token :: struct {
 }
 
 Indentation_Token :: struct {
-    action: enum { Close, Open },
-    kind: enum { Brace, Bracket, Paren },
+    action: enum u8 {
+        None, // ensure we at least register one token
+        Close,
+        Open,
+    },
+    kind: enum u8 {
+        Brace,
+        Bracket,
+        Paren,
+    },
 }
 
 Tokenizer :: struct {
@@ -53,10 +61,10 @@ Tokenizer :: struct {
     whitespace_to_left: bool,
 }
 
-get_indentation_tokens :: proc(buffer: ^Buffer, start_offset, end_offset: int) -> []Indentation_Token {
+get_indentation_tokens :: proc(buffer: ^Buffer, text: string) -> []Indentation_Token {
     switch buffer.major_mode {
     case .Bragi: return {}
-    case .Odin: return tokenize_odin_indentation(buffer, start_offset, end_offset)
+    case .Odin: return tokenize_odin_indentation(buffer, text)
     }
 
     unreachable()

@@ -6,4 +6,6 @@ Improvement/Buffer: make the buffer piece table to actually store the line start
 
 Improvement/Search: save the search history, or at least the last term that was used for searching so the user can press search twice and automatically populate.
 
+Improvements/Search: the first selected item in the search widget should be the closest offset to the cursor
+
 Feature/Marks: save pane/buffer marks for some user actions. Show the existing marks on the pane fringe

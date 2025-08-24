@@ -560,7 +560,7 @@ insert_at_points :: proc(pane: ^Pane, text: string) -> (total_length_of_inserted
     // token, figure out if it was also the first token in the
     // line that is not an indentation character.
     indent_tokens := get_indentation_tokens(pane.buffer, text)
-    maybe_should_reindent := indent_tokens[0].action == .Close
+    maybe_should_reindent := len(indent_tokens) > 0 && indent_tokens[0].action == .Close
     reindent_amount := 0
 
     switch pane.buffer.indent.tab_char {

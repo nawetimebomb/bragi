@@ -76,8 +76,11 @@ settings_init :: proc() {
     settings.editor_font_size = DEFAULT_FONT_EDITOR_SIZE
     settings.ui_font_size     = DEFAULT_FONT_UI_SIZE
 
+    settings.default_tab_size      = 4
+    settings.default_tab_character = .space
+
     settings.cursor_is_a_block = true
-    settings.cursor_width = 2
+    settings.cursor_width      = 2
     settings.show_line_numbers = true
     settings.modeline_position = .bottom
 

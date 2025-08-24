@@ -13,6 +13,7 @@ import     "core:reflect"
 import     "core:strings"
 
 import sdl "vendor:sdl3"
+import img "vendor:sdl3/image"
 
 window: ^sdl.Window
 renderer: ^sdl.Renderer
@@ -85,6 +86,13 @@ platform_init :: proc() {
             f32(window_width) / f32(base_width),
             f32(window_height) / f32(base_height),
         )
+    }
+
+    icon_data := sdl.IOFromMem(raw_data(ICON), len(ICON))
+    window_icon := img.LoadPNG_IO(icon_data)
+    window_icon_success := sdl.SetWindowIcon(window, window_icon)
+    if !window_icon_success {
+        log.error("failed to load window icon", sdl.GetError())
     }
 
     when ODIN_OS == .Windows {

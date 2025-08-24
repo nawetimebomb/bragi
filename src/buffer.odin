@@ -23,6 +23,11 @@ Buffer_Flag :: enum u8 {
     Scratch   = 4, // created by Bragi as scratchpad. If saved as file, this flag will be removed.
 }
 
+Major_Mode :: enum u8 {
+    Bragi,
+    Odin,
+}
+
 Source_Buffer :: enum {
     Add,
     Original,
@@ -47,8 +52,8 @@ Buffer :: struct {
     length_of_buffer: int,
 
     indent: struct {
-        char:  Tab_Character,
-        width: int,
+        tab_char: Tab_Character,
+        tab_size: int,
     },
 
     history_enabled:  bool,
@@ -72,15 +77,6 @@ History_State :: struct {
     pieces:  []Piece,
 }
 
-Major_Mode :: union #no_nil {
-    Mode_Odin,
-    Mode_Bragi,
-}
-
-Mode_Bragi :: struct {}
-
-Mode_Odin :: struct {}
-
 buffer_get_or_create_empty :: proc(name: string = "*scratchpad*") -> ^Buffer {
     for buffer in open_buffers {
         if buffer.name == name {
@@ -94,6 +90,7 @@ buffer_get_or_create_empty :: proc(name: string = "*scratchpad*") -> ^Buffer {
     buffer_init(result, {})
     result.name = strings.clone(name)
     if name == "*scratchpad*" do flag_buffer(result, {.Scratch})
+    _buffer_set_major_mode(result)
     append(&open_buffers, result)
     return result
 }
@@ -111,6 +108,7 @@ buffer_get_or_create_from_file :: proc(fullpath: string, contents: []byte) -> ^B
     buffer_init(result, contents)
     result.filepath = strings.clone(fullpath)
     result.name = strings.clone(_get_unique_buffer_name(fullpath))
+    _buffer_set_major_mode(result)
     append(&open_buffers, result)
     return result
 }
@@ -121,6 +119,8 @@ buffer_init :: proc(buffer: ^Buffer, contents: []byte, allocator := context.allo
     buffer.original_source = strings.builder_make_len_cap(0, len(contents))
     buffer.add_source = strings.builder_make()
     buffer.history_enabled = true
+    buffer.indent.tab_char = settings.default_tab_character
+    buffer.indent.tab_size = settings.default_tab_size
     flag_buffer(buffer, {.Dirty})
 
     for b in contents {
@@ -150,6 +150,25 @@ buffer_index :: proc(buffer: ^Buffer) -> int {
     }
 
     unreachable()
+}
+
+get_major_mode_by_extension :: proc(ext: string) -> Major_Mode {
+    switch ext {
+    case ".odin": return .Odin
+    }
+
+    return .Bragi
+}
+
+@(private="file")
+_buffer_set_major_mode :: proc(buffer: ^Buffer) {
+    if buffer.filepath != "" {
+        ext := filepath.ext(buffer.filepath)
+        buffer.major_mode = get_major_mode_by_extension(ext)
+    } else {
+        ext := filepath.ext(buffer.name)
+        buffer.major_mode = get_major_mode_by_extension(ext)
+    }
 }
 
 @(private="file")
@@ -329,9 +348,9 @@ update_opened_buffers :: proc() {
 }
 
 buffer_tokenize :: proc(buffer: ^Buffer) {
-    switch v in buffer.major_mode {
-    case Mode_Bragi:
-    case Mode_Odin:  tokenize_odin(buffer)
+    switch buffer.major_mode {
+    case .Bragi:
+    case .Odin:  tokenize_odin(buffer)
     }
 
     assign_at(&buffer.tokens, buffer.length_of_buffer + 1, Token_Kind.EOF)
@@ -403,9 +422,9 @@ is_continuation_byte :: proc(b: byte) -> bool {
 }
 
 get_major_mode_name :: proc(buffer: ^Buffer) -> string {
-    switch v in buffer.major_mode {
-    case Mode_Bragi: return "Bragi"
-    case Mode_Odin:  return "Odin"
+    switch buffer.major_mode {
+    case .Bragi: return "Bragi"
+    case .Odin:  return "Odin"
     }
 
     unreachable()

@@ -375,6 +375,67 @@ is_in_line :: #force_inline proc(offset: int, lines: []int, line_index: int) -> 
     return offset >= start && offset <= end
 }
 
+get_line_indent_count_match_current_line :: proc(pane: ^Pane, offset: int) -> (level: int) {
+    // always use the buffer lines, don't care about wrapping
+    buffer_lines := pane.line_starts[:]
+    coords := cursor_offset_to_coords(pane, buffer_lines, offset)
+    start, end := get_line_boundaries(coords.row, buffer_lines)
+    count_spaces := 0
+    count_tabs := 0
+
+    for index in start..<end {
+        b := pane.contents[index]
+
+        if b == ' ' {
+            count_spaces += 1
+        } else if b == '\t' {
+            count_tabs += 1
+        } else {
+            break
+        }
+    }
+
+    if count_spaces > 0 && count_tabs > 0 {
+        log.warnf("line {} in buffer {} contains both spaces and tabs", coords.row, pane.buffer.name)
+    }
+
+    if count_spaces > 0 {
+        return count_spaces
+    } else {
+        return count_tabs
+    }
+}
+
+get_line_indent_count_by_tokens :: proc(pane: ^Pane, offset: int) -> int {
+    // always use the buffer lines, don't care about wrapping
+    buffer_lines := pane.line_starts[:]
+    coords := cursor_offset_to_coords(pane, buffer_lines, offset)
+    start, end := get_line_boundaries(coords.row, buffer_lines)
+    indent_tokens := get_indentation_tokens(pane.buffer, start, end)
+    level_delta := 0
+
+    // maybe this should be a little bit more consistent, making sure
+    // that the token that opened the next level of indentation is the
+    // first one to be used to close it?
+    for token in indent_tokens {
+        switch token.action {
+        case .Close: level_delta -= 1
+        case .Open:  level_delta += 1
+        }
+    }
+
+    // if it's just closing (-1, -2, etc), we expect the line to
+    // already be indented, so the job has been done for us already.
+    level_delta = max(level_delta, 0)
+
+    switch pane.buffer.indent.tab_char {
+    case .space: return level_delta * pane.buffer.indent.tab_size
+    case .tab:   return level_delta
+    }
+
+    unreachable()
+}
+
 get_line_index :: #force_inline proc(offset: int, lines: []int) -> (line_index: int) {
     for _, index in lines {
         if is_in_line(offset, lines, index) do return index

@@ -99,6 +99,38 @@ tokenize_odin :: proc(buffer: ^Buffer, starting_offset := 0) {
     }
 }
 
+@(private)
+tokenize_odin_indentation :: proc(buffer: ^Buffer, start, end: int) -> []Indentation_Token {
+    tokenizer: Odin_Tokenizer
+    tokenizer.buf = strings.to_string(buffer.text_content)
+    tokenizer.offset = start
+    tokens := make([dynamic]Indentation_Token, context.temp_allocator)
+
+    for tokenizer.offset < end {
+        token := get_next_token(&tokenizer)
+        if token.kind == .EOF do break
+
+        // TODO(nawe) handle the raw string and the comment multiline
+        // that shouldn't really start with indentation.
+        if token.kind == .Punctuation {
+            punctuation, is_punctuation := token.variant.(Punctuation)
+            // just for safety
+            if !is_punctuation do continue
+
+            #partial switch punctuation {
+                case .Brace_Left:    append(&tokens, Indentation_Token{.Open,  .Brace})
+                case .Brace_Right:   append(&tokens, Indentation_Token{.Close, .Brace})
+                case .Bracket_Left:  append(&tokens, Indentation_Token{.Open,  .Bracket})
+                case .Bracket_Right: append(&tokens, Indentation_Token{.Close, .Bracket})
+                case .Paren_Left:    append(&tokens, Indentation_Token{.Open,  .Paren})
+                case .Paren_Right:   append(&tokens, Indentation_Token{.Close, .Paren})
+            }
+        }
+    }
+
+    return tokens[:]
+}
+
 get_next_token :: proc(t: ^Odin_Tokenizer) -> (token: Token) {
     skip_whitespaces(t)
 

@@ -10,10 +10,11 @@ import "core:os"
 import "core:time"
 
 NAME    :: "Bragi"
-ID      :: "bragi.base"
+ID      :: "bragi"
 AUTHOR  :: "Nahuel J. Sacchetti"
 URL     :: "https://github.com/nawetimebomb/bragi"
 VERSION :: "0.01"
+ICON    :: #load(RUN_TREE_DIR + "/icons/bragi-icon_large.png")
 
 RUN_TREE_DIR :: "../res"
 
@@ -68,6 +69,7 @@ bragi_running:   bool
 tracking_allocator: mem.Tracking_Allocator
 
 main :: proc() {
+    initialization_time := time.now()
     context.logger = log.create_console_logger()
     context.random_generator = crypto.random_generator()
 
@@ -80,7 +82,7 @@ main :: proc() {
             err := false
 
             for _, value in a.allocation_map {
-                log.errorf("{0}: Leaked {1} bytes", value.location, value.size)
+                log.errorf("{0}: leaked {1} bytes", value.location, value.size)
                 err = true
             }
 
@@ -104,6 +106,11 @@ main :: proc() {
     previous_frame_time := time.tick_now()
 
     bragi_running = true
+
+    log.debugf(
+        "initialization complete in {} milliseconds",
+        time.duration_milliseconds(time.since(initialization_time)),
+    )
 
     for bragi_running {
         platform_update_events()

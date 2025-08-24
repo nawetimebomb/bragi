@@ -3,6 +3,7 @@ package main
 import "core:encoding/uuid"
 import "core:log"
 import "core:slice"
+import "core:strings"
 
 // edit mode is when we're editing a file
 edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) -> bool {
@@ -579,7 +580,22 @@ insert_newlines_and_indent :: proc(pane: ^Pane) -> (total_length_of_inserted_cha
 
     for &cursor, current_index in pane.cursors {
         if !cursor.active do continue
-        offset := insert_at(pane.buffer, cursor.pos, "\n")
+        count_of_indent_by_characters := get_line_indent_count_match_current_line(pane, cursor.pos)
+        count_of_indent_by_tokens := get_line_indent_count_by_tokens(pane, cursor.pos)
+        total_indent_count := count_of_indent_by_characters + count_of_indent_by_tokens
+
+        // TODO(nawe) figure out if current line has an indent token
+        text_to_insert := strings.builder_make(context.temp_allocator)
+        strings.write_string(&text_to_insert, "\n")
+
+        for _ in 0..<total_indent_count {
+            switch pane.buffer.indent.tab_char {
+            case .space: strings.write_string(&text_to_insert, " ")
+            case .tab:   strings.write_string(&text_to_insert, "\t")
+            }
+        }
+
+        offset := insert_at(pane.buffer, cursor.pos, strings.to_string(text_to_insert))
         cursor.pos += offset
         cursor.sel = cursor.pos
         total_length_of_inserted_characters += offset

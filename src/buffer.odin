@@ -24,7 +24,8 @@ Buffer_Flag :: enum u8 {
 }
 
 Major_Mode :: enum u8 {
-    Bragi,
+    Bragi = 0,
+    Jai,
     Odin,
 }
 
@@ -154,6 +155,7 @@ buffer_index :: proc(buffer: ^Buffer) -> int {
 
 get_major_mode_by_extension :: proc(ext: string) -> Major_Mode {
     switch ext {
+    case ".jai":  return .Jai
     case ".odin": return .Odin
     }
 
@@ -332,7 +334,7 @@ update_opened_buffers :: proc() {
                 total_length += piece.length
             }
 
-            buffer_tokenize(buffer)
+            tokenize_buffer(buffer)
 
             buffer.length_of_buffer = total_length
             append(&lines_array, 0)
@@ -354,16 +356,6 @@ update_opened_buffers :: proc() {
     profiling_end()
 }
 
-buffer_tokenize :: proc(buffer: ^Buffer) {
-    switch buffer.major_mode {
-    case .Bragi:
-    case .Odin:  tokenize_odin(buffer)
-    }
-
-    // add the EOF token so we always have tokens.
-    assign_at(&buffer.tokens, buffer.length_of_buffer + 1, Token_Kind.EOF)
-}
-
 undo_clear :: proc(buffer: ^Buffer, undo: ^[dynamic]^History_State) {
     for len(undo) > 0 {
         item := pop(undo)
@@ -383,17 +375,24 @@ undo_state_push :: proc(buffer: ^Buffer, undo: ^[dynamic]^History_State) -> mem.
 
     item.cursors = slice.clone(buffer.cursors[:])
     item.pieces  = slice.clone(buffer.pieces[:])
+    buffer.last_edit_time = time.tick_now()
 
     append(undo, item) or_return
     return nil
 }
 
-undo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (result: bool, cursors: []Cursor, pieces: []Piece) {
+maybe_save_undo_state :: proc(buffer: ^Buffer) {
+    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT {
+        undo_state_push(buffer, &buffer.undo)
+    }
+}
+
+undo :: proc(buffer: ^Buffer, undo, redo: ^[dynamic]^History_State) -> (bool, []Cursor, []Piece) {
     if len(undo) > 0 {
         undo_state_push(buffer, redo)
         item := pop(undo)
-        cursors = slice.clone(item.cursors, context.temp_allocator)
-        pieces = slice.clone(item.pieces, context.temp_allocator)
+        cursors := slice.clone(item.cursors, context.temp_allocator)
+        pieces := slice.clone(item.pieces, context.temp_allocator)
         delete(item.cursors)
         delete(item.pieces)
         free(item, buffer.allocator)
@@ -432,6 +431,7 @@ is_continuation_byte :: proc(b: byte) -> bool {
 get_major_mode_name :: proc(buffer: ^Buffer) -> string {
     switch buffer.major_mode {
     case .Bragi: return "Bragi"
+    case .Jai:   return "Jai"
     case .Odin:  return "Odin"
     }
 
@@ -445,11 +445,9 @@ insert_at :: proc(buffer: ^Buffer, offset: int, text: string) -> (length_of_text
     piece := &buffer.pieces[piece_index]
     end_of_piece := piece.start + piece.length
     flag_buffer(buffer, {.Dirty, .Modified})
+    maybe_save_undo_state(buffer)
 
     strings.write_string(&buffer.add_source, text)
-
-    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
-    buffer.last_edit_time = time.tick_now()
 
     // If the cursor is at the end of a piece, and that also points to the end
     // of the add buffer, we just need to grow the length of that piece. This is
@@ -496,8 +494,7 @@ remove_at :: proc(buffer: ^Buffer, offset: int, amount: int) {
         return
     }
 
-    if time.tick_diff(buffer.last_edit_time, time.tick_now()) > UNDO_TIMEOUT do undo_state_push(buffer, &buffer.undo)
-    buffer.last_edit_time = time.tick_now()
+    maybe_save_undo_state(buffer)
 
     // Remove may affect multiple pieces.
     first_piece_index, first_offset := locate_piece(buffer, offset)

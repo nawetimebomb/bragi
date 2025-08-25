@@ -1,4 +1,4 @@
-#+private="file"
+#+private file
 package main
 
 import "core:slice"
@@ -12,31 +12,6 @@ Odin_Tokenizer :: struct {
 
 Token :: struct {
     using token: Basic_Token,
-
-    variant: union {
-        Operation,
-        Punctuation,
-    },
-}
-
-Operation :: enum {
-    Ampersand, Ampersand_Ampersand, Ampersand_Equal, Ampersand_Tilde, Ampersand_Tilde_Equal,
-    Asterisk, Asterisk_Equal, Bang, Bang_Equal, Colon, Colon_Colon, Colon_Equal,
-    Equal, Equal_Equal, Minus, Minus_Equal, Plus, Plus_Equal, Slash, Slash_Equal,
-    Greater, Greater_Equal, Greater_Greater, Greater_Greater_Equal,
-    Less, Less_Equal, Less_Less, Less_Less_Equal, Dot_Dot_Equal, Dot_Dot_Less,
-    Percent, Percent_Equal, Percent_Percent, Percent_Percent_Equal,
-    Pipe, Pipe_Equal, Pipe_Pipe, Pipe_Pipe_Equal, Tilde, Tilde_Equal,
-}
-
-Punctuation :: enum {
-    Brace_Left,   Brace_Right,
-    Bracket_Left, Bracket_Right,
-    Paren_Left,   Paren_Right,
-    Dot, Dot_Dot,
-
-    At, Caret, Dollar_Sign, Comma,
-    Question, Newline, Semicolon, Tab,
 }
 
 @(private)
@@ -147,22 +122,23 @@ get_next_token :: proc(t: ^Odin_Tokenizer) -> (token: Token) {
         parse_number(t, &token)
     } else {
         switch t.buf[t.offset] {
-        case '!':  parse_bang          (t, &token)
-        case '#':  parse_directive     (t, &token)
-        case '%':  parse_percent       (t, &token)
-        case '&':  parse_ampersand     (t, &token)
-        case '*':  parse_asterisk      (t, &token)
-        case '+':  parse_plus          (t, &token)
-        case '-':  parse_minus         (t, &token)
-        case ':':  parse_colon         (t, &token)
-        case '<':  parse_less          (t, &token)
-        case '=':  parse_equal         (t, &token)
-        case '>':  parse_greater       (t, &token)
-        case '|':  parse_pipe          (t, &token)
-        case '~':  parse_tilde         (t, &token)
-        case '/':  parse_slash         (t, &token)
-        case '.':  parse_dot           (t, &token)
-        case '\t': parse_tab           (t, &token)
+        case '*':  tokenizer_parse_asterisk(t, &token)
+        case '!':  tokenizer_parse_bang    (t, &token)
+        case '=':  tokenizer_parse_equal   (t, &token)
+        case '>':  tokenizer_parse_greater (t, &token)
+        case '<':  tokenizer_parse_less    (t, &token)
+        case '-':  tokenizer_parse_minus   (t, &token)
+        case '|':  tokenizer_parse_pipe    (t, &token)
+        case '+':  tokenizer_parse_plus    (t, &token)
+        case '/':  tokenizer_parse_slash   (t, &token)
+        case '~':  tokenizer_parse_tilde   (t, &token)
+        case '\t': tokenizer_parse_tab     (t, &token)
+
+        case '&':  parse_ampersand         (t, &token)
+        case ':':  parse_colon             (t, &token)
+        case '#':  parse_directive         (t, &token)
+        case '.':  parse_dot               (t, &token)
+        case '%':  parse_percent           (t, &token)
 
         case '\'': fallthrough
         case '"':  fallthrough
@@ -211,30 +187,6 @@ parse_ampersand :: proc(t: ^Odin_Tokenizer, token: ^Token) {
             token.variant = .Ampersand_Tilde_Equal
             t.offset += 1
         }
-    }
-}
-
-parse_asterisk :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Asterisk
-    t.offset += 1
-    if is_eof(t) do return
-
-    if is_char(t, '=') {
-        token.variant = .Asterisk_Equal
-        t.offset += 1
-    }
-}
-
-parse_bang :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Bang
-    t.offset += 1
-    if is_eof(t) do return
-
-    if is_char(t, '=') {
-        token.variant = .Bang_Equal
-        t.offset += 1
     }
 }
 
@@ -302,39 +254,6 @@ parse_dot :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     }
 }
 
-parse_equal :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Equal
-    t.offset += 1
-    if is_eof(t) do return
-
-    if is_char(t, '=') {
-        token.variant = .Equal_Equal
-        t.offset += 1
-    }
-}
-
-parse_greater :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Greater
-    t.offset += 1
-    if is_eof(t) do return
-
-    switch {
-    case is_char(t, '='):
-        token.variant = .Greater_Equal
-        t.offset += 1
-    case is_char(t, '>'):
-        token.variant = .Greater_Greater
-        t.offset += 1
-
-        if is_char(t, '=') {
-            token.variant = .Greater_Greater_Equal
-            t.offset += 1
-        }
-    }
-}
-
 parse_identifier :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     token.kind = .Identifier
     token.text = read_word(t)
@@ -344,38 +263,6 @@ parse_identifier :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     case slice.contains(KEYWORDS,   token.text): token.kind = .Keyword
     case slice.contains(TYPES,      token.text): token.kind = .Type
     case slice.contains(BUILTINS,   token.text): token.kind = .Builtin_Function
-    }
-}
-
-parse_less :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Less
-    t.offset += 1
-    if is_eof(t) do return
-
-    switch {
-    case is_char(t, '='):
-        token.variant = .Less_Equal
-        t.offset += 1
-    case is_char(t, '<'):
-        token.variant = .Less_Less
-        t.offset += 1
-        if is_char(t, '=') {
-            token.variant = .Less_Less_Equal
-            t.offset += 1
-        }
-    }
-}
-
-parse_minus :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Minus
-    t.offset += 1
-    if is_eof(t) do return
-
-    if is_char(t, '=') {
-        token.variant = .Minus_Equal
-        t.offset +=1
     }
 }
 
@@ -406,11 +293,7 @@ parse_number :: proc(t: ^Odin_Tokenizer, token: ^Token) {
                 if b1 == '.' {
                     b2, ok = peek_byte(t, 2)
                     if !ok do break
-
-                    if b2 == '<' || b2 == '=' {
-                        break
-                    }
-
+                    if b2 == '<' || b2 == '=' do break
                 }
 
                 if decimal_point_found do break
@@ -420,7 +303,7 @@ parse_number :: proc(t: ^Odin_Tokenizer, token: ^Token) {
                 t.offset += 1
                 break
             } else if is_char(t, 'e') || is_char(t, 'E') {
-                if scientific_notation_found do break
+                if scientific_notation_found || !decimal_point_found do break
                 scientific_notation_found = true
             } else if is_char(t, '-') {
                 // negative exponent in scientific notation
@@ -431,7 +314,7 @@ parse_number :: proc(t: ^Odin_Tokenizer, token: ^Token) {
 
             t.offset += 1
         }
-    } else if is_hex_prefix(t) {
+    } else if is_hex_prefix(t) || is_char(t, 'H') || is_char(t, 'X') {
         t.offset += 1
         for !is_eof(t) && (is_hex(t) || is_char(t, '_')) do t.offset += 1
     } else if is_char(t, 'o') {
@@ -464,82 +347,6 @@ parse_percent :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     }
 }
 
-parse_pipe :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Pipe
-    t.offset += 1
-    if is_eof(t) do return
-
-    switch {
-    case is_char(t, '='):
-        token.variant = .Pipe_Equal
-        t.offset += 1
-    case is_char(t, '|'):
-        token.variant = .Pipe_Pipe
-        t.offset += 1
-
-        if is_char(t, '=') {
-            token.variant = .Pipe_Pipe_Equal
-            t.offset += 1
-        }
-    }
-}
-
-parse_plus :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Plus
-    t.offset += 1
-    if is_eof(t) do return
-
-    if is_char(t, '=') {
-        token.variant = .Plus_Equal
-        t.offset += 1
-    }
-}
-
-parse_slash :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Slash
-    t.offset += 1
-    if is_eof(t) do return
-
-    switch {
-    case is_char(t, '='):
-        token.variant = .Slash_Equal
-        t.offset += 1
-    case is_char(t, '/'):
-        token.kind = .Comment
-        token.variant = nil
-        t.offset += 1
-        for !is_eof(t) && !is_char(t, '\n') do t.offset += 1
-    case is_char(t, '*'):
-        token.kind = .Comment_Multiline
-        token.variant = nil
-        t.offset += 1
-        comments_block_count := 0
-
-        for !is_eof(t) {
-            if is_char(t, '*') {
-                if b, ok := peek_byte(t, 1); ok && b == '/' {
-                    if comments_block_count == 0 {
-                        t.offset += 2
-                        break
-                    } else {
-                        comments_block_count -= 1
-                    }
-                }
-            } else if is_char(t, '/') {
-                if b, ok := peek_byte(t, 1); ok && b == '*' {
-                    comments_block_count += 1
-                    t.offset += 1
-                }
-            }
-
-            t.offset += 1
-        }
-    }
-}
-
 parse_string_literal :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     delimiter := t.buf[t.offset]
 
@@ -550,8 +357,8 @@ parse_string_literal :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     } else {
         token.kind = .String_Literal
         escape_found := false
-
         t.offset += 1
+
         for !is_eof(t) && !is_char(t, '\n') {
             if is_char(t, delimiter) && !escape_found do break
             escape_found = !escape_found && is_char(t, '\\')
@@ -563,25 +370,6 @@ parse_string_literal :: proc(t: ^Odin_Tokenizer, token: ^Token) {
     t.offset += 1
 }
 
-parse_tab :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Punctuation
-    token.variant = .Tab
-    t.offset += 1
-    for !is_eof(t) && is_char(t, '\t') do t.offset += 1
-}
-
-parse_tilde :: proc(t: ^Odin_Tokenizer, token: ^Token) {
-    token.kind = .Operation
-    token.variant = .Tilde
-    t.offset += 1
-    if is_eof(t) do return
-
-    if is_char(t, '=') {
-        token.variant = .Tilde_Equal
-        t.offset += 1
-    }
-}
-
 get_previous_tokens :: proc(t: ^Odin_Tokenizer) -> (t1, t2, t3: Token) {
     return t.prev_tokens[0], t.prev_tokens[1], t.prev_tokens[2]
 }
@@ -590,7 +378,7 @@ peek_next_token :: proc(t: ^Odin_Tokenizer, eat_whitespace := true) -> (next_tok
     t_copy := t^
     if eat_whitespace do skip_whitespaces(&t_copy)
     next_token = get_next_token(&t_copy)
-    return next_token
+    return
 }
 
 should_save_current_token_like_directive :: proc(t: ^Odin_Tokenizer, token: Token) -> bool {

@@ -75,15 +75,8 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         return true
 
     case .toggle_selection_mode:
-        if pane.cursor_selecting {
-            pane.cursor_selecting = false
-            for &cursor in pane.cursors do cursor.sel = cursor.pos
-            return true
-        } else {
-            pane.cursor_selecting = true
-            for &cursor in pane.cursors do cursor.active = true
-            return true
-        }
+        editor_toggle_selection(pane)
+        return true
 
     case .prev_cursor:
         if pane.cursor_selecting {
@@ -372,6 +365,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         delete(buffer.pieces)
         pane.cursors = slice.clone_to_dynamic(cursors)
         buffer.pieces = slice.clone_to_dynamic(pieces)
+        editor_toggle_selection(pane, true)
         return true
     case .redo:
         copy_cursors(pane, buffer)
@@ -386,6 +380,7 @@ edit_mode_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
         delete(buffer.pieces)
         pane.cursors = slice.clone_to_dynamic(cursors)
         buffer.pieces = slice.clone_to_dynamic(pieces)
+        editor_toggle_selection(pane, true)
         return true
 
     case .cut_region:
@@ -681,9 +676,26 @@ maybe_recenter_cursor :: proc(pane: ^Pane, force_recenter := false) {
     coords := cursor_offset_to_coords(pane, lines, cursor.pos)
     top_edge := pane.y_offset
     bottom_edge := pane.y_offset + pane.visible_rows
+    right_edge := pane.visible_columns
 
     if force_recenter || coords.row < top_edge || coords.row > bottom_edge {
         pane.y_offset = clamp(coords.row - pane.visible_rows/2, 0, len(lines) - pane.visible_rows/2)
+
+        if coords.column < right_edge {
+            pane.x_offset = 0
+        } else {
+            pane.x_offset = coords.column/2
+        }
+    }
+}
+
+editor_toggle_selection :: proc(pane: ^Pane, force_reset := false) {
+    if pane.cursor_selecting || force_reset {
+        pane.cursor_selecting = false
+        for &cursor in pane.cursors do cursor.sel = cursor.pos
+    } else {
+        pane.cursor_selecting = true
+        for &cursor in pane.cursors do cursor.active = true
     }
 }
 

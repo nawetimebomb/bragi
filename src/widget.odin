@@ -482,6 +482,7 @@ find_buffer_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) 
                 widget_close()
                 return true
             } else {
+                if event.key_code == .K_TAB do return true
                 if len(global_widget.prompt.buf) == 0 {
                     // TODO(nawe) proper visual error handling here
                     log.error("can't submit buffer selection without a buffer name")
@@ -532,6 +533,7 @@ find_file_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command) ->
 
                 return true
             } else {
+                if event.key_code == .K_TAB do return true
                 fullpath := strings.to_string(global_widget.prompt)
                 _, name_from_fullpath := filepath.split(fullpath)
 
@@ -599,6 +601,7 @@ save_file_as_keyboard_event_handler :: proc(event: Event_Keyboard, cmd: Command)
 
                 return true
             } else {
+                if event.key_code == .K_TAB do return true
                 _, name_from_fullpath := filepath.split(new_fullpath)
 
                 if len(new_fullpath) == 0 || len(name_from_fullpath) == 0 {
@@ -720,9 +723,13 @@ _find_or_save_file_widget_update :: proc() {
             query_first_part = found ? value : base_working_dir
         }
 
-        query = fmt.tprintf("{}/{}", query_first_part, query[query_starting_index + 3:])
+        // maybe append the rest of the query
+        rest_of_query := query[query_starting_index + 3:]
+        query = fmt.tprintf("{}/{}", query_first_part, rest_of_query)
         strings.builder_reset(&global_widget.prompt)
         strings.write_string(&global_widget.prompt, query)
+        cursor.pos = len(query)
+        cursor.sel = cursor.pos
     }
 
     if len(query) > 0 {
@@ -785,6 +792,7 @@ _search_in_buffer_widget_update :: proc() {
     query := strings.to_string(global_widget.prompt)
     query_len := len(query)
 
+    if len(global_widget.view_results) == 0 do cursor.index = -1
     _select_result_with_pane_cursor()
 
     if !global_widget.results_need_update do return
@@ -866,6 +874,11 @@ _search_in_buffer_widget_update :: proc() {
     })
 
     global_widget.view_results = slice.clone(global_widget.all_results[:])
+
+    if len(global_widget.view_results) == 0 {
+        cursor.index = -1
+        return
+    }
 
     // find the closest offset
     pane_cursor := get_first_active_cursor(active_pane)
